@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Arabic Competition Platform - Light Mode */
+    --background: 220 20% 97%;
+    --foreground: 230 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 25% 10%;
+
+    /* Primary - Vibrant Violet */
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Teal Cyan */
+    --secondary: 174 72% 46%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 15% 91%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 262 83% 95%;
+    --accent-foreground: 262 83% 40%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Success - Correct Answer */
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning - Timer */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 262 83% 58%;
+
+    --radius: 1rem;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(262, 83%, 58%) 0%, hsl(280, 90%, 50%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(174, 72%, 46%) 0%, hsl(190, 80%, 45%) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(160, 84%, 39%) 0%, hsl(140, 80%, 45%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(25, 95%, 55%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(262, 83%, 58%) 0%, hsl(280, 90%, 50%) 50%, hsl(174, 72%, 46%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(220, 20%, 98%) 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px -2px hsl(262, 83%, 58%, 0.1);
+    --shadow-md: 0 8px 24px -8px hsl(262, 83%, 58%, 0.15);
+    --shadow-lg: 0 16px 48px -12px hsl(262, 83%, 58%, 0.2);
+    --shadow-glow: 0 0 40px -10px hsl(262, 83%, 58%, 0.4);
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 230 25% 10%;
+    --sidebar-primary: 262 83% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 262 83% 95%;
+    --sidebar-accent-foreground: 262 83% 40%;
+    --sidebar-border: 220 15% 88%;
+    --sidebar-ring: 262 83% 58%;
+  }
+
+  .dark {
+    /* Arabic Competition Platform - Dark Mode (Default for competitions) */
+    --background: 230 30% 8%;
+    --foreground: 220 20% 95%;
+
+    --card: 230 25% 12%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 230 25% 12%;
+    --popover-foreground: 220 20% 95%;
+
+    /* Primary - Vibrant Violet */
+    --primary: 262 83% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Teal Cyan */
+    --secondary: 174 72% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 230 20% 18%;
+    --muted-foreground: 220 15% 60%;
+
+    --accent: 262 40% 20%;
+    --accent-foreground: 262 83% 75%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 10%;
+
+    --border: 230 20% 18%;
+    --input: 230 20% 18%;
+    --ring: 262 83% 65%;
+
+    /* Dark Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(262, 83%, 55%) 0%, hsl(280, 90%, 45%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(174, 72%, 40%) 0%, hsl(190, 80%, 40%) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(160, 84%, 35%) 0%, hsl(140, 80%, 40%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(38, 92%, 45%) 0%, hsl(25, 95%, 50%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(230, 30%, 8%) 0%, hsl(262, 50%, 15%) 50%, hsl(230, 30%, 8%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(230, 25%, 14%) 0%, hsl(230, 25%, 10%) 100%);
+
+    /* Dark Shadows */
+    --shadow-sm: 0 2px 8px -2px hsl(0, 0%, 0%, 0.3);
+    --shadow-md: 0 8px 24px -8px hsl(0, 0%, 0%, 0.4);
+    --shadow-lg: 0 16px 48px -12px hsl(0, 0%, 0%, 0.5);
+    --shadow-glow: 0 0 60px -10px hsl(262, 83%, 50%, 0.5);
+
+    /* Sidebar */
+    --sidebar-background: 230 25% 10%;
+    --sidebar-foreground: 220 20% 95%;
+    --sidebar-primary: 262 83% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 262 40% 20%;
+    --sidebar-accent-foreground: 262 83% 75%;
+    --sidebar-border: 230 20% 18%;
+    --sidebar-ring: 262 83% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    direction: rtl;
+  }
+
+  body {
+    @apply bg-background text-foreground font-cairo antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+  }
+}
+
+@layer components {
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+
+  .gradient-success {
+    background: var(--gradient-success);
+  }
+
+  .gradient-warning {
+    background: var(--gradient-warning);
+  }
+
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  .gradient-card {
+    background: var(--gradient-card);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Answer option colors */
+  .answer-red {
+    @apply bg-destructive text-destructive-foreground;
+  }
+
+  .answer-blue {
+    background: hsl(217, 91%, 60%);
+    @apply text-white;
+  }
+
+  .answer-yellow {
+    @apply bg-warning text-warning-foreground;
+  }
+
+  .answer-green {
+    @apply bg-success text-success-foreground;
+  }
+}
+
+@layer utilities {
+  .rtl {
+    direction: rtl;
+  }
+
+  .ltr {
+    direction: ltr;
+  }
+}
