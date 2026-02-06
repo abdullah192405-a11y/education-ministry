@@ -9,13 +9,11 @@ const Footer = () => {
           {/* Brand */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-                <Trophy className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold text-foreground">لاب7</span>
+              <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+              <span className="text-xl font-bold text-foreground">Lab4</span>
             </Link>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              منصة تفاعلية للمسابقات والتحديات التعليمية. تعلّم والعب وتنافس مع الآخرين!
+              محتوى ذكي.. يصنع أثراً
             </p>
           </div>
 
@@ -80,7 +78,7 @@ const Footer = () => {
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-muted-foreground text-sm">
-            © 2024 لاب7. جميع الحقوق محفوظة.
+            © 2026 Lab4. جميع الحقوق محفوظة.
           </p>
           <div className="flex gap-6">
             <Link to="/privacy" className="text-muted-foreground hover:text-foreground transition-colors text-sm">

@@ -5,43 +5,43 @@ import { Card, CardContent } from "@/components/ui/card";
 const features = [
   {
     icon: BookOpen,
-    title: "أنشئ محتواك",
-    description: "ارفع فيديوهات، صوتيات، أو نصوص وحوّلها لأسئلة تفاعلية",
+    title: "صمم محتواك",
+    description: " ارفع ملفاتك، فيدوهاتك، صوتياتك، وحولها لأسئلة تفاعلية ذات أثر",
     color: "text-primary",
     bgColor: "bg-primary/10",
   },
   {
     icon: Users,
-    title: "تنافس مباشر",
-    description: "انضم لمسابقات حية مع مئات المتسابقين في وقت واحد",
+    title: "منافسات وتحديات",
+    description: "حول محتواك إلى أنشطة فردية أو جماعية مثيرة",
     color: "text-secondary",
     bgColor: "bg-secondary/10",
   },
   {
     icon: Trophy,
-    title: "احصد الجوائز",
-    description: "تصدّر لوحة المتصدرين واحصل على شارات وإنجازات",
+    title: "لوحة المتصدرين",
+    description: "حفز طلابك على الصدارة من خلال الحصول على شارات وإنجازات ونقاط التحدي",
     color: "text-warning",
     bgColor: "bg-warning/10",
   },
   {
     icon: Clock,
-    title: "سرعة الإجابة",
-    description: "كل ثانية تحسب! أسرع إجابة صحيحة = نقاط أكثر",
+    title: "تعليم تفاعلي",
+    description: "صح وخطأ، أسئلة متعددة، مطابقة، كروت تعليمية ..إلخ",
     color: "text-destructive",
     bgColor: "bg-destructive/10",
   },
   {
     icon: Play,
-    title: "تعلّم بالمتعة",
-    description: "تحويل المحتوى الممل إلى تجربة تفاعلية ممتعة",
+    title: "تعليم تلعيبي",
+    description: "دروان العجلة، أطول برج، اكتشف الصورة، جمع الذهب ..إلخ",
     color: "text-success",
     bgColor: "bg-success/10",
   },
   {
     icon: BarChart,
-    title: "تحليلات دقيقة",
-    description: "تتبع أداءك وتعرف نقاط قوتك وضعفك",
+    title: "تقارير أداء",
+    description: "قس الأثر التعليمي لمحتواك عبر تقنيات تحليل ورصد متقدمة",
     color: "text-primary",
     bgColor: "bg-primary/10",
   },
@@ -59,7 +59,7 @@ const FeaturesSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-5xl font-black mb-4">
-            لماذا <span className="text-primary">تحدّي</span>؟
+            لماذا <span className="text-primary">التحدي</span>؟
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             منصة متكاملة تجمع بين التعلم والمتعة في تجربة واحدة لا تُنسى

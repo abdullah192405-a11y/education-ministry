@@ -53,7 +53,7 @@ const JoinSection = () => {
                 تعلّم <span className="text-amber-300">والعب</span> معاً
               </h2>
               <p className="text-white/80 text-lg mb-8">
-                استكشف المحتويات التعليمية من الوزارات والمدارس والمؤسسات، ثم اختبر نفسك بتحديات ممتعة!
+                صمم تحدياتك الخاصة لرفع حماس طلابك!
               </p>
 
               {/* Stats */}
@@ -77,7 +77,7 @@ const JoinSection = () => {
               >
                 <Link to="/channels">
                   <Play className="w-5 h-5" />
-                  استكشف القنوات
+                  استكشف المحتوى
                 </Link>
               </Button>
             </motion.div>

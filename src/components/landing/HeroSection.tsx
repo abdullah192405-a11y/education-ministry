@@ -33,7 +33,7 @@ const HeroSection = () => {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-accent-foreground text-sm font-medium mb-8"
           >
             <Zap className="w-4 h-4" />
-            منصة لاب7 التعليمية
+            حول محتواك إلى تجربة تعلم استثنائية
           </motion.div>
 
           {/* Main Heading */}
@@ -41,11 +41,10 @@ const HeroSection = () => {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight"
+            className="text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight flex flex-col items-center gap-2 md:gap-4"
           >
-            <span className="text-foreground">تعلّم. تفاعل.</span>
-            <br />
-            <span className="text-primary">وتحدّ نفسك!</span>
+            <span className="text-foreground">تصميم. تلعيب. قياس.</span>
+            <span className="text-primary">تحديات غامرة!</span>
           </motion.h1>
 
           {/* Description */}
@@ -55,7 +54,7 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
           >
-            منصة تعليمية تفاعلية شاملة تقدم المناهج الدراسية بطريقة مبتكرة مع تحديات ومسابقات ممتعة لجميع المراحل
+            بذكاء اصطناعي مبتكر.. نحول محتواك التعليمي إلى مغامرة تفاعلية وتحديات مشوقة.
           </motion.p>
 
           {/* CTA Buttons */}
@@ -75,7 +74,7 @@ const HeroSection = () => {
             <Button variant="outline" size="lg" asChild>
               <Link to="/grades">
                 <Users className="w-5 h-5" />
-                استكشف الصفوف
+                استكشف المحتوى
               </Link>
             </Button>
           </motion.div>

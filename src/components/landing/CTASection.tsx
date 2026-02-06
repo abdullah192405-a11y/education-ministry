@@ -16,7 +16,7 @@ const CTASection = () => {
         >
           {/* Background */}
           <div className="absolute inset-0 bg-gradient-to-br from-card via-card to-accent" />
-          
+
           {/* Decorative Elements */}
           <div className="absolute top-0 left-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-0 w-64 h-64 bg-secondary/10 rounded-full blur-3xl" />
@@ -34,17 +34,17 @@ const CTASection = () => {
               </div>
 
               <h2 className="text-3xl md:text-5xl font-black mb-6 max-w-2xl mx-auto">
-                مستعد لإنشاء قناتك وتحويل محتواك لتحديات؟
+                هل أنت مستعد؟
               </h2>
 
               <p className="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-                انضم لمجتمع صناع المحتوى وابدأ في إنشاء مسابقات تفاعلية تجذب الآلاف
+                حوَّل محتواك إلى رحلة تعلم ماتعة وذات أثر
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button variant="hero" size="xl" asChild>
                   <Link to="/create-channel" className="group">
-                    أنشئ قناتك مجاناً
+                    أنشئ محتواك مجاناً
                     <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
                   </Link>
                 </Button>
