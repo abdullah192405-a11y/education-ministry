@@ -891,19 +891,19 @@ export const gradesData: Grade[] = [
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/vertebrates-chart-poster.pdf",
+                                url: "/class4/vertebrates-chart-poster_compressed.pdf",
                                 fileName: "اللوحة المصورة لدرس الحيوانات الفقارية.pdf",
                                 caption: "اللوحة المصورة لدرس الحيوانات الفقارية"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/science-worksheets-grade4.pdf",
+                                url: "/class4/science-worksheets-grade4_compressed.pdf",
                                 fileName: "اوراق عمل علوم رابع ابتدائي.pdf",
                                 caption: "أوراق عمل مادة العلوم للصف الرابع الابتدائي"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/science-summary-grade4.pdf",
+                                url: "/class4/science-summary-grade4_compressed.pdf",
                                 fileName: "ملخص مادة العلوم رابع ابتدائي.pdf",
                                 caption: "ملخص مادة العلوم للصف الرابع الابتدائي"
                             },
