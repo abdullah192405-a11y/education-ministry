@@ -870,7 +870,7 @@ export const gradesData: Grade[] = [
                         media: [
                             {
                                 type: "video",
-                                url: "/class4/درس الفقاريات احترافي.mp4",
+                                url: "/class4/vertebrates-lesson-pro.mp4",
                                 caption: "درس الحيوانات الفقارية - شرح احترافي ومفصل"
                             },
                             {
@@ -880,30 +880,30 @@ export const gradesData: Grade[] = [
                             },
                             {
                                 type: "video",
-                                url: "/class4/شرح درس الحيوانات اللافقارية مادة العلوم الصف الرابع الابتدائي _ المنهج المطور.mp4",
+                                url: "/class4/invertebrates-lesson-explained.mp4",
                                 caption: "شرح درس الحيوانات اللافقارية - المنهج المطور"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/كتاب العلوم رابع ابتدائي ج1 (1).pdf",
+                                url: "/class4/science-book-grade4-part1.pdf",
                                 fileName: "كتاب العلوم رابع ابتدائي ج1.pdf",
                                 caption: "كتاب العلوم للصف الرابع الابتدائي - الفصل الأول"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/اللوحة المصورة لدرس العلوم - الحيوانات الفقارية.pdf",
+                                url: "/class4/vertebrates-chart-poster.pdf",
                                 fileName: "اللوحة المصورة لدرس الحيوانات الفقارية.pdf",
                                 caption: "اللوحة المصورة لدرس الحيوانات الفقارية"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/اوراق عمل علوم رابع ابتدائي الفصل الاو....pdf",
+                                url: "/class4/science-worksheets-grade4.pdf",
                                 fileName: "اوراق عمل علوم رابع ابتدائي.pdf",
                                 caption: "أوراق عمل مادة العلوم للصف الرابع الابتدائي"
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/ملخص مادة العلوم رابع ابتدائي.pdf",
+                                url: "/class4/science-summary-grade4.pdf",
                                 fileName: "ملخص مادة العلوم رابع ابتدائي.pdf",
                                 caption: "ملخص مادة العلوم للصف الرابع الابتدائي"
                             },
