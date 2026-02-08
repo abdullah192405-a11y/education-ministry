@@ -870,7 +870,7 @@ export const gradesData: Grade[] = [
                         media: [
                             {
                                 type: "video",
-                                url: "/class4/vertebrates-lesson-pro.mp4",
+                                url: "https://www.youtube.com/embed/kvzJFYLUzyI?si=EQv6d2TzSfoz3WiS",
                                 caption: "درس الحيوانات الفقارية - شرح احترافي ومفصل"
                             },
                             {
@@ -885,7 +885,7 @@ export const gradesData: Grade[] = [
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/science-book-grade4-part1.pdf",
+                                url: "/class4/ls.pdf",
                                 fileName: "كتاب العلوم رابع ابتدائي ج1.pdf",
                                 caption: "كتاب العلوم للصف الرابع الابتدائي - الفصل الأول"
                             },
