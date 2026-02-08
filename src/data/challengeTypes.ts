@@ -20,6 +20,7 @@ export type ChallengeCategory = "activities" | "games" | "mixed";
 export interface ChallengeQuestion {
     id: number;
     type: ActivityType | GameType;
+    typeTitle?: string;
     question: string;
     options?: string[];
     correctAnswer?: number | string | number[];

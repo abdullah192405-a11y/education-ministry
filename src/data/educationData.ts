@@ -843,6 +843,569 @@ export const gradesData: Grade[] = [
                 ]
             }
         ]
+    },
+    {
+        id: 4,
+        name: "الصف الرابع الابتدائي",
+        slug: "grade-4-primary",
+        level: "ابتدائي",
+        description: "المرحلة الابتدائية - اكتشاف العلوم والبيئة من حولنا",
+        coverImage: "https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=1200&h=400&fit=crop",
+        icon: "https://images.unsplash.com/photo-1474511320723-9a56873571b7?w=200&h=200&fit=crop",
+        studentsCount: 110000,
+        verified: true,
+        subjects: [
+            {
+                id: 1,
+                name: "العلوم",
+                description: "اكتشف عالم الحيوانات والنباتات والظواهر الطبيعية",
+                icon: "🔬",
+                color: "#22c55e",
+                topics: [
+                    {
+                        id: 1,
+                        title: "الحيوانات الفقارية والحيوانات اللافقارية",
+                        description: "تعرف على تصنيف الحيوانات حسب وجود العمود الفقري من عدمه، واكتشف الفرق بين الفقاريات واللافقاريات مع أمثلة وصور وألعاب تفاعلية",
+                        thumbnail: "https://images.unsplash.com/photo-1474511320723-9a56873571b7?w=400&h=300&fit=crop",
+                        media: [
+                            {
+                                type: "video",
+                                url: "/class4/درس الفقاريات احترافي.mp4",
+                                caption: "درس الحيوانات الفقارية - شرح احترافي ومفصل"
+                            },
+                            {
+                                type: "video",
+                                url: "https://www.youtube.com/embed/bXO-D-Ke24k?si=JtKEgcJFTZokjkqI",
+                                caption: "درس الفقاريات - فيديو تعليمي"
+                            },
+                            {
+                                type: "video",
+                                url: "/class4/شرح درس الحيوانات اللافقارية مادة العلوم الصف الرابع الابتدائي _ المنهج المطور.mp4",
+                                caption: "شرح درس الحيوانات اللافقارية - المنهج المطور"
+                            },
+                            {
+                                type: "pdf",
+                                url: "/class4/كتاب العلوم رابع ابتدائي ج1 (1).pdf",
+                                fileName: "كتاب العلوم رابع ابتدائي ج1.pdf",
+                                caption: "كتاب العلوم للصف الرابع الابتدائي - الفصل الأول"
+                            },
+                            {
+                                type: "pdf",
+                                url: "/class4/اللوحة المصورة لدرس العلوم - الحيوانات الفقارية.pdf",
+                                fileName: "اللوحة المصورة لدرس الحيوانات الفقارية.pdf",
+                                caption: "اللوحة المصورة لدرس الحيوانات الفقارية"
+                            },
+                            {
+                                type: "pdf",
+                                url: "/class4/اوراق عمل علوم رابع ابتدائي الفصل الاو....pdf",
+                                fileName: "اوراق عمل علوم رابع ابتدائي.pdf",
+                                caption: "أوراق عمل مادة العلوم للصف الرابع الابتدائي"
+                            },
+                            {
+                                type: "pdf",
+                                url: "/class4/ملخص مادة العلوم رابع ابتدائي.pdf",
+                                fileName: "ملخص مادة العلوم رابع ابتدائي.pdf",
+                                caption: "ملخص مادة العلوم للصف الرابع الابتدائي"
+                            },
+                            // {
+                            //     type: "image",
+                            //     url: "https://images.unsplash.com/photo-1474511320723-9a56873571b7?w=800&h=600&fit=crop",
+                            //     caption: "الحيوانات الفقارية - مثال: السلحفاة البحرية"
+                            // },
+                            // {
+                            //     type: "image",
+                            //     url: "https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=800&h=600&fit=crop",
+                            //     caption: "الحيوانات الفقارية - مثال: السحلية"
+                            // },
+                            // {
+                            //     type: "image",
+                            //     url: "https://images.unsplash.com/photo-1550853024-fae8cd4be47f?w=800&h=600&fit=crop",
+                            //     caption: "الحيوانات اللافقارية - مثال: قنديل البحر"
+                            // },
+                            {
+                                type: "text",
+                                content: "# الحيوانات الفقارية والحيوانات اللافقارية\\n\\n## 🦴 ما هي الحيوانات الفقارية؟\\n\\nالحيوانات الفقارية هي الحيوانات التي لها **عمود فقري** (سلسلة من العظام في الظهر). العمود الفقري يحمي الحبل الشوكي ويساعد الحيوان على الحركة.\\n\\n### مجموعات الحيوانات الفقارية:\\n\\n🐟 **الأسماك:** تعيش في الماء، لها زعانف وخياشيم، جسمها مغطى بقشور\\n🐸 **البرمائيات:** تعيش في الماء واليابسة، مثل الضفدع والسلمندر\\n🦎 **الزواحف:** جسمها مغطى بحراشف، مثل السحلية والتمساح والثعبان\\n🐦 **الطيور:** جسمها مغطى بريش، لها أجنحة ومنقار\\n🐘 **الثدييات:** تلد صغارها وترضعها الحليب، جسمها مغطى بشعر أو فرو\\n\\n---\\n\\n## 🐛 ما هي الحيوانات اللافقارية؟\\n\\nالحيوانات اللافقارية هي الحيوانات التي **ليس لها عمود فقري**. وهي تشكل أكثر من 95% من جميع الحيوانات على الأرض!\\n\\n### أمثلة على اللافقاريات:\\n\\n🪱 **الديدان:** مثل دودة الأرض\\n🐌 **الرخويات:** مثل الحلزون والأخطبوط\\n🦀 **المفصليات:** مثل الحشرات والعناكب والسرطانات\\n🌟 **شوكيات الجلد:** مثل نجم البحر وقنفذ البحر\\n🎐 **الإسفنجيات:** مثل إسفنج البحر\\n\\n---\\n\\n## 🔍 الفرق بين الفقاريات واللافقاريات\\n\\n| الفقاريات | اللافقاريات |\\n|-----------|-------------|\\n| لها عمود فقري | ليس لها عمود فقري |\\n| لها هيكل عظمي داخلي | قد يكون لها هيكل خارجي أو لا |\\n| عددها أقل | تشكل أغلب الحيوانات |\\n| أحجامها أكبر عادةً | أحجامها أصغر عادةً |\\n\\n---\\n\\n## 💡 هل تعلم؟\\n\\n- 🐋 الحوت الأزرق أكبر حيوان فقاري على الإطلاق!\\n- 🦑 الحبار العملاق أكبر لافقاري في العالم!\\n- 🐝 النحلة لافقارية لكنها تستطيع حمل أضعاف وزنها!\\n- 🦴 جسم الإنسان يحتوي على 206 عظمة!"
+                            },
+                            {
+                                type: "image",
+                                url: "/vertebrates_vs_invertebrates_chart.svg",
+                                caption: "مخطط مقارنة: الفرق بين الفقاريات واللافقاريات"
+                            },
+                            {
+                                type: "image",
+                                url: "/vertebrates_groups_chart.svg",
+                                caption: "مجموعات الحيوانات الفقارية الخمسة"
+                            },
+                            {
+                                type: "image",
+                                url: "/invertebrates_groups_chart.svg",
+                                caption: "مجموعات الحيوانات اللافقارية الرئيسية"
+                            }
+                        ],
+                        quiz: [
+                            {
+                                id: 1,
+                                question: "ما الذي يميز الحيوانات الفقارية عن اللافقارية؟",
+                                options: ["وجود الأرجل", "وجود العمود الفقري", "وجود الأجنحة", "الحجم الكبير"],
+                                correctAnswer: 1,
+                                explanation: "الحيوانات الفقارية تتميز بوجود عمود فقري (سلسلة من العظام في الظهر)"
+                            },
+                            {
+                                id: 2,
+                                question: "أي من الحيوانات التالية من الفقاريات؟",
+                                options: ["النحلة", "الحلزون", "السمكة", "العنكبوت"],
+                                correctAnswer: 2,
+                                explanation: "السمكة من الحيوانات الفقارية لأن لها عمود فقري"
+                            },
+                            {
+                                id: 3,
+                                question: "أي مجموعة من الحيوانات التالية تلد صغارها وترضعها؟",
+                                options: ["الطيور", "الأسماك", "الثدييات", "الزواحف"],
+                                correctAnswer: 2,
+                                explanation: "الثدييات تلد صغارها وترضعها الحليب"
+                            },
+                            {
+                                id: 4,
+                                question: "ما نسبة الحيوانات اللافقارية من إجمالي الحيوانات؟",
+                                options: ["أقل من 50%", "حوالي 70%", "أكثر من 95%", "حوالي 30%"],
+                                correctAnswer: 2,
+                                explanation: "اللافقاريات تشكل أكثر من 95% من جميع الحيوانات"
+                            },
+                            {
+                                id: 5,
+                                question: "أي من التالي يعتبر من الحيوانات اللافقارية؟",
+                                options: ["الأسد", "الضفدع", "النسر", "الفراشة"],
+                                correctAnswer: 3,
+                                explanation: "الفراشة من الحشرات وهي لافقارية ليس لها عمود فقري"
+                            },
+                            {
+                                id: 6,
+                                question: "ما الذي يغطي جسم الطيور؟",
+                                options: ["الشعر", "الحراشف", "الريش", "القشور"],
+                                correctAnswer: 2,
+                                explanation: "جسم الطيور مغطى بالريش الذي يساعدها على الطيران والتدفئة"
+                            },
+                            {
+                                id: 7,
+                                question: "أين تعيش البرمائيات؟",
+                                options: ["في الماء فقط", "على اليابسة فقط", "في الماء واليابسة", "في الهواء"],
+                                correctAnswer: 2,
+                                explanation: "البرمائيات مثل الضفدع تعيش في الماء واليابسة"
+                            },
+                            {
+                                id: 8,
+                                question: "ما وظيفة العمود الفقري في الحيوانات الفقارية؟",
+                                options: ["الهضم", "التنفس", "حماية الحبل الشوكي والحركة", "الإحساس"],
+                                correctAnswer: 2,
+                                explanation: "العمود الفقري يحمي الحبل الشوكي ويساعد على الحركة"
+                            },
+                            {
+                                id: 9,
+                                question: "أي من التالي من الرخويات؟",
+                                options: ["النمل", "الأخطبوط", "العقرب", "الجراد"],
+                                correctAnswer: 1,
+                                explanation: "الأخطبوط من الرخويات وهي حيوانات لافقارية"
+                            },
+                            {
+                                id: 10,
+                                question: "ما أكبر حيوان فقاري في العالم؟",
+                                options: ["الفيل", "الزرافة", "الحوت الأزرق", "الديناصور"],
+                                correctAnswer: 2,
+                                explanation: "الحوت الأزرق هو أكبر حيوان فقاري وأكبر حيوان على الإطلاق"
+                            }
+                        ],
+                        challengeItems: [
+                            // === ACTIVITIES (QUESTIONS) ===
+
+                            // Multiple Choice - Level 1: Identification
+                            {
+                                id: 101,
+                                type: "multiple_choice",
+                                question: "أي من الحيوانات التالية له عمود فقري؟ 🦴",
+                                options: ["الدودة 🪱", "القط 🐱", "الفراشة 🦋", "الحلزون 🐌"],
+                                correctAnswer: 1,
+                                points: 100,
+                                timeLimit: 15,
+                                explanation: "القط من الثدييات وهو حيوان فقاري له عمود فقري"
+                            },
+                            {
+                                id: 102,
+                                type: "multiple_choice",
+                                question: "أي مجموعة من الفقاريات تتنفس بالخياشيم؟ 🐠",
+                                options: ["الطيور 🐦", "الثدييات 🦁", "الأسماك 🐟", "الزواحف 🦎"],
+                                correctAnswer: 2,
+                                points: 100,
+                                timeLimit: 15,
+                                explanation: "الأسماك تتنفس بالخياشيم لاستخلاص الأكسجين من الماء"
+                            },
+                            {
+                                id: 103,
+                                type: "multiple_choice",
+                                question: "ما الذي يغطي جسم الزواحف؟",
+                                options: ["الريش", "الفرو", "الحراشف", "الجلد الناعم"],
+                                correctAnswer: 2,
+                                points: 120,
+                                timeLimit: 15,
+                                explanation: "جسم الزواحف مغطى بالحراشف التي تحميها من الجفاف"
+                            },
+                            {
+                                id: 104,
+                                type: "multiple_choice",
+                                question: "أي من التالي مثال على البرمائيات؟ 🐸",
+                                options: ["التمساح", "الضفدع", "السلحفاة", "الثعبان"],
+                                correctAnswer: 1,
+                                points: 100,
+                                timeLimit: 15,
+                                explanation: "الضفدع من البرمائيات التي تعيش في الماء واليابسة"
+                            },
+                            {
+                                id: 105,
+                                type: "multiple_choice",
+                                question: "أي نوع من اللافقاريات يشمل النحل والنمل؟",
+                                options: ["الديدان", "الرخويات", "المفصليات", "الإسفنجيات"],
+                                correctAnswer: 2,
+                                points: 120,
+                                timeLimit: 20,
+                                explanation: "النحل والنمل من الحشرات التي تنتمي لمجموعة المفصليات"
+                            },
+
+                            // True/False - Level 2: Facts Verification
+                            {
+                                id: 106,
+                                type: "true_false",
+                                question: "الحوت من الأسماك لأنه يعيش في الماء",
+                                options: ["صح ✓", "خطأ ✗"],
+                                correctAnswer: 1,
+                                points: 100,
+                                timeLimit: 12,
+                                explanation: "خطأ! الحوت من الثدييات لأنه يلد صغاره ويرضعها"
+                            },
+                            {
+                                id: 107,
+                                type: "true_false",
+                                question: "الثعبان من الزواحف رغم عدم وجود أرجل له",
+                                options: ["صح ✓", "خطأ ✗"],
+                                correctAnswer: 0,
+                                points: 100,
+                                timeLimit: 12,
+                                explanation: "صحيح! الثعبان من الزواحف لأن جسمه مغطى بحراشف وهو من ذوات الدم البارد"
+                            },
+                            {
+                                id: 108,
+                                type: "true_false",
+                                question: "العنكبوت من الحشرات",
+                                options: ["صح ✓", "خطأ ✗"],
+                                correctAnswer: 1,
+                                points: 120,
+                                timeLimit: 12,
+                                explanation: "خطأ! العنكبوت ليس حشرة، بل هو من العنكبوتيات (له 8 أرجل بينما الحشرات لها 6)"
+                            },
+                            {
+                                id: 109,
+                                type: "true_false",
+                                question: "جميع الطيور تستطيع الطيران",
+                                options: ["صح ✓", "خطأ ✗"],
+                                correctAnswer: 1,
+                                points: 100,
+                                timeLimit: 12,
+                                explanation: "خطأ! بعض الطيور لا تطير مثل النعامة والبطريق"
+                            },
+                            {
+                                id: 110,
+                                type: "true_false",
+                                question: "اللافقاريات تشكل أكثر من 95% من الحيوانات",
+                                options: ["صح ✓", "خطأ ✗"],
+                                correctAnswer: 0,
+                                points: 100,
+                                timeLimit: 12,
+                                explanation: "صحيح! اللافقاريات هي الأغلبية العظمى من مملكة الحيوان"
+                            },
+
+                            // Q&A - Level 3: Production
+                            {
+                                id: 111,
+                                type: "qa",
+                                question: "اذكر مثالاً على حيوان فقاري من الثدييات؟",
+                                correctAnswer: "الأسد",
+                                points: 120,
+                                timeLimit: 30,
+                                explanation: "أمثلة: الأسد، القط، الكلب، الفيل، الحصان، الإنسان"
+                            },
+                            {
+                                id: 112,
+                                type: "qa",
+                                question: "ما الفرق الرئيسي بين الفقاريات واللافقاريات؟",
+                                correctAnswer: "العمود الفقري",
+                                points: 150,
+                                timeLimit: 30,
+                                explanation: "الفقاريات لها عمود فقري، واللافقاريات ليس لها"
+                            },
+                            {
+                                id: 113,
+                                type: "qa",
+                                question: "اذكر مجموعتين من مجموعات الفقاريات الخمس؟",
+                                correctAnswer: "الأسماك والطيور",
+                                points: 150,
+                                timeLimit: 35,
+                                explanation: "المجموعات: الأسماك، البرمائيات، الزواحف، الطيور، الثدييات"
+                            },
+
+                            // Know/Don't Know - Level 4: Self-Assessment
+                            {
+                                id: 114,
+                                type: "know_dont_know",
+                                question: "هل تعرف لماذا سميت البرمائيات بهذا الاسم؟",
+                                options: ["نعم، أعرف", "لا، لا أعرف"],
+                                correctAnswer: 0,
+                                points: 50,
+                                timeLimit: 10,
+                                explanation: "لأنها تعيش في بيئتين: الماء واليابسة (برّ + ماء)"
+                            },
+                            {
+                                id: 115,
+                                type: "know_dont_know",
+                                question: "هل تستطيع التفريق بين الزواحف والبرمائيات؟",
+                                options: ["نعم، أستطيع", "أحتاج مراجعة"],
+                                correctAnswer: 0,
+                                points: 50,
+                                timeLimit: 10,
+                                explanation: "الزواحف: جلد جاف وحراشف. البرمائيات: جلد رطب بدون حراشف"
+                            },
+
+                            // Order Questions - Level 5: Sequencing
+                            {
+                                id: 116,
+                                type: "order_questions",
+                                question: "رتب مجموعات الفقاريات من الأصغر للأكبر حجماً عادةً",
+                                orderItems: ["الأسماك الصغيرة", "البرمائيات", "الطيور", "الثدييات الكبيرة"],
+                                points: 180,
+                                timeLimit: 45
+                            },
+                            {
+                                id: 117,
+                                type: "order_questions",
+                                question: "رتب دورة حياة الضفدع (البرمائي)",
+                                orderItems: ["بيضة", "شرغوف (أبو ذنيبة)", "ضفدع صغير", "ضفدع بالغ"],
+                                points: 200,
+                                timeLimit: 50
+                            },
+
+                            // === GAMES ===
+
+                            // Matching Game - Classification
+                            {
+                                id: 201,
+                                type: "matching",
+                                question: "طابق الحيوان مع مجموعته الصحيحة 🎯",
+                                pairs: [
+                                    { left: "النسر 🦅", right: "الطيور" },
+                                    { left: "السمكة 🐟", right: "الأسماك" },
+                                    { left: "الضفدع 🐸", right: "البرمائيات" },
+                                    { left: "التمساح 🐊", right: "الزواحف" },
+                                    { left: "الأسد 🦁", right: "الثدييات" }
+                                ],
+                                points: 250,
+                                timeLimit: 60
+                            },
+                            {
+                                id: 202,
+                                type: "matching",
+                                question: "طابق الغطاء الخارجي مع نوع الحيوان",
+                                pairs: [
+                                    { left: "الريش 🪶", right: "الطيور" },
+                                    { left: "الحراشف", right: "الزواحف" },
+                                    { left: "الفرو/الشعر", right: "الثدييات" },
+                                    { left: "القشور اللامعة", right: "الأسماك" }
+                                ],
+                                points: 200,
+                                timeLimit: 50
+                            },
+                            {
+                                id: 203,
+                                type: "matching",
+                                question: "طابق اللافقاري مع نوعه",
+                                pairs: [
+                                    { left: "النحلة 🐝", right: "حشرة" },
+                                    { left: "الأخطبوط 🐙", right: "رخوي" },
+                                    { left: "نجم البحر ⭐", right: "شوكي الجلد" },
+                                    { left: "دودة الأرض 🪱", right: "دودة" }
+                                ],
+                                points: 200,
+                                timeLimit: 50
+                            },
+
+                            // Shooting Game - Quick Response
+                            {
+                                id: 204,
+                                type: "shooting",
+                                question: "🎯 أطلق على الحيوان الفقاري فقط!",
+                                options: ["الفراشة 🦋", "العقرب 🦂", "الحمامة 🕊️", "الدودة 🪱"],
+                                correctAnswer: 2,
+                                points: 150,
+                                timeLimit: 8,
+                                explanation: "الحمامة من الطيور وهي فقارية، الباقي لافقاريات"
+                            },
+                            {
+                                id: 205,
+                                type: "shooting",
+                                question: "🎯 أطلق على الحيوان اللافقاري!",
+                                options: ["السمكة 🐟", "الفيل 🐘", "العنكبوت 🕷️", "الضفدع 🐸"],
+                                correctAnswer: 2,
+                                points: 150,
+                                timeLimit: 8,
+                                explanation: "العنكبوت من المفصليات وهو لافقاري"
+                            },
+                            {
+                                id: 206,
+                                type: "shooting",
+                                question: "🎯 أي حيوان من الثدييات؟",
+                                options: ["النسر 🦅", "الثعبان 🐍", "الدولفين 🐬", "السلحفاة 🐢"],
+                                correctAnswer: 2,
+                                points: 180,
+                                timeLimit: 8,
+                                explanation: "الدولفين من الثدييات رغم أنه يعيش في الماء!"
+                            },
+                            {
+                                id: 207,
+                                type: "shooting",
+                                question: "🎯 أي حيوان ليس من الزواحف؟",
+                                options: ["التمساح 🐊", "الثعبان 🐍", "السلمندر 🦎", "السحلية"],
+                                correctAnswer: 2,
+                                points: 200,
+                                timeLimit: 10,
+                                explanation: "السلمندر من البرمائيات وليس من الزواحف"
+                            },
+
+                            // Puzzle Game - Word Building
+                            {
+                                id: 208,
+                                type: "puzzle",
+                                question: "🧩 رتب الحروف لتكوين كلمة: حيوان فقاري كبير",
+                                options: ["ل", "ي", "ف"],
+                                correctAnswer: "فيل",
+                                points: 150,
+                                timeLimit: 30
+                            },
+                            {
+                                id: 209,
+                                type: "puzzle",
+                                question: "🧩 رتب الحروف: نوع من الطيور الجارحة",
+                                options: ["ر", "ن", "س"],
+                                correctAnswer: "نسر",
+                                points: 150,
+                                timeLimit: 30
+                            },
+                            {
+                                id: 210,
+                                type: "puzzle",
+                                question: "🧩 رتب الحروف: حيوان برمائي يقفز",
+                                options: ["ع", "ض", "ف", "د"],
+                                correctAnswer: "ضفدع",
+                                points: 180,
+                                timeLimit: 35
+                            },
+                            {
+                                id: 211,
+                                type: "puzzle",
+                                question: "🧩 رتب الحروف: زاحف ضخم يعيش في الماء",
+                                options: ["ح", "ا", "س", "م", "ت"],
+                                correctAnswer: "تمساح",
+                                points: 200,
+                                timeLimit: 40
+                            },
+
+                            // Wheel Spin - Random Challenges
+                            {
+                                id: 212,
+                                type: "wheel_spin",
+                                question: "🎡 أدر عجلة الحيوانات واربح!",
+                                points: 0,
+                                timeLimit: 30,
+                                wheelSegments: [
+                                    {
+                                        label: "الفقاريات 🦴",
+                                        points: 100,
+                                        question: "ما عدد مجموعات الفقاريات؟",
+                                        options: ["3", "4", "5", "6"],
+                                        correctAnswer: 2
+                                    },
+                                    {
+                                        label: "اللافقاريات 🐛",
+                                        points: 150,
+                                        question: "أي من هذه لافقاري؟",
+                                        options: ["قرش", "حبار", "حوت", "دولفين"],
+                                        correctAnswer: 1
+                                    },
+                                    {
+                                        label: "تحدي سريع ⚡",
+                                        points: 200,
+                                        question: "الخفاش طائر أم ثدي؟",
+                                        options: ["طائر", "ثديي"],
+                                        correctAnswer: 1
+                                    },
+                                    {
+                                        label: "مكافأة 🎁",
+                                        points: 50,
+                                        question: "مبروك! نقاط مجانية!",
+                                        options: ["شكراً!"],
+                                        correctAnswer: 0
+                                    },
+                                    {
+                                        label: "لغز حيواني 🧩",
+                                        points: 250,
+                                        question: "حيوان يبيض لكنه يرضع صغاره؟",
+                                        options: ["خلد الماء", "لا يوجد", "البطريق", "التمساح"],
+                                        correctAnswer: 0
+                                    },
+                                    {
+                                        label: "حظ أوفر 🍀",
+                                        points: 0,
+                                        question: "حاول مرة أخرى!",
+                                        options: ["متابعة"],
+                                        correctAnswer: 0
+                                    }
+                                ]
+                            },
+
+                            // Additional variety questions
+                            {
+                                id: 213,
+                                type: "multiple_choice",
+                                question: "ما الحيوان الذي يحمل بيته على ظهره؟ 🐚",
+                                options: ["الضفدع", "السلحفاة", "التمساح", "الحرباء"],
+                                correctAnswer: 1,
+                                points: 100,
+                                timeLimit: 15,
+                                explanation: "السلحفاة تحمل صدفتها (درعها) على ظهرها دائماً"
+                            },
+                            {
+                                id: 214,
+                                type: "multiple_choice",
+                                question: "ما أكبر لافقاري في العالم؟ 🦑",
+                                options: ["الفراشة", "الحبار العملاق", "العنكبوت", "السرطان"],
+                                correctAnswer: 1,
+                                points: 150,
+                                timeLimit: 15,
+                                explanation: "الحبار العملاق هو أكبر لافقاري ويمكن أن يصل طوله لأكثر من 13 متراً!"
+                            },
+                            {
+                                id: 215,
+                                type: "shooting",
+                                question: "🎯 أي حيوان يستطيع تغيير لونه؟",
+                                options: ["الأسد 🦁", "الحرباء 🦎", "الفيل 🐘", "النسر 🦅"],
+                                correctAnswer: 1,
+                                points: 150,
+                                timeLimit: 10,
+                                explanation: "الحرباء من الزواحف التي تستطيع تغيير لونها للتمويه"
+                            }
+                        ],
+                        views: 0,
+                        duration: "35 دقيقة",
+                        createdAt: "2026-02-08"
+                    }
+                ]
+            }
+        ]
     }
 ];
 

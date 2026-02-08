@@ -1,0 +1,46 @@
+
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#f0f9ff"/>
+  
+  <!-- Title -->
+  <text x="400" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#1e3a8a">مقارنة بين الفقاريات واللافقاريات</text>
+  
+  <!-- Divider -->
+  <line x1="400" y1="80" x2="400" y2="580" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,5"/>
+  
+  <!-- Left Side: Vertebrates -->
+  <g transform="translate(50, 100)">
+    <rect x="0" y="0" width="300" height="450" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="150" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1d4ed8">الفقاريات 🦴</text>
+    
+    <text x="20" y="80" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• لها عمود فقري (سلسلة عظهرية)</text>
+    <text x="20" y="110" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• هيكل عظمي داخلي ينمو مع الجسم</text>
+    <text x="20" y="140" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• أجسامها عادة أكبر وأقوى</text>
+    <text x="20" y="170" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• تشمل 5 مجموعات رئيسية</text>
+    
+    <!-- Icons/Examples -->
+    <text x="50" y="250" font-size="40">🦁</text> <text x="100" y="240" font-size="14">الثدييات</text>
+    <text x="180" y="250" font-size="40">🐦</text> <text x="230" y="240" font-size="14">الطيور</text>
+    <text x="50" y="320" font-size="40">🐟</text> <text x="100" y="310" font-size="14">الأسماك</text>
+    <text x="180" y="320" font-size="40">🐸</text> <text x="230" y="310" font-size="14">البرمائيات</text>
+    <text x="115" y="390" font-size="40">🦎</text> <text x="165" y="380" font-size="14">الزواحف</text>
+  </g>
+  
+  <!-- Right Side: Invertebrates -->
+  <g transform="translate(450, 100)">
+    <rect x="0" y="0" width="300" height="450" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="150" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#b45309">اللافقاريات 🐛</text>
+    
+    <text x="20" y="80" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• ليس لها عمود فقري</text>
+    <text x="20" y="110" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• بعضها له هيكل خارجي صلب</text>
+    <text x="20" y="140" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• تشكل 95% من الحيوانات</text>
+    <text x="20" y="170" font-family="Arial, sans-serif" font-size="18" fill="#1e293b">• أجسامها عادة صغيرة ولينة</text>
+    
+    <!-- Icons/Examples -->
+    <text x="50" y="250" font-size="40">🕷️</text> <text x="100" y="240" font-size="14">المفصليات</text>
+    <text x="180" y="250" font-size="40">🐌</text> <text x="230" y="240" font-size="14">الرخويات</text>
+    <text x="50" y="320" font-size="40">🦋</text> <text x="100" y="310" font-size="14">الحشرات</text>
+    <text x="180" y="320" font-size="40">🪱</text> <text x="230" y="310" font-size="14">الديدان</text>
+    <text x="115" y="390" font-size="40">⭐</text> <text x="165" y="380" font-size="14">شوكيات الجلد</text>
+  </g>
+</svg>

@@ -113,11 +113,10 @@ const TopicView = () => {
                 );
             case "pdf": {
                 // Use Google Docs Viewer for better embedding compatibility
-                const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(currentMedia.url || "")}&embedded=true`;
                 return (
                     <div className="w-full h-[600px] md:h-[800px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group">
                         <iframe
-                            src={viewerUrl}
+                            src={currentMedia.url}
                             title={currentMedia.caption}
                             className="w-full h-full"
                             frameBorder="0"
