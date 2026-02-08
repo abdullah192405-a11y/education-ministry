@@ -885,7 +885,7 @@ export const gradesData: Grade[] = [
                             },
                             {
                                 type: "pdf",
-                                url: "/class4/ls.pdf",
+                                url: "/class4/science-book-grade4-part1_compressed.pdf",
                                 fileName: "كتاب العلوم رابع ابتدائي ج1.pdf",
                                 caption: "كتاب العلوم للصف الرابع الابتدائي - الفصل الأول"
                             },
