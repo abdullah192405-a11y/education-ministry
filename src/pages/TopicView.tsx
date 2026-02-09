@@ -114,18 +114,27 @@ const TopicView = () => {
             case "pdf": {
                 // Use Google Docs Viewer for better embedding compatibility
                 return (
-                    <div className="w-full h-[600px] md:h-[800px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group">
-                        <iframe
-                            src={currentMedia.url}
-                            title={currentMedia.caption}
+                    <div className="w-full h-[60vh] min-h-[400px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group bg-gray-100 flex items-center justify-center">
+                        <object
+                            data={currentMedia.url}
+                            type="application/pdf"
                             className="w-full h-full"
-                            frameBorder="0"
-                        />
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button size="sm" variant="secondary" asChild>
+                        >
+                            <div className="text-center p-6">
+                                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                                <p className="text-lg font-medium mb-2">لا يمكن عرض ملف PDF مباشرة</p>
+                                <Button asChild>
+                                    <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
+                                        تحميل الملف
+                                    </a>
+                                </Button>
+                            </div>
+                        </object>
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            <Button size="sm" variant="secondary" className="pointer-events-auto shadow-md" asChild>
                                 <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
                                     <FileText className="w-4 h-4 mr-2" />
-                                    تحميل PDF
+                                    تحميل / فتح
                                 </a>
                             </Button>
                         </div>
@@ -235,16 +244,16 @@ const TopicView = () => {
                                 السابق
                             </Button>
 
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap justify-center gap-2 max-h-[200px] overflow-y-auto p-2">
                                 {topic.media.map((media, index) => (
                                     <button
                                         key={index}
                                         onClick={() => setCurrentMediaIndex(index)}
-                                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all border ${index === currentMediaIndex
-                                            ? "bg-primary text-white border-primary scale-110"
+                                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all border-2 ${index === currentMediaIndex
+                                            ? "bg-primary text-white border-primary scale-110 shadow-md"
                                             : index <= currentMediaIndex
-                                                ? "bg-primary/20 text-primary border-primary/20"
-                                                : "bg-muted text-muted-foreground border-transparent"
+                                                ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                                                : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
                                             }`}
                                         title={media.type}
                                     >
