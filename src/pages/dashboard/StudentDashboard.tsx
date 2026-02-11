@@ -17,9 +17,9 @@ import { gradesData } from "@/data/educationData";
 // Mock student data
 const mockStudentData = {
     id: "student-1",
-    name: "أحمد الحربي",
-    email: "ahmed@example.com",
-    avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=ahmed",
+    name: "اسم الطالب",
+    email: "student@example.com",
+    avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=student",
     gradeId: 1, // الصف الأول الابتدائي
     joinedAt: "2024-01-01",
     stats: {
@@ -105,8 +105,8 @@ const StudentDashboard = () => {
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <Link to="/" className="flex items-center gap-3">
-                            <img src="/logo.png" alt="وزارة التربية والتعليم" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                            <span className="text-xl font-bold">وزارة التربية والتعليم</span>
+                            <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                            <span className="text-xl font-bold">Lab4</span>
                         </Link>
 
                         <div className="flex items-center gap-4">

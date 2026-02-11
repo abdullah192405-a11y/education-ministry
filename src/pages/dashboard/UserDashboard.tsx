@@ -17,7 +17,7 @@ import {
 // Mock user data
 const mockUserData = {
     id: "user-1",
-    name: "أحمد الحربي",
+    name: "اسم الطالب",
     email: "ahmed@example.com",
     avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=ahmed",
     joinedAt: "2024-01-01",
@@ -36,7 +36,7 @@ const mockChallengeHistory = [
     {
         id: 1,
         contentTitle: "كيف نحمي أنفسنا من الجراثيم",
-        channelName: "قناة وزارة الصحة",
+        channelName: "القناة التعليمية",
         date: "2024-01-28",
         score: 85,
         maxScore: 100,
@@ -49,7 +49,7 @@ const mockChallengeHistory = [
     {
         id: 2,
         contentTitle: "جدول الضرب بطريقة ممتعة",
-        channelName: "مدرسة النور الابتدائية",
+        channelName: "القناة المدرسية",
         date: "2024-01-27",
         score: 92,
         maxScore: 100,
@@ -62,7 +62,7 @@ const mockChallengeHistory = [
     {
         id: 3,
         contentTitle: "إعادة التدوير في المنزل",
-        channelName: "جمعية حماية البيئة",
+        channelName: "القناة الثقافية",
         date: "2024-01-26",
         score: 70,
         maxScore: 100,
@@ -88,9 +88,9 @@ const mockBadges = [
 ];
 
 const mockFollowedChannels = [
-    { id: 1, name: "قناة وزارة الصحة", logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200&h=200&fit=crop", category: "صحة" },
-    { id: 2, name: "مدرسة النور الابتدائية", logo: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=200&h=200&fit=crop", category: "تعليم" },
-    { id: 3, name: "جمعية حماية البيئة", logo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=200&h=200&fit=crop", category: "بيئة" }
+    { id: 1, name: "القناة التعليمية", logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200&h=200&fit=crop", category: "صحة" },
+    { id: 2, name: "القناة المدرسية", logo: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=200&h=200&fit=crop", category: "تعليم" },
+    { id: 3, name: "القناة الثقافية", logo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=200&h=200&fit=crop", category: "بيئة" }
 ];
 
 const UserDashboard = () => {
@@ -103,8 +103,8 @@ const UserDashboard = () => {
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <Link to="/" className="flex items-center gap-3">
-                            <img src="/logo.png" alt="Lab 4 Logo" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                            <span className="text-xl font-bold">لاب 4</span>
+                            <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                            <span className="text-xl font-bold">Lab4</span>
                         </Link>
 
                         <div className="flex items-center gap-4">

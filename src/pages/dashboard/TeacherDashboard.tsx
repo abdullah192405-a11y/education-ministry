@@ -24,7 +24,7 @@ import TeacherSettingsTab from "@/components/dashboard/teacher/TeacherSettingsTa
 // Mock Teacher Data
 const mockTeacherData = {
     id: 1,
-    name: "أ. فاطمة الحربي",
+    name: "اسم المعلم",
     email: "teacher@edu.sa",
     avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=fatima",
     gradeId: 1, // الصف الأول الابتدائي
@@ -45,30 +45,30 @@ const initialActiveChallenges = [
         topicId: 1,
         pin: "847291",
         topicTitle: "حروف الهجاء العربية",
-        mode: "group",
+        mode: "group" as const,
         players: 18,
-        status: "playing",
+        status: "playing" as const,
         startedAt: "قبل 5 دقائق",
-        type: "admin"
+        type: "admin" as const
     },
     {
         id: 2,
         topicId: 2,
         pin: "319847",
         topicTitle: "الحركات والتنوين",
-        mode: "group",
+        mode: "group" as const,
         players: 12,
-        status: "waiting",
+        status: "waiting" as const,
         startedAt: "قبل دقيقة",
-        type: "admin"
+        type: "admin" as const
     }
 ];
 
 const mockRecentStudents = [
-    { name: "سارة أحمد", score: 95, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=sara", lastActive: "منذ 10 دقائق" },
-    { name: "محمد علي", score: 88, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=mohammad", lastActive: "منذ 15 دقيقة" },
-    { name: "فاطمة خالد", score: 92, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=fatimak", lastActive: "منذ 20 دقيقة" },
-    { name: "عمر حسن", score: 85, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=omar", lastActive: "منذ 25 دقيقة" }
+    { name: "طالبة 1", score: 95, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=sara", lastActive: "منذ 10 دقائق" },
+    { name: "طالب 2", score: 88, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=mohammad", lastActive: "منذ 15 دقيقة" },
+    { name: "طالبة 3", score: 92, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=fatimak", lastActive: "منذ 20 دقيقة" },
+    { name: "طالب 4", score: 85, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=omar", lastActive: "منذ 25 دقيقة" }
 ];
 
 const TeacherDashboard = () => {
@@ -120,8 +120,8 @@ const TeacherDashboard = () => {
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <div className="flex items-center gap-4">
                             <Link to="/" className="flex items-center gap-3">
-                                <img src="/logo.png" alt="وزارة التربية والتعليم" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                                <span className="text-xl font-bold hidden md:block">وزارة التربية والتعليم</span>
+                                <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                                <span className="text-xl font-bold hidden md:block">Lab4</span>
                             </Link>
                             <div className="h-8 w-px bg-border" />
                             <div className="flex items-center gap-2">

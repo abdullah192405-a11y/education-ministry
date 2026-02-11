@@ -60,10 +60,10 @@ const topPerformingGrades = [
 ];
 
 const topPerformingTeachers = [
-    { name: "أ. فاطمة الحربي", subject: "اللغة العربية", avgScore: 91, students: 28, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=fatima" },
-    { name: "أ. محمد العتيبي", subject: "الرياضيات", avgScore: 89, students: 32, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=mohammad" },
-    { name: "أ. سارة القحطاني", subject: "العلوم", avgScore: 87, students: 30, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=sara" },
-    { name: "أ. خالد الدوسري", subject: "اللغة الإنجليزية", avgScore: 85, students: 26, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=khaled" }
+    { name: "معلم 1", subject: "اللغة العربية", avgScore: 91, students: 28, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher1" },
+    { name: "معلم 2", subject: "الرياضيات", avgScore: 89, students: 32, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher2" },
+    { name: "معلم 3", subject: "العلوم", avgScore: 87, students: 30, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher3" },
+    { name: "معلم 4", subject: "اللغة الإنجليزية", avgScore: 85, students: 26, avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher4" }
 ];
 
 const recentActivities = [
@@ -84,8 +84,8 @@ const AdminDashboard = () => {
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <div className="flex items-center gap-4">
                             <Link to="/" className="flex items-center gap-3">
-                                <img src="/logo.png" alt="وزارة التربية والتعليم" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                                <span className="text-xl font-bold hidden md:block">وزارة التربية والتعليم</span>
+                                <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                                <span className="text-xl font-bold hidden md:block">Lab4</span>
                             </Link>
                             <div className="h-8 w-px bg-border" />
                             <div className="flex items-center gap-2">
@@ -196,7 +196,7 @@ const AdminDashboard = () => {
                                         <div className="relative p-6 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500">
                                             <div className="relative z-10">
                                                 <h1 className="text-2xl font-bold text-white mb-2">
-                                                    لوحة إدارة وزارة التربية والتعليم 🏛️
+                                                    لوحة إدارة المنصة التعليمية 🏛️
                                                 </h1>
                                                 <p className="text-white/80 mb-4">
                                                     إدارة شاملة للمنصة التعليمية - نظرة عامة على الأداء

@@ -40,11 +40,11 @@ const SettingsTab = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>اسم المنصة</Label>
-                                <Input defaultValue="وزارة التربية والتعليم" />
+                                <Input defaultValue="المنصة التعليمية" />
                             </div>
                             <div className="space-y-2">
                                 <Label>البريد الإلكتروني للدعم</Label>
-                                <Input defaultValue="support@edu.sa" />
+                                <Input defaultValue="support@platform.com" />
                             </div>
                             <div className="space-y-2">
                                 <Label>رقم التواصل</Label>

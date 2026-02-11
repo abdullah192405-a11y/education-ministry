@@ -55,8 +55,8 @@ interface DashboardContent {
 // Mock Channel Owner Data
 const mockChannelData = {
     id: 1,
-    name: "قناة وزارة الصحة",
-    slug: "ministry-of-health",
+    name: "القناة الرسمية",
+    slug: "official-channel",
     type: "ministry",
     logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200&h=200&fit=crop",
     coverImage: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1200&h=400&fit=crop",
@@ -348,8 +348,8 @@ const ChannelDashboard = () => {
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <div className="flex items-center gap-4">
                             <Link to="/" className="flex items-center gap-3">
-                                <img src="/logo.png" alt="Lab 4 Logo" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                                <span className="text-xl font-bold hidden md:block">لاب 4</span>
+                                <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                                <span className="text-xl font-bold hidden md:block">Lab4</span>
                             </Link>
                             <div className="h-8 w-px bg-border" />
                             <div className="flex items-center gap-2">

@@ -16,7 +16,7 @@ const demoAccounts = [
         id: "student",
         email: "student@edu.sa",
         password: "student123",
-        name: "أحمد الحربي",
+        name: "طالب",
         role: "طالب",
         roleKey: "student",
         icon: GraduationCap,
@@ -31,7 +31,7 @@ const demoAccounts = [
         id: "teacher",
         email: "teacher@edu.sa",
         password: "teacher123",
-        name: "أ. فاطمة الحربي",
+        name: "معلم",
         role: "معلمة",
         roleKey: "teacher",
         icon: BookOpen,
@@ -46,7 +46,7 @@ const demoAccounts = [
         id: "admin",
         email: "admin@edu.sa",
         password: "admin123",
-        name: "مدير المنصة",
+        name: "الأدمن",
         role: "مسؤول",
         roleKey: "admin",
         icon: Shield,
@@ -55,7 +55,7 @@ const demoAccounts = [
         textColor: "text-amber-600",
         description: "لوحة تحكم المسؤول - إدارة شاملة للمنصة",
         dashboard: "/dashboard/admin",
-        details: "وزارة التربية والتعليم"
+        details: "الإدارة العامة"
     }
 ];
 
@@ -134,8 +134,8 @@ const Login = () => {
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between h-16">
                         <Link to="/" className="flex items-center gap-3">
-                            <img src="/logo.png" alt="وزارة التربية والتعليم" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                            <span className="text-xl font-bold">وزارة التربية والتعليم</span>
+                            <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                            <span className="text-xl font-bold">Lab4</span>
                         </Link>
                         <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                             <ChevronLeft className="w-4 h-4" />
@@ -160,7 +160,7 @@ const Login = () => {
                             تسجيل الدخول
                         </h1>
                         <p className="text-muted-foreground">
-                            منصة وزارة التربية والتعليم السعودية
+                            المنصة التعليمية الرقمية
                         </p>
                     </motion.div>
 
@@ -372,7 +372,7 @@ const Login = () => {
                                     <div className="flex-1">
                                         <h3 className="font-bold text-lg mb-2">تجربة المنصة التعليمية</h3>
                                         <p className="text-sm text-muted-foreground mb-3">
-                                            هذه الحسابات مخصصة للتجربة والعرض. يمكنك استكشاف جميع ميزات منصة وزارة التربية والتعليم:
+                                            هذه الحسابات مخصصة للتجربة والعرض. يمكنك استكشاف جميع ميزات المنصة:
                                         </p>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             <div className="flex items-center gap-2 text-sm">
@@ -399,7 +399,7 @@ const Login = () => {
             {/* Footer */}
             <footer className="py-6 border-t text-center text-sm text-muted-foreground">
                 <div className="container mx-auto px-4">
-                    جميع الحقوق محفوظة © 2024 وزارة التربية والتعليم السعودية
+                    جميع الحقوق محفوظة © 2024 المنصة التعليمية
                 </div>
             </footer>
         </div>

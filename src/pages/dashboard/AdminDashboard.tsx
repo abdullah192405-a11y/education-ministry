@@ -75,27 +75,27 @@ const COLORS = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981'];
 
 // Mock Users Data
 const mockUsers = [
-    { id: 1, name: "أحمد الحربي", email: "ahmed@example.com", role: "user", status: "active", challenges: 47, joinDate: "2024-01-01", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=ahmed", lastActive: "منذ دقيقتين" },
-    { id: 2, name: "سارة العلي", email: "sara@example.com", role: "user", status: "active", challenges: 89, joinDate: "2024-01-05", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=sara", lastActive: "منذ 15 دقيقة" },
-    { id: 3, name: "محمد خالد", email: "channel_owner", status: "active", challenges: 156, joinDate: "2023-12-20", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=mohammad", lastActive: "نشط الآن" },
-    { id: 4, name: "فاطمة أحمد", email: "fatima@example.com", role: "user", status: "suspended", challenges: 12, joinDate: "2024-01-15", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=fatima", lastActive: "منذ يومين" },
-    { id: 5, name: "عمر حسن", email: "omar@example.com", role: "admin", status: "active", challenges: 234, joinDate: "2023-11-10", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=omar", lastActive: "نشط الآن" }
+    { id: 1, name: "طالب 1", email: "student1@example.com", role: "user", status: "active", challenges: 47, joinDate: "2024-01-01", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=student1", lastActive: "منذ دقيقتين" },
+    { id: 2, name: "طالب 2", email: "student2@example.com", role: "user", status: "active", challenges: 89, joinDate: "2024-01-05", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=student2", lastActive: "منذ 15 دقيقة" },
+    { id: 3, name: "مالك قناة", email: "channel_owner", status: "active", challenges: 156, joinDate: "2023-12-20", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=owner", lastActive: "نشط الآن" },
+    { id: 4, name: "طالب 3", email: "student3@example.com", role: "user", status: "suspended", challenges: 12, joinDate: "2024-01-15", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=student3", lastActive: "منذ يومين" },
+    { id: 5, name: "مدير النظام", email: "admin@example.com", role: "admin", status: "active", challenges: 234, joinDate: "2023-11-10", avatar: "https://api.dicebear.com/7.x/fun-emoji/svg?seed=admin", lastActive: "نشط الآن" }
 ];
 
 // Mock Channels Data
 const mockChannels = [
-    { id: 1, name: "قناة وزارة الصحة", type: "ministry", status: "verified", followers: 125000, contents: 3, owner: "وزارة الصحة", createdAt: "2023-06-15", logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200", engagement: "92%", plan: "enterprise", contentLimit: "∞", monthIncome: 999 },
-    { id: 2, name: "مدرسة النور الابتدائي", type: "school", status: "verified", followers: 5600, contents: 2, owner: "إدارة المدرسة", createdAt: "2023-08-20", logo: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=200", engagement: "85%", plan: "pro", contentLimit: 20, monthIncome: 299 },
-    { id: 3, name: "جمعية حماية البيئة", type: "organization", status: "verified", followers: 34000, contents: 2, owner: "الجمعية البيئية", createdAt: "2023-09-10", logo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=200", engagement: "78%", plan: "pro", contentLimit: 20, monthIncome: 299 },
-    { id: 4, name: "هيئة الأمن السيبراني", type: "organization", status: "pending", followers: 89000, contents: 1, owner: "الهيئة الوطنية", createdAt: "2024-01-10", logo: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200", engagement: "0%", plan: "free", contentLimit: 3, monthIncome: 0 },
-    { id: 5, name: "أكاديمية المستقبل", type: "company", status: "verified", followers: 28000, contents: 1, owner: "شركة المستقبل", createdAt: "2023-12-01", logo: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=200", engagement: "64%", plan: "pro", contentLimit: 20, monthIncome: 299 }
+    { id: 1, name: "القناة الرسمية", type: "ministry", status: "verified", followers: 125000, contents: 3, owner: "الإدارة", createdAt: "2023-06-15", logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200", engagement: "92%", plan: "enterprise", contentLimit: "∞", monthIncome: 999 },
+    { id: 2, name: "قناة المدرسة", type: "school", status: "verified", followers: 5600, contents: 2, owner: "إدارة المدرسة", createdAt: "2023-08-20", logo: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=200", engagement: "85%", plan: "pro", contentLimit: 20, monthIncome: 299 },
+    { id: 3, name: "القناة العلمية", type: "organization", status: "verified", followers: 34000, contents: 2, owner: "الجمعية العلمية", createdAt: "2023-09-10", logo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=200", engagement: "78%", plan: "pro", contentLimit: 20, monthIncome: 299 },
+    { id: 4, name: "قناة التقنية", type: "organization", status: "pending", followers: 89000, contents: 1, owner: "الهيئة التقنية", createdAt: "2024-01-10", logo: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200", engagement: "0%", plan: "free", contentLimit: 3, monthIncome: 0 },
+    { id: 5, name: "أكاديمية المعرفة", type: "company", status: "verified", followers: 28000, contents: 1, owner: "شركة المعرفة", createdAt: "2023-12-01", logo: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=200", engagement: "64%", plan: "pro", contentLimit: 20, monthIncome: 299 }
 ];
 
 // Mock Reports
 const mockReports = [
-    { id: 1, type: "content", target: "محتوى مخالف", reporter: "سارة العلي", reason: "محتوى غير لائق", status: "pending", date: "2024-01-28", priority: "high" },
-    { id: 2, type: "user", target: "حساب مشبوه", reporter: "محمد خالد", reason: "سلوك مسيء", status: "resolved", date: "2024-01-27", priority: "medium" },
-    { id: 3, type: "channel", target: "قناة مخالفة", reporter: "أحمد الحربي", reason: "انتحال صفة", status: "under_review", date: "2024-01-26", priority: "high" }
+    { id: 1, type: "content", target: "محتوى مخالف", reporter: "طالب 2", reason: "محتوى غير لائق", status: "pending", date: "2024-01-28", priority: "high" },
+    { id: 2, type: "user", target: "حساب مشبوه", reporter: "مالك قناة", reason: "سلوك مسيء", status: "resolved", date: "2024-01-27", priority: "medium" },
+    { id: 3, type: "channel", target: "قناة مخالفة", reporter: "طالب 1", reason: "انتحال صفة", status: "under_review", date: "2024-01-26", priority: "high" }
 ];
 
 // Mock SaaS Plans
@@ -117,8 +117,8 @@ const revenueData = [
 
 // Mock System Logs
 const mockSystemLogs = [
-    { id: 1, action: "تسجيل دخول مسؤول", user: "عمر حسن", ip: "192.168.1.1", time: "منذ 5 دقائق", type: "info" },
-    { id: 2, action: "إنشاء قناة جديدة", user: "محمد خالد", ip: "192.168.1.25", time: "منذ 30 دقيقة", type: "success" },
+    { id: 1, action: "تسجيل دخول مسؤول", user: "مدير النظام", ip: "192.168.1.1", time: "منذ 5 دقائق", type: "info" },
+    { id: 2, action: "إنشاء قناة جديدة", user: "مالك قناة", ip: "192.168.1.25", time: "منذ 30 دقيقة", type: "success" },
     { id: 3, action: "محاولة تسجيل دخول فاشلة", user: "unknown", ip: "192.168.1.100", time: "منذ ساعة", type: "warning" },
     { id: 4, action: "تعليق حساب", user: "Admin", ip: "192.168.1.1", time: "منذ 2 ساعة", type: "danger" }
 ];
@@ -154,8 +154,8 @@ const AdminDashboard = () => {
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <div className="flex items-center gap-4">
                             <Link to="/" className="flex items-center gap-3">
-                                <img src="/logo.png" alt="Lab 4 Logo" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                                <span className="text-xl font-bold hidden md:block">لاب 4</span>
+                                <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
+                                <span className="text-xl font-bold hidden md:block">Lab4</span>
                             </Link>
                             <div className="h-8 w-px bg-border" />
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
@@ -274,7 +274,7 @@ const AdminDashboard = () => {
                                                     </div>
                                                 </div>
                                                 <h1 className="text-3xl font-bold text-white mb-2">
-                                                    أهلاً بك مجدداً، عمر 🛡️
+                                                    أهلاً بك مجدداً، مدير النظام 🛡️
                                                 </h1>
                                                 <p className="text-white/80 max-w-lg">
                                                     هناك 3 قنوات بانتظار التوثيق و 8 بلاغات جديدة تتطلب مراجعتك. المنصة تشهد نمواً بنسبة 12% في النشاط اليومي.
@@ -361,10 +361,10 @@ const AdminDashboard = () => {
                                             </CardHeader>
                                             <CardContent className="space-y-4">
                                                 {[
-                                                    { user: "عبدالله السالم", action: "أكمل تحدي 'أساسيات البرمجة'", time: "الآن", score: "+450", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Abdullah" },
-                                                    { user: "نورة القحطاني", action: "أنشأت تحدي مجموعة جديد", time: "منذ دقيقتين", score: "G23", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Norah" },
-                                                    { user: "قناة الصحة", action: "نشرت محتوى مرئي جديد", time: "منذ 5 دقائق", score: "NEW", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Health" },
-                                                    { user: "فهد الحربي", action: "وصل للمستوى الخبير", time: "منذ 8 دقائق", score: "LEV10", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Fahad" },
+                                                    { user: "طالب مميز", action: "أكمل تحدي 'أساسيات البرمجة'", time: "الآن", score: "+450", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=student1" },
+                                                    { user: "طالبة مجتهدة", action: "أنشأت تحدي مجموعة جديد", time: "منذ دقيقتين", score: "G23", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=student2" },
+                                                    { user: "قناة العلوم", action: "نشرت محتوى مرئي جديد", time: "منذ 5 دقائق", score: "NEW", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=channel" },
+                                                    { user: "طالب مثابر", action: "وصل للمستوى الخبير", time: "منذ 8 دقائق", score: "LEV10", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=student3" },
                                                 ].map((activity, i) => (
                                                     <div key={i} className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted/50 transition-colors">
                                                         <img src={activity.avatar} className="w-10 h-10 rounded-full bg-muted shadow-sm" alt="" />
@@ -634,7 +634,7 @@ const AdminDashboard = () => {
                                                             <div className="w-32 h-32 flex-shrink-0 relative">
                                                                 <img src={channel.logo} alt={channel.name} className="w-full h-full object-cover" />
                                                                 <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold text-white ${channel.plan === "enterprise" ? "bg-amber-500" :
-                                                                        channel.plan === "pro" ? "bg-purple-500" : "bg-blue-500"
+                                                                    channel.plan === "pro" ? "bg-purple-500" : "bg-blue-500"
                                                                     }`}>
                                                                     {channel.plan === "enterprise" ? "Enterprise" : channel.plan === "pro" ? "Pro" : "Free"}
                                                                 </div>

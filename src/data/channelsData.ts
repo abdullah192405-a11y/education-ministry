@@ -70,7 +70,7 @@ export interface Channel {
 export const getChannelTypeLabel = (type: ChannelType): string => {
     switch (type) {
         case "ministry":
-            return "وزارة";
+            return "جهة رسمية";
         case "school":
             return "مدرسة";
         case "organization":
@@ -86,25 +86,25 @@ export const getChannelTypeLabel = (type: ChannelType): string => {
 export const channelsData: Channel[] = [
     {
         id: 1,
-        name: "قناة وزارة الصحة",
-        slug: "ministry-of-health",
+        name: "القناة الرسمية",
+        slug: "official-channel",
         type: "ministry",
         logo: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=200&h=200&fit=crop",
         coverImage: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1200&h=400&fit=crop",
-        description: "القناة الرسمية لوزارة الصحة - توعية صحية شاملة لجميع أفراد المجتمع",
-        aboutOwner: "وزارة الصحة السعودية هي الجهة الحكومية المسؤولة عن الرعاية الصحية في المملكة العربية السعودية. تأسست عام 1950م وتسعى لتقديم خدمات صحية متميزة وتوعية صحية شاملة لجميع المواطنين والمقيمين.",
+        description: "القناة الرسمية للمنصة - توعية شاملة لجميع أفراد المجتمع",
+        aboutOwner: "القناة الرسمية هي الجهة المسؤولة عن تقديم المحتوى الموثوق والتوعية الشاملة لجميع المستخدمين.",
         category: "صحة",
         followers: 125000,
         rating: 4.9,
         verified: true,
         contactInfo: {
-            website: "https://www.moh.gov.sa",
-            email: "info@moh.gov.sa",
-            phone: "920033333"
+            website: "https://www.platform.com",
+            email: "info@platform.com",
+            phone: "920000000"
         },
         socialLinks: {
-            twitter: "@SaudiMOH",
-            instagram: "@saudi_moh"
+            twitter: "@Platform",
+            instagram: "@platform"
         },
         contents: [
             {
@@ -284,13 +284,13 @@ export const channelsData: Channel[] = [
     },
     {
         id: 2,
-        name: "مدرسة النور الابتدائية",
-        slug: "alnoor-school",
+        name: "المدرسة النموذجية",
+        slug: "model-school",
         type: "school",
         logo: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=200&h=200&fit=crop",
         coverImage: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1200&h=400&fit=crop",
-        description: "مدرسة النور الابتدائية - نبني جيلاً واعياً ومتعلماً",
-        aboutOwner: "مدرسة النور الابتدائية هي مؤسسة تعليمية رائدة تأسست عام 1990م. نسعى لتقديم تعليم متميز يجمع بين المناهج الحديثة والقيم الإسلامية، مع التركيز على التعلم التفاعلي والإبداعي.",
+        description: "المدرسة النموذجية - نبني جيلاً واعياً ومتعلماً",
+        aboutOwner: "المدرسة النموذجية هي مؤسسة تعليمية رائدة. نسعى لتقديم تعليم متميز يجمع بين المناهج الحديثة والقيم، مع التركيز على التعلم التفاعلي والإبداعي.",
         category: "تعليم",
         followers: 5600,
         rating: 4.8,
@@ -390,13 +390,13 @@ export const channelsData: Channel[] = [
     },
     {
         id: 3,
-        name: "جمعية حماية البيئة",
-        slug: "environment-protection",
+        name: "الجمعية البيئية",
+        slug: "environment-association",
         type: "organization",
         logo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=200&h=200&fit=crop",
         coverImage: "https://images.unsplash.com/photo-1473448912268-2022ce9509d8?w=1200&h=400&fit=crop",
         description: "نعمل معاً من أجل بيئة نظيفة ومستدامة للأجيال القادمة",
-        aboutOwner: "جمعية حماية البيئة هي منظمة غير ربحية تعمل على نشر الوعي البيئي وحماية الموارد الطبيعية. تأسست عام 2010م وتنظم حملات توعوية وبرامج تطوعية لحماية البيئة.",
+        aboutOwner: "الجمعية البيئية هي منظمة غير ربحية تعمل على نشر الوعي البيئي وحماية الموارد الطبيعية. تنظم حملات توعوية وبرامج تطوعية لحماية البيئة.",
         category: "بيئة",
         followers: 34000,
         rating: 4.7,
@@ -486,20 +486,20 @@ export const channelsData: Channel[] = [
     },
     {
         id: 4,
-        name: "هيئة الأمن السيبراني",
-        slug: "cyber-security",
+        name: "الهيئة التقنية",
+        slug: "tech-authority",
         type: "organization",
         logo: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&h=200&fit=crop",
         coverImage: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&h=400&fit=crop",
-        description: "نشر الوعي بالأمن السيبراني وحماية المستخدمين في الفضاء الرقمي",
-        aboutOwner: "الهيئة الوطنية للأمن السيبراني هي الجهة المختصة بالأمن السيبراني في المملكة، والمرجع الوطني في شؤونه. تهدف إلى تعزيز حماية الشبكات وأنظمة المعلومات وتقنياتها.",
+        description: "نشر الوعي التقني وحماية المستخدمين في الفضاء الرقمي",
+        aboutOwner: "الهيئة التقنية هي الجهة المختصة بالتقنية في المنصة. تهدف إلى تعزيز حماية الشبكات وأنظمة المعلومات وتقنياتها.",
         category: "تقنية",
         followers: 89000,
         rating: 4.9,
         verified: true,
         contactInfo: {
-            website: "https://www.nca.gov.sa",
-            email: "info@nca.gov.sa"
+            website: "https://www.tech.gov",
+            email: "info@tech.gov"
         },
         contents: [
             {
