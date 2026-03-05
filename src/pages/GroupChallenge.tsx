@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -12,42 +12,51 @@ import {
     Sparkles, Medal, Star, ArrowLeft, Volume2, VolumeX,
     ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity
 } from "lucide-react";
-import { getChannelById, getContentById } from "@/data/channelsData";
-import { getTopicById } from "@/data/educationData";
 import {
-    generateQuestionsFromContent,
+    useTopic,
+    useUser,
+    useStudentProfile,
+    useSaveTopicActivity,
+    useUpsertSubjectProgress,
+    useStudentSubjectProgress,
+    useUpdateChallengeSession,
+    useUpdatePlayerSession,
+    useSaveChallengeResult,
+    useUpdateStudentProfile,
+    useStudentTopicActivities,
+    useAwardBadges,
+    useChallengeSession,
+    useSaveAnswers
+} from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
     getRandomAvatar,
     getWheelSubQuestion,
+    getLevelFromScore,
+    availableBadges,
     type ChallengeQuestion,
-    type ChallengeCategory,
-    type Player
+    type Player,
+    type SinglePlayerResult,
+    type Badge
 } from "@/data/challengeTypes";
 import { useSound } from "@/hooks/useSound";
+import { useToast } from "@/hooks/use-toast";
+import { supabase, publicClient } from "@/lib/supabase";
+import { useMutation } from "@tanstack/react-query";
 
 type GamePhase = "lobby" | "countdown" | "playing" | "question_result" | "leaderboard" | "final_results";
 
 const GroupChallenge = () => {
-    const { channelId, contentId, category, pin, gradeId, subjectId, topicId } = useParams();
+    const { category, pin, gradeId, subjectId, topicId } = useParams();
     const [searchParams] = useSearchParams();
     const isHost = searchParams.get("host") === "true";
     const isCreator = searchParams.get("creator") === "true";
     const playerName = searchParams.get("name") || "لاعب";
 
-    const isEducationMode = !!gradeId && !!subjectId && !!topicId;
+    const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
 
-    let channel: any = null;
-    let content: any = null;
-
-    if (isEducationMode) {
-        content = getTopicById(
-            parseInt(gradeId || "0"),
-            parseInt(subjectId || "0"),
-            parseInt(topicId || "0")
-        );
-    } else {
-        channel = getChannelById(parseInt(channelId || "0"));
-        content = getContentById(parseInt(channelId || "0"), parseInt(contentId || "0"));
-    }
+    const { data: topic } = useTopic(topicId || "");
+    const content = topic;
 
     const [phase, setPhase] = useState<GamePhase>("lobby");
     const [questions, setQuestions] = useState<ChallengeQuestion[]>([]);
@@ -58,11 +67,40 @@ const GroupChallenge = () => {
     const [showQuestionResult, setShowQuestionResult] = useState(false);
     const [musicEnabled, setMusicEnabled] = useState(true);
     const [copied, setCopied] = useState(false);
+    const { toast } = useToast();
 
-    // Initialize sound system
+    const { data: currentUser } = useUser();
+    const { data: studentProfile } = useStudentProfile(currentUser?.id || "");
+
+    const { data: sessionData, isLoading } = useChallengeSession(pin || "");
+    const updateSessionMutation = useUpdateChallengeSession();
+    const updatePlayerMutation = useUpdatePlayerSession();
+
     const { play, stop } = useSound(musicEnabled);
 
-    // Game Logic States (Similar to Single Player but for results)
+    // Mutation hooks for saving results
+    const saveResultMutation = useSaveChallengeResult();
+    const updateStudentProfileMutation = useUpdateStudentProfile();
+    const saveTopicActivityMutation = useSaveTopicActivity();
+    const upsertSubjectProgressMutation = useUpsertSubjectProgress();
+    const { data: subjectProgress } = useStudentSubjectProgress(studentProfile?.id || "");
+    const awardBadgesMutation = useAwardBadges();
+    const saveAnswersMutation = useSaveAnswers();
+    const { data: topicActivities } = useStudentTopicActivities(studentProfile?.id || "", 50);
+    const [resultsSaved, setResultsSaved] = useState(false);
+
+    // Refs for synchronization
+    const phaseRef = useRef(phase);
+    useEffect(() => { phaseRef.current = phase; }, [phase]);
+    const currentIndexRef = useRef(currentIndex);
+    useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+    const questionStartTimeRef = useRef<number | null>(null);
+    const [questionStartTime, setQuestionStartTime] = useState<number | null>(null);
+    useEffect(() => { questionStartTimeRef.current = questionStartTime; }, [questionStartTime]);
+
+    // Game Logic States
+    const [players, setPlayers] = useState<Player[]>([]);
+    const [playerAnswers, setPlayerAnswers] = useState<Record<string, { answered: boolean, points: number, isCorrect: boolean }>>({});
     const [orderItems, setOrderItems] = useState<string[]>([]);
     const [matchedPairs, setMatchedPairs] = useState<{ leftIndex: number; rightIndex: number }[]>([]);
     const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
@@ -75,8 +113,7 @@ const GroupChallenge = () => {
     const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
     const [revealStep, setRevealStep] = useState(0);
 
-    // New State for Deferred Results
-    const [playerAnswers, setPlayerAnswers] = useState<Record<string, { answered: boolean, points: number, isCorrect: boolean }>>({});
+    // Results & Analysis State
     const [userHistory, setUserHistory] = useState<{
         question: string;
         selectedAnswer: string;
@@ -87,146 +124,50 @@ const GroupChallenge = () => {
     }[]>([]);
     const [showAnalysis, setShowAnalysis] = useState(false);
 
+    // Auto-advance timer state for host
+    const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState(0);
+    const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    const currentPlayer = isHost ? null : players.find(p =>
+        (currentUser?.id && p.userId === currentUser.id) ||
+        (p.name?.trim().toLowerCase() === playerName?.trim().toLowerCase())
+    );
 
+    // 🧱 STABLE FUNCTIONS DEFINED BEFORE USE EFFECTS 🧱
 
-    // Players State - Includes simulated players
-    // If isHost is true, the current user is an admin/host and should not be a player
-    const [players, setPlayers] = useState<Player[]>(() => {
-        if (isHost) return []; // Admin/Host doesn't play
-        return [{
-            id: "me",
-            name: playerName,
-            avatar: getRandomAvatar(playerName),
-            score: 0,
-            correctAnswers: 0,
-            wrongAnswers: 0,
-            streak: 0,
-            isHost: false,
-            isOnline: true
-        }];
-    });
+    const handleRoundEnd = useCallback(async () => {
+        // If we are already showing results AND the database status is already RESULT, we can skip.
+        // But if the DB is still 'PLAYING', the Host needs to keep trying to broadcast the end.
+        if (showQuestionResult && sessionData?.status === 'RESULT') return;
 
-    const currentPlayer = isHost ? null : players.find(p => p.id === "me");
+        // INSTANT LOCAL FEEDBACK
+        setShowQuestionResult(true);
 
-    // Simulate players joining in lobby
-    useEffect(() => {
-        if (phase === "lobby") {
-            const simulatedNames = ["أحمد", "سارة", "محمد", "فاطمة", "خالد", "نورة"];
-            let index = 0;
-
-            const interval = setInterval(() => {
-                if (index < 4 && Math.random() > 0.4) {
-                    const name = simulatedNames[index];
-                    setPlayers(prev => [...prev, {
-                        id: `player-${index}`,
-                        name,
-                        avatar: getRandomAvatar(name),
-                        score: 0,
-                        correctAnswers: 0,
-                        wrongAnswers: 0,
-                        streak: 0,
-                        isOnline: true
-                    }]);
-                    index++;
-                }
-            }, 2500);
-
-            return () => clearInterval(interval);
-        }
-    }, [phase]);
-
-    // Initialize questions
-    useEffect(() => {
-        if (content && category) {
-            let loadedQuestions: ChallengeQuestion[] = [];
-
-            // Try to use new challengeItems from content
-            if (content.challengeItems && content.challengeItems.length > 0) {
-                if (category === 'activities') {
-                    loadedQuestions = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
-                } else if (category === 'games') {
-                    loadedQuestions = content.challengeItems.filter(q => ["matching", "shooting", "wheel_spin", "puzzle"].includes(q.type));
-                } else { // mixed
-                    loadedQuestions = content.challengeItems;
-                }
+        // HOST AUTHORITY: Broadcast the result state to the database
+        if (isHost && sessionData?.pin) {
+            try {
+                // Force status to "RESULT" in the DB
+                await supabase.from('challenge_sessions')
+                    .update({ status: "RESULT", updated_at: new Date().toISOString() })
+                    .eq('pin', sessionData.pin);
+            } catch (error) {
+                console.error("Failed to sync round end:", error);
             }
-
-            // Fallback to generator if empty
-            if (loadedQuestions.length === 0) {
-                loadedQuestions = generateQuestionsFromContent(
-                    content.id,
-                    category as ChallengeCategory
-                );
-            }
-
-            setQuestions(loadedQuestions);
         }
-    }, [content, category]);
 
-    // Timer
-    useEffect(() => {
-        if (phase === "playing" && timeLeft > 0 && !showQuestionResult && !isSpinning) {
-            // Play timer tick sound for last 5 seconds
-            if (timeLeft <= 5) {
-                play('countdown');
-            }
-            const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-            return () => clearTimeout(timer);
-        } else if (timeLeft === 0 && phase === "playing" && !showQuestionResult && !isSpinning) {
-            handleTimeout();
+        // Student Local Reveal sound
+        if (!isHost && currentPlayer) {
+            const myAnswer = playerAnswers[currentPlayer.id];
+            play(myAnswer?.isCorrect ? 'correct' : 'wrong');
         }
-    }, [timeLeft, phase, showQuestionResult, isSpinning, play]);
+    }, [showQuestionResult, isHost, sessionData?.pin, sessionData?.status, currentPlayer, playerAnswers, updateSessionMutation, play]);
 
-    // Countdown
-    useEffect(() => {
-        if (phase === "countdown" && countdown > 0) {
-            // Play tick for countdown too
-            play('countdown');
-            const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-            return () => clearTimeout(timer);
-        } else if (countdown === 0 && phase === "countdown") {
-            startQuestion(currentIndex);
-        }
-    }, [countdown, phase, play]);
-
-    // Handle Reveal Step for Final Results
-    useEffect(() => {
-        if (phase === "final_results") {
-            setRevealStep(0);
-            const timers = [
-                setTimeout(() => setRevealStep(1), 1000), // Show 3rd
-                setTimeout(() => setRevealStep(2), 2500), // Show 2nd
-                setTimeout(() => setRevealStep(3), 4500), // Show 1st
-                setTimeout(() => setRevealStep(4), 5500), // Show Buttons
-            ];
-            return () => timers.forEach(clearTimeout);
-        }
-    }, [phase]);
-
-    // Play achievement sound on leaderboard/final results
-    useEffect(() => {
-        if (phase === "leaderboard" || phase === "final_results") {
-            play('achievement');
-        }
-    }, [phase, play]);
-
-
-    const currentQuestion = questions[currentIndex];
-
-    const handleStartGame = () => {
-        setPhase("countdown");
-        setCountdown(3);
-
-        // Start background music
-        play('background');
-    };
-
-    const startQuestion = (index: number) => {
+    const startQuestion = useCallback((index: number) => {
         setPhase("playing");
         setCurrentIndex(index);
         const q = questions[index];
-        setTimeLeft(q.timeLimit);
+
+        setTimeLeft(q?.timeLimit || 20);
         setSelectedAnswer(null);
         setShowQuestionResult(false);
         setWheelResult(null);
@@ -234,160 +175,268 @@ const GroupChallenge = () => {
         setWheelPoints(0);
         setIsSpinning(false);
         setShowCorrectAnswer(false);
-        setPlayerAnswers({}); // Reset answers
+        setPlayerAnswers({});
 
-        // Schedule bots
-        scheduleBotAnswers(questions[index].timeLimit);
-
-        // Initial states for specific types
-        if (q.type === "order_questions" && q.orderItems) {
+        if (q?.type === "order_questions" && q.orderItems) {
             setOrderItems([...q.orderItems].sort(() => Math.random() - 0.5));
         }
-        if (q.type === "matching" && q.pairs) {
+        if (q?.type === "matching" && q.pairs) {
             const rightItems = q.pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
             setShuffledRight(rightItems.sort(() => Math.random() - 0.5));
             setMatchedPairs([]);
             setSelectedLeft(null);
         }
-    };
+    }, [questions]);
 
-    const handleTimeout = () => {
+    const handleStartGame = useCallback(async () => {
+        if (isHost && sessionData?.pin) {
+            await supabase.from('challenge_sessions').update({ status: "PLAYING", updated_at: new Date().toISOString() }).eq('pin', sessionData.pin);
+            setQuestionStartTime(Date.now());
+        }
+        setPhase("countdown");
+        setCountdown(3);
+        play('background');
+    }, [isHost, sessionData?.pin, play]);
+
+    const handleTimeout = useCallback(() => {
         handleRoundEnd();
-    };
+    }, [handleRoundEnd]);
 
-    // Simulate bots answering
-    const botTimeouts = useRef<NodeJS.Timeout[]>([]);
-
-    const scheduleBotAnswers = (timeLimit: number) => {
-        // Clear existing timeouts
-        botTimeouts.current.forEach(clearTimeout);
-        botTimeouts.current = [];
-
-        // Schedule for each player (except the current player if they exist)
-        players.forEach(p => {
-            if (p.id === "me") return; // Host isn't in players if isHost is true, so this skips the real player only
-
-            // Random time between 2s and timeLimit - 1s
-            const delay = Math.random() * (timeLimit * 1000 - 3000) + 2000;
-
-            const timeout = setTimeout(() => {
-                // Determine if bot answers correctly
-                const isCorrect = Math.random() > 0.4; // 60% chance correct
-                // Calculate points (simulated)
-                const timeLeftSim = Math.max(0, timeLimit - (delay / 1000));
-
-                // Score Decay: Max points if instant, down to 50% at 0s
-                const timeRatio = timeLeftSim / timeLimit;
-                const basePoints = currentQuestion.points;
-                const points = isCorrect ? Math.ceil(basePoints * (0.5 + 0.5 * timeRatio)) : 0;
-
-                setPlayerAnswers(prev => ({
-                    ...prev,
-                    [p.id]: { answered: true, points, isCorrect }
-                }));
-            }, delay);
-
-            botTimeouts.current.push(timeout);
-        });
-    };
-
-    // Check if round should end
+    // Data Fetching & Sync
     useEffect(() => {
-        if (phase === "playing" && !showQuestionResult) {
-            const allAnswered = players.every(p => playerAnswers[p.id]?.answered);
-            if (allAnswered) {
-                // Small delay to feel natural
-                const timer = setTimeout(() => {
+        if (!sessionData?.id) return;
+
+        const fetchState = async () => {
+            const { data: pData } = await publicClient.from('player_sessions').select('*').eq('session_id', sessionData.id);
+            if (pData) {
+                setPlayers(pData.map(d => ({
+                    id: d.id, userId: d.user_id, name: d.name, score: d.score,
+                    correctAnswers: d.correct_answers, wrongAnswers: d.wrong_answers,
+                    streak: d.streak, isHost: d.is_host, isOnline: d.is_online,
+                    lastAnswerTime: d.last_answer_time ? Number(d.last_answer_time) : null,
+                    avatar: d.avatar || getRandomAvatar(d.name)
+                })));
+            }
+
+            const { data: sData } = await supabase.from('challenge_sessions').select('*').eq('id', sessionData.id).single();
+            if (sData) {
+                setPhase(prevPhase => {
+                    if (sData.status === 'PLAYING') {
+                        if ((prevPhase === 'playing' || prevPhase === 'countdown') && currentIndexRef.current === sData.current_question_index) return prevPhase;
+                        setQuestionStartTime(Date.now());
+                        setCurrentIndex(sData.current_question_index);
+                        setShowQuestionResult(false);
+                        setSelectedAnswer(null);
+                        return 'countdown';
+                    }
+                    if (sData.status === 'RESULT') { setShowQuestionResult(true); return 'playing'; }
+                    if (sData.status === 'LEADERBOARD') return 'leaderboard';
+                    if (sData.status === 'FINISHED' && prevPhase !== 'final_results') return 'final_results';
+                    return prevPhase;
+                });
+
+                // --- HOST-ONLY AUTO ADVANCE ---
+                if (isHost && sData.status === 'PLAYING' && pData) {
+                    const participants = pData.filter(p => !p.is_host);
+                    if (participants.length > 0) {
+                        const currentTag = sData.current_question_index + 1;
+                        const answered = participants.filter(p => Number(p.last_answer_time) === currentTag);
+                        if (answered.length >= participants.length) {
+                            console.log(`[Host] Polling check: All players answered (${answered.length}/${participants.length}). Advancing...`);
+                            handleRoundEnd();
+                        }
+                    }
+                }
+            }
+        };
+
+        fetchState();
+        const pollInterval = setInterval(fetchState, isHost && (phaseRef.current === 'playing' || phaseRef.current === 'countdown') ? 1000 : 3000);
+
+        const playersChannel = publicClient.channel(`session-players-${sessionData.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'player_sessions', filter: `session_id=eq.${sessionData.id}` }, payload => {
+                if (payload.eventType === 'DELETE') {
+                    setPlayers(prev => prev.filter(p => p.id !== (payload.old as any).id));
+                } else if (payload.new) {
+                    const u = payload.new as any;
+                    const np: Player = {
+                        id: u.id, userId: u.user_id, name: u.name, score: u.score,
+                        correctAnswers: u.correct_answers, wrongAnswers: u.wrong_answers,
+                        streak: u.streak, isHost: u.is_host, isOnline: u.is_online,
+                        lastAnswerTime: u.last_answer_time ? Number(u.last_answer_time) : null,
+                        avatar: u.avatar || getRandomAvatar(u.name)
+                    };
+                    setPlayers(prev => prev.some(p => p.id === u.id) ? prev.map(p => p.id === u.id ? np : p) : [...prev, np]);
+                }
+            }).subscribe();
+
+        const sessionChannel = supabase.channel(`session-${sessionData.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'challenge_sessions', filter: `id=eq.${sessionData.id}` }, payload => {
+                const ns = payload.new as any;
+                if (!isHost) {
+                    if (ns.status === 'PLAYING') {
+                        setPhase(curr => {
+                            if ((curr === 'playing' || curr === 'countdown') && currentIndexRef.current === ns.current_question_index) return curr;
+                            setQuestionStartTime(Date.now());
+                            setCurrentIndex(ns.current_question_index);
+                            setShowQuestionResult(false);
+                            setSelectedAnswer(null);
+                            setCountdown(3);
+                            return 'countdown';
+                        });
+                    }
+                    if (ns.status === 'RESULT') { setShowQuestionResult(true); setPhase('playing'); }
+                    if (ns.status === 'LEADERBOARD') setPhase('leaderboard');
+                    if (ns.status === 'FINISHED' && phaseRef.current !== 'final_results') setPhase("final_results");
+                }
+            }).subscribe();
+
+        return () => { clearInterval(pollInterval); publicClient.removeChannel(playersChannel); supabase.removeChannel(sessionChannel); };
+    }, [sessionData?.id, isHost, questions, play]);
+
+    // Auto-End Detection (Direct Database Sync Check)
+    useEffect(() => {
+        if (phase === "playing" && !isSpinning && players.length > 0) {
+            const participants = players.filter(p => !p.isHost);
+            if (participants.length === 0) return;
+
+            const currentTag = currentIndex + 1;
+            const answeredCount = participants.filter(p => Number(p.lastAnswerTime) === currentTag).length;
+
+            if (answeredCount >= participants.length) {
+                // INSTANT LOCAL RESPONSE: If everyone answered, show results locally immediately
+                if (!showQuestionResult) {
+                    console.log(`[Sync] Locally advancing: all ${answeredCount}/${participants.length} answered.`);
+                    setShowQuestionResult(true);
+                }
+
+                // IF HOST: Broadcast the official status change to the database
+                if (isHost && (!showQuestionResult || sessionData?.status === 'PLAYING')) {
                     handleRoundEnd();
-                }, 1000);
-                return () => clearTimeout(timer);
+                }
             }
         }
-    }, [playerAnswers, phase, showQuestionResult, players]);
+    }, [players, phase, showQuestionResult, isHost, isSpinning, currentIndex, handleRoundEnd, sessionData?.status]);
 
-    const handleRoundEnd = () => {
-        if (showQuestionResult) return;
-
-        // Commit scores
-        setPlayers(prev => prev.map(p => {
-            const answer = playerAnswers[p.id];
-            if (!answer) {
-                // Player didn't answer (timeout)
-                return { ...p, wrongAnswers: p.wrongAnswers + 1, streak: 0 };
-            }
-
-            return {
-                ...p,
-                score: p.score + answer.points,
-                correctAnswers: answer.isCorrect ? p.correctAnswers + 1 : p.correctAnswers,
-                wrongAnswers: !answer.isCorrect ? p.wrongAnswers + 1 : p.wrongAnswers,
-                streak: answer.isCorrect ? p.streak + 1 : 0
-            };
-        }));
-
-        setShowQuestionResult(true);
-
-        // Play sound for Current Player Result
-        if (currentPlayer) {
-            const myAnswer = playerAnswers[currentPlayer.id];
-            if (myAnswer) {
-                play(myAnswer.isCorrect ? 'correct' : 'wrong');
-            } else {
-                play('wrong'); // Timeout
-            }
+    // Timer Effect
+    useEffect(() => {
+        if (phase === "playing" && timeLeft > 0 && !showQuestionResult && !isSpinning) {
+            if (timeLeft <= 5) play('countdown');
+            const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+            return () => clearTimeout(timer);
+        } else if (timeLeft === 0 && phase === "playing" && !showQuestionResult && !isSpinning) {
+            handleTimeout();
         }
+    }, [timeLeft, phase, showQuestionResult, isSpinning, play, handleTimeout]);
 
-        setTimeout(() => {
-            if (currentIndex === questions.length - 1) {
-                setPhase("final_results");
-            } else {
-                setPhase("leaderboard");
+    // Countdown Effect
+    useEffect(() => {
+        if (phase === "countdown" && countdown > 0) {
+            play('countdown');
+            const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+            return () => clearTimeout(timer);
+        } else if (countdown === 0 && phase === "countdown") {
+            startQuestion(currentIndex);
+        }
+    }, [countdown, phase, play, startQuestion, currentIndex]);
+
+    // Initialize/Sync Questions
+    useEffect(() => {
+        if (content && effectiveCategory) {
+            let loaded: ChallengeQuestion[] = [];
+            if (content.challengeItems?.length > 0) {
+                if (effectiveCategory === 'ACTIVITIES') loaded = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
+                else if (effectiveCategory === 'GAMES') loaded = content.challengeItems.filter(q => ["matching", "shooting", "wheel_spin", "puzzle"].includes(q.type));
+                else loaded = content.challengeItems;
             }
-        }, 3500);
-    };
+            setQuestions(loaded);
+        }
+    }, [content, effectiveCategory]);
+
+    const currentQuestion = questions[currentIndex];
+
+
 
     const processAnswer = (isCorrect: boolean, customPoints?: number, providedAnswer?: any) => {
-        // Just record the answer, don't show result yet
-        // Score Decay: Max points if instant, down to 50% at 0s
-        const timeRatio = timeLeft / currentQuestion.timeLimit;
-        const basePoints = customPoints !== undefined ? customPoints : currentQuestion.points;
+        if (!currentPlayer) return;
+
+        // Score Decay: Max points if instant, down to 50% at limit time
+        const now = Date.now();
+        // The question starts exactly 3 seconds after the 'updated_at' timestamp
+        const actualQuestionStartTime = questionStartTime ? questionStartTime + 3000 : now;
+        const timeLimit = currentQuestion.timeLimit || 20;
+
+        let timeTakenSeconds = 0;
+        let timeRatio = 0.5; // default if timer unknown
+
+        if (questionStartTime && now >= actualQuestionStartTime) {
+            const timeTakenMs = now - actualQuestionStartTime;
+            timeTakenSeconds = Math.min(timeTakenMs / 1000, timeLimit); // Clamp to limit
+            timeRatio = Math.max(0, 1 - (timeTakenSeconds / timeLimit));
+        } else {
+            // Fallback to local timer or early answer
+            timeTakenSeconds = Math.max(0, timeLimit - timeLeft);
+            timeRatio = Math.max(0, timeLeft / timeLimit);
+        }
+
+        const basePoints = customPoints !== undefined ? customPoints : (currentQuestion.points || 100);
         const points = isCorrect ? Math.ceil(basePoints * (0.5 + 0.5 * timeRatio)) : 0;
 
         // Record history for personal analysis (Player only)
-        if (currentPlayer) {
-            const getAnswerText = (val: any) => {
-                if (val === null || val === undefined) return 'لم تتم الإجابة';
-                if (typeof val === 'number' && currentQuestion.options) {
-                    return currentQuestion.options[val];
-                }
-                return String(val);
-            };
+        const getAnswerText = (val: any) => {
+            if (val === null || val === undefined) return 'لم تتم الإجابة';
+            if (typeof val === 'number' && currentQuestion.options) {
+                return currentQuestion.options[val];
+            }
+            return String(val);
+        };
 
-            const finalAns = providedAnswer !== undefined ? providedAnswer : selectedAnswer;
+        const finalAns = providedAnswer !== undefined ? providedAnswer : selectedAnswer;
 
-            setUserHistory(prev => [...prev, {
-                question: currentQuestion.question,
-                selectedAnswer: finalAns !== null ? getAnswerText(finalAns) : (customPoints !== undefined ? (isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة') : 'انتهى الوقت'),
-                correctAnswer: getAnswerText(currentQuestion.correctAnswer),
-                isCorrect,
-                points,
-                timeTaken: currentQuestion.timeLimit - timeLeft
-            }]);
+        setUserHistory(prev => [...prev, {
+            question: currentQuestion.question,
+            selectedAnswer: finalAns !== null ? getAnswerText(finalAns) : (customPoints !== undefined ? (isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة') : 'انتهى الوقت'),
+            correctAnswer: getAnswerText(currentQuestion.correctAnswer),
+            isCorrect,
+            points,
+            timeTaken: Math.round(timeTakenSeconds)
+        }]);
 
-            setPlayerAnswers(prev => ({
-                ...prev,
-                [currentPlayer.id]: { answered: true, points, isCorrect }
-            }));
+        // IMPORTANT: Scoring is strictly deferred until handleRoundEnd
+        setPlayerAnswers(prev => ({
+            ...prev,
+            [currentPlayer.id]: {
+                answered: true,
+                points, // stored locally for final host-side calculation
+                isCorrect // stored locally 
+            }
+        }));
+
+        // Send actual scores to DB but UI will keep them hidden until showQuestionResult is true
+        if (!isHost) {
+            try {
+                updatePlayerMutation.mutateAsync({
+                    id: currentPlayer.id,
+                    updates: {
+                        score: (currentPlayer.score || 0) + points,
+                        correct_answers: isCorrect ? (currentPlayer.correctAnswers || 0) + 1 : (currentPlayer.correctAnswers || 0),
+                        wrong_answers: !isCorrect ? (currentPlayer.wrongAnswers || 0) + 1 : (currentPlayer.wrongAnswers || 0),
+                        streak: isCorrect ? (currentPlayer.streak || 0) + 1 : 0,
+                        last_answer_time: currentIndex + 1 // Use index instead of timestamp to fix clock drift
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to sync answer progress", e);
+            }
         }
-
-        // Note: Sound is deferred to result reveal
-        // But we might want a click sound? done in handleAnswerSelect
     };
 
     const handleAnswerSelect = (answer: number | string) => {
-        if (showQuestionResult || selectedAnswer !== null || isHost) return;
+        if (showQuestionResult || selectedAnswer !== null || isHost || !currentQuestion) return;
         setSelectedAnswer(answer);
-        const isCorrect = answer === currentQuestion.correctAnswer;
+
+        // Use loose equality to handle string/number comparison from DB
+        const isCorrect = answer == currentQuestion.correctAnswer;
 
         // Play sound effect (Just selection sound)
         play('click');
@@ -515,13 +564,61 @@ const GroupChallenge = () => {
 
 
 
-    const handleNextQuestion = () => {
+    const handleNextQuestion = async () => {
+        if (!isHost) return;
+
         if (currentIndex < questions.length - 1) {
+            if (sessionData?.pin) {
+                try {
+                    const { data: updated } = await supabase
+                        .from('challenge_sessions')
+                        .update({
+                            current_question_index: currentIndex + 1,
+                            status: "PLAYING",
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('pin', sessionData.pin)
+                        .select()
+                        .single();
+
+                    if (updated?.updated_at) {
+                        setQuestionStartTime(Date.now());
+                    }
+                } catch (err) {
+                    console.error("Failed to move to next question", err);
+                }
+            }
+            // Local state will be updated by the listener/fetchState
             setPhase("countdown");
             setCountdown(3);
             setCurrentIndex(prev => prev + 1);
+            setShowQuestionResult(false);
+            setSelectedAnswer(null);
         } else {
+            if (sessionData?.pin) {
+                try {
+                    await updateSessionMutation.mutateAsync({
+                        pin: sessionData.pin,
+                        updates: { status: "FINISHED" }
+                    });
+                } catch (err) {
+                    console.error("Failed to finish session", err);
+                }
+            }
             setPhase("final_results");
+        }
+    };
+
+    const handleShowLeaderboard = async () => {
+        if (!isHost || !sessionData?.pin) return;
+        try {
+            await updateSessionMutation.mutateAsync({
+                pin: sessionData.pin,
+                updates: { status: "LEADERBOARD" }
+            });
+            setPhase("leaderboard");
+        } catch (err) {
+            console.error("Failed to show leaderboard", err);
         }
     };
 
@@ -531,15 +628,283 @@ const GroupChallenge = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // Auto-Advance Timer Effect (Host Only)
+    useEffect(() => {
+        // Only run for host when question result is shown
+        if (!isHost || !showQuestionResult || phase !== "playing") {
+            setAutoAdvanceCountdown(0);
+            if (autoAdvanceTimerRef.current) {
+                clearInterval(autoAdvanceTimerRef.current);
+                autoAdvanceTimerRef.current = null;
+            }
+            return;
+        }
+
+        // Start countdown from 5 seconds
+        if (autoAdvanceCountdown === 0) {
+            setAutoAdvanceCountdown(5);
+        } else if (autoAdvanceCountdown > 0) {
+            autoAdvanceTimerRef.current = setInterval(() => {
+                setAutoAdvanceCountdown(prev => {
+                    if (prev <= 1) {
+                        // Auto-advance to next question
+                        handleNextQuestion();
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+
+        return () => {
+            if (autoAdvanceTimerRef.current) {
+                clearInterval(autoAdvanceTimerRef.current);
+                autoAdvanceTimerRef.current = null;
+            }
+        };
+    }, [isHost, showQuestionResult, phase, autoAdvanceCountdown, handleNextQuestion]);
+
+    // --- Save results to database when game ends ---
+    useEffect(() => {
+        if (phase !== "final_results" || resultsSaved) return;
+        if (!currentUser?.id || !topicId || !content) return;
+
+        const saveResults = async () => {
+            try {
+                setResultsSaved(true);
+
+                // 1. If Host: Update session status to FINISHED
+                if (isHost && pin) {
+                    console.log("[Host] Updating session status to FINISHED...");
+                    try {
+                        await updateSessionMutation.mutateAsync({
+                            pin: pin,
+                            updates: { status: 'FINISHED' }
+                        });
+                        console.log("[Host] Session updated successfully to FINISHED.");
+                    } catch (e) {
+                        console.error("Host session update failed:", e);
+                    }
+                }
+
+                // 2. Save challenge result for ALL participants (host AND players)
+                if (currentUser?.id && topicId && content) {
+                    console.log("[Save] Saving challenge results for user:", currentUser.id, "isHost:", isHost);
+                    const results = getResults();
+                    const subjectData = content.subject;
+
+                    // Skip if no questions
+                    if (results.totalQuestions === 0) {
+                        console.warn("[Save] No questions found, skipping save.");
+                        return;
+                    }
+
+                    // A: Resolve the real UUID session ID
+                    let dbSessionId = sessionData?.id;
+                    if (!dbSessionId && pin) {
+                        const { data: fetchSession } = await supabase
+                            .from('challenge_sessions')
+                            .select('id')
+                            .eq('pin', pin)
+                            .single();
+                        if (fetchSession?.id) {
+                            dbSessionId = fetchSession.id;
+                        }
+                    }
+
+                    if (!dbSessionId) {
+                        console.error("[Save] Could not find a valid database session ID. Aborting save.");
+                        return;
+                    }
+
+                    // B: Build enriched question results with full answer details
+                    // (We embed answers in questionResults JSONB instead of challenge_answers table
+                    //  because challenge_answers.question_id is UUID but our questions use numeric IDs)
+                    const enrichedQuestionResults = userHistory.map((h, index) => ({
+                        questionIndex: index,
+                        questionId: questions[index]?.id || index,
+                        questionText: h.question,
+                        correct: h.isCorrect,
+                        timeTaken: h.timeTaken,
+                        pointsEarned: h.points,
+                        userAnswer: h.selectedAnswer,
+                        correctAnswer: h.correctAnswer,
+                    }));
+
+                    console.log("[Save] Step 1: Saving challenge result with", enrichedQuestionResults.length, "answers...");
+                    const savedResult = await saveResultMutation.mutateAsync({
+                        sessionId: dbSessionId,
+                        userId: currentUser.id,
+                        totalQuestions: results.totalQuestions,
+                        correctAnswers: results.correctAnswers,
+                        wrongAnswers: results.wrongAnswers,
+                        score: results.score,
+                        maxScore: results.maxScore,
+                        percentage: results.percentage,
+                        timeTaken: results.timeTaken,
+                        averageTimePerQuestion: results.averageTimePerQuestion,
+                        longestStreak: results.longestStreak,
+                        accuracy: results.accuracy,
+                        level: results.level,
+                        questionResults: enrichedQuestionResults,
+                    });
+                    console.log("[Save] Step 1 complete. Result ID:", savedResult.id);
+
+                    // C: Log topic activity & update student profile (only if student)
+                    if (studentProfile?.id) {
+                        try {
+                            // Log topic activity
+                            await saveTopicActivityMutation.mutateAsync({
+                                studentProfileId: studentProfile.id,
+                                topicId: topicId,
+                                topicTitle: content.title || "تحدي جماعي",
+                                score: results.percentage,
+                                completed: results.percentage >= 50,
+                            });
+                            console.log("[Save] Step 2: Topic activity logged.");
+
+                            // Recalculate student profile stats
+                            const { data: allCompletions } = await supabase
+                                .from("student_topic_activities")
+                                .select("topic_id")
+                                .eq("student_id", studentProfile.id)
+                                .eq("completed", true);
+
+                            const completedTopicIds = [...new Set((allCompletions || []).map(c => c.topic_id))];
+                            const newTotalCompletedCount = completedTopicIds.length;
+                            const newPoints = (studentProfile.total_points || 0) + results.score;
+                            const newChallenges = (studentProfile.total_challenges || 0) + 1;
+                            const oldTotal = studentProfile.total_challenges || 0;
+                            const oldAvg = studentProfile.average_score || 0;
+                            const newAvg = ((oldAvg * oldTotal) + results.percentage) / (oldTotal + 1);
+
+                            await updateStudentProfileMutation.mutateAsync({
+                                studentProfileId: studentProfile.id,
+                                updates: {
+                                    totalPoints: newPoints,
+                                    totalChallenges: newChallenges,
+                                    completedTopics: newTotalCompletedCount,
+                                    averageScore: Math.round(newAvg * 100) / 100,
+                                },
+                            });
+                            console.log("[Save] Step 3: Student profile updated. Completed:", newTotalCompletedCount);
+
+                            // Update subject progress
+                            if (subjectData?.id) {
+                                try {
+                                    const { data: subjectTopics } = await supabase
+                                        .from("topics")
+                                        .select("id")
+                                        .eq("subject_id", subjectData.id);
+
+                                    const subjectTopicIds = (subjectTopics || []).map(t => t.id);
+                                    const subjectCompletedCount = completedTopicIds.filter(id => subjectTopicIds.includes(id)).length;
+
+                                    const currentProgress = (subjectProgress || []).find((p: any) =>
+                                        String(p.subject_id).toLowerCase() === String(subjectData.id).toLowerCase()
+                                    );
+                                    const existingAvg = Number(currentProgress?.average_score || 0);
+                                    const subjectNewAvg = existingAvg > 0
+                                        ? ((existingAvg * 2) + results.percentage) / 3
+                                        : results.percentage;
+
+                                    await upsertSubjectProgressMutation.mutateAsync({
+                                        studentProfileId: studentProfile.id,
+                                        subjectId: subjectData.id,
+                                        completedTopics: subjectCompletedCount,
+                                        totalTopics: Math.max(subjectTopicIds.length, 1),
+                                        averageScore: Math.round(subjectNewAvg * 100) / 100,
+                                    });
+                                    console.log("[Save] Step 4: Subject progress updated.", subjectCompletedCount, "/", subjectTopicIds.length);
+                                } catch (e) {
+                                    console.error("[Save] Step 4 failed (subject progress):", e);
+                                }
+                            }
+                        } catch (e) {
+                            console.error("[Save] Student profile steps failed:", e);
+                        }
+                    }
+
+                    toast({
+                        title: "تم حفظ النتيجة ✅",
+                        description: `حصلت على ${results.score} نقطة بنسبة ${results.percentage}%`,
+                    });
+                }
+            } catch (error) {
+                console.error("[Save] Failed to save group challenge results:", error);
+            }
+        };
+
+        saveResults();
+    }, [phase, resultsSaved, currentUser?.id, topicId, content, studentProfile?.id, subjectProgress]);
+
+    // Handle animations sequentially when arriving at final results
+    useEffect(() => {
+        if (phase === "final_results") {
+            const timer1 = setTimeout(() => setRevealStep(1), 1000); // 3rd place
+            const timer2 = setTimeout(() => setRevealStep(2), 2500); // 2nd place
+            const timer3 = setTimeout(() => setRevealStep(3), 4500); // 1st place
+            const timer4 = setTimeout(() => setRevealStep(4), 6500); // Others & Buttons
+            return () => {
+                clearTimeout(timer1);
+                clearTimeout(timer2);
+                clearTimeout(timer3);
+                clearTimeout(timer4);
+            };
+        } else {
+            setRevealStep(0);
+        }
+    }, [phase]);
+
+    // Calculate results for the current player
+    const getResults = (): SinglePlayerResult => {
+        const myPlayer = currentPlayer;
+        const correctAnswers = myPlayer?.correctAnswers || 0;
+        const totalQuestions = questions.length;
+        const percentage = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+        const totalScore = myPlayer?.score || 0;
+
+        // Simplified for group
+        return {
+            totalQuestions,
+            correctAnswers,
+            wrongAnswers: totalQuestions - correctAnswers,
+            score: totalScore,
+            maxScore: questions.reduce((acc, q) => acc + q.points, 0),
+            percentage,
+            timeTaken: userHistory.reduce((acc, h) => acc + h.timeTaken, 0),
+            averageTimePerQuestion: userHistory.length > 0 ? userHistory.reduce((acc, h) => acc + h.timeTaken, 0) / userHistory.length : 0,
+            longestStreak: myPlayer?.streak || 0,
+            accuracy: percentage,
+            questionResults: userHistory.map((h, i) => ({
+                questionId: i,
+                correct: h.isCorrect,
+                timeTaken: h.timeTaken,
+                pointsEarned: h.points
+            })),
+            badges: [], // Could implement badge awarding here too
+            level: getLevelFromScore(percentage).level
+        };
+    };
+
     const rankedPlayers = [...players].sort((a, b) => b.score - a.score).map((p, i) => ({ ...p, rank: i + 1 }));
 
-    if ((!channel && !isEducationMode) || !content) {
+    if (isLoading) {
+        return (
+            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4">
+                <Skeleton className="h-12 w-64 mb-4" />
+                <Skeleton className="h-40 w-full max-w-2xl" />
+            </div>
+        );
+    }
+
+    if (!content) {
         return (
             <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4">
                 <h1 className="text-3xl font-bold mb-4">المحتوى غير موجود</h1>
                 <Button asChild>
-                    <Link to={isEducationMode ? "/grades" : "/channels"}>
-                        {isEducationMode ? "العودة للصفوف" : "العودة للقنوات"}
+                    <Link to="/grades">
+                        العودة للصفوف
                     </Link>
                 </Button>
             </div>
@@ -876,123 +1241,241 @@ const GroupChallenge = () => {
         );
     };
 
-    // Render components
-    const renderLobby = () => (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-w-2xl mx-auto text-center px-4"
-        >
-            <Card className="p-8 md:p-12">
+    // Lobby Phase
+    const renderLobby = () => {
+        // If not a host/creator, show the student's "You're in!" waiting screen
+        if (!isHost && !isCreator) {
+            return (
                 <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", delay: 0.2 }}
-                    className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center mb-6"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="max-w-2xl mx-auto text-center px-4"
                 >
-                    <Users className="w-12 h-12 text-white" />
-                </motion.div>
+                    <Card className="p-8 md:p-12 relative overflow-hidden">
+                        {/* Decorative background for student */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-secondary/5 rounded-full -ml-16 -mb-16 blur-2xl" />
 
-                <h2 className="text-3xl font-black mb-2">غرفة الانتظار</h2>
-                <p className="text-muted-foreground mb-8">
-                    شارك رمز الانضمام مع أصدقائك
-                </p>
-
-                {/* PIN Display */}
-                <div className="mb-10 flex justify-center">
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        className="relative group cursor-pointer"
-                        onClick={handleCopyPin}
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
-                        <div className="relative flex items-center gap-6 bg-card p-6 px-10 rounded-2xl border-2 border-primary/20 shadow-sm hover:border-primary/50 transition-all">
-                            <div className="text-5xl md:text-6xl font-black bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent tracking-widest">
-                                {pin}
+                        {!currentPlayer ? (
+                            <div className="py-12 flex flex-col items-center">
+                                <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-6" />
+                                <h2 className="text-xl font-bold text-muted-foreground animate-pulse">
+                                    {sessionData ? "جاري الانضمام للتحدي..." : "جاري الاتصال بالتحدي..."}
+                                </h2>
+                                <p className="text-sm mt-2 font-medium text-muted-foreground/80">
+                                    {sessionData
+                                        ? `يتم البحث عن ${playerName} في قائمة المتسابقين`
+                                        : "تأكد من إدخال الرمز الصحيح"}
+                                </p>
                             </div>
-                            <div className="w-px h-12 bg-border" />
-                            <div className="text-muted-foreground flex flex-col items-center gap-1">
-                                {copied ? <Check className="w-6 h-6 text-green-500" /> : <Copy className="w-6 h-6" />}
-                                <span className="text-[10px] font-bold">نسخ</span>
-                            </div>
-                        </div>
-                    </motion.div>
-                </div>
-
-                {/* Players Section */}
-                <div className="mb-10">
-                    <div className="flex items-center justify-center gap-2 mb-6">
-                        <Users className="w-5 h-5 text-primary" />
-                        <h3 className="text-lg font-bold">المشاركون الحاليون</h3>
-                        <span className="bg-primary/10 text-primary px-3 py-0.5 rounded-full text-sm font-bold">{players.length}</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                        <AnimatePresence>
-                            {players.map((player, index) => (
+                        ) : (
+                            <>
                                 <motion.div
-                                    key={player.id}
                                     initial={{ scale: 0, rotate: -180 }}
                                     animate={{ scale: 1, rotate: 0 }}
-                                    exit={{ scale: 0, rotate: 180 }}
-                                    transition={{ type: "spring", delay: index * 0.1 }}
-                                    className="relative group p-3 rounded-2xl border border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                                    transition={{ type: "spring", damping: 15, delay: 0.1 }}
+                                    className="w-24 h-24 mx-auto rounded-full bg-green-500 flex items-center justify-center mb-8 shadow-lg shadow-green-500/30 relative z-10"
                                 >
-                                    <div className="flex flex-col items-center gap-2">
-                                        <div className="relative">
-                                            <img
-                                                src={player.avatar}
-                                                className="w-14 h-14 rounded-xl bg-muted shadow-sm"
-                                                alt={player.name}
-                                            />
-                                            {player.isHost && (
-                                                <div className="absolute -top-2 -right-2 bg-gradient-to-br from-amber-400 to-amber-600 p-1 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-sm">
-                                                    <Crown className="w-3 h-3 text-white" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <span className="font-bold text-sm truncate w-full text-center px-1">
-                                            {player.name}
-                                        </span>
-                                    </div>
+                                    <CheckCircle2 className="w-12 h-12 text-white" />
                                 </motion.div>
-                            ))}
-                        </AnimatePresence>
 
-                        {/* Empty Slots Placeholders */}
-                        {[...Array(Math.max(0, 4 - players.length))].map((_, i) => (
-                            <div key={`empty-${i}`} className="p-3 rounded-2xl border border-dashed border-border flex flex-col items-center justify-center gap-2 opacity-50">
-                                <div className="w-14 h-14 rounded-xl bg-muted/50 animate-pulse" />
-                                <div className="w-16 h-4 bg-muted/50 rounded animate-pulse" />
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                                <motion.h2
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.3 }}
+                                    className="text-4xl font-black mb-4 text-slate-800 dark:text-white relative z-10"
+                                >
+                                    أنت في اللعبة!
+                                </motion.h2>
 
-                {/* Start Button */}
-                {isHost || isCreator ? (
-                    <Button
-                        onClick={() => {
-                            play('click');
-                            handleStartGame();
-                        }}
-                        size="lg"
-                        variant="hero"
-                        className="w-full h-14 text-lg gap-2"
-                        disabled={players.length < 1}
+                                <motion.p
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.4 }}
+                                    className="text-lg text-muted-foreground mb-8 relative z-10 font-bold"
+                                >
+                                    انظر إلى شاشة المعلم
+                                </motion.p>
+
+                                <motion.div
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.5 }}
+                                    className="relative z-10 bg-card p-4 rounded-xl shadow-sm border-2 border-primary/10"
+                                >
+                                    <p className="text-sm font-bold text-muted-foreground mb-2">اسمك في التحدي:</p>
+                                    <p className="text-2xl font-black text-primary">{playerName}</p>
+                                </motion.div>
+
+                                {/* Waiting indicator */}
+                                <motion.div
+                                    animate={{ opacity: [0.5, 1, 0.5] }}
+                                    transition={{ repeat: Infinity, duration: 2 }}
+                                    className="mt-8 relative z-10 flex flex-col items-center gap-2"
+                                >
+                                    <div className="flex gap-1.5">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                                        <div className="w-2.5 h-2.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                                        <div className="w-2.5 h-2.5 rounded-full bg-primary/80 animate-bounce" style={{ animationDelay: "300ms" }} />
+                                    </div>
+                                    <span className="text-sm font-bold text-muted-foreground mt-2">في انتظار بدء التحدي...</span>
+                                </motion.div>
+
+                                {/* Live Players List for Students */}
+                                <div className="mt-12 pt-8 border-t border-primary/10">
+                                    <div className="flex items-center justify-center gap-2 mb-6">
+                                        <Users className="w-4 h-4 text-primary" />
+                                        <h3 className="text-sm font-bold">المشاركون الآن ({players.length})</h3>
+                                    </div>
+
+                                    <div className="flex flex-wrap justify-center gap-3">
+                                        <AnimatePresence>
+                                            {players.map((p) => (
+                                                <motion.div
+                                                    key={p.id}
+                                                    initial={{ scale: 0 }}
+                                                    animate={{ scale: 1 }}
+                                                    exit={{ scale: 0 }}
+                                                    className={`flex items-center gap-2 p-1.5 pr-4 rounded-full border bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm ${p.id === currentPlayer?.id ? "border-primary shadow-sm ring-2 ring-primary/10" : "border-border"
+                                                        }`}
+                                                >
+                                                    <img src={p.avatar} className="w-6 h-6 rounded-full bg-muted" alt={p.name} />
+                                                    <span className={`text-xs font-bold truncate max-w-[80px] ${p.id === currentPlayer?.id ? "text-primary" : ""}`}>
+                                                        {p.name}
+                                                        {p.id === currentPlayer?.id && " (أنت)"}
+                                                    </span>
+                                                </motion.div>
+                                            ))}
+                                        </AnimatePresence>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </Card>
+                </motion.div>
+            );
+        }
+
+        return (
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="max-w-2xl mx-auto text-center px-4"
+            >
+                <Card className="p-8 md:p-12">
+                    <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", delay: 0.2 }}
+                        className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center mb-6"
                     >
-                        <Play className="w-5 h-5 ml-2" />
-                        ابدأ التحدي
-                    </Button>
-                ) : (
-                    <div className="p-4 rounded-xl bg-muted/50 animate-pulse text-center">
-                        <span className="font-bold">في انتظار المضيف لبدء اللعبة...</span>
+                        <Users className="w-12 h-12 text-white" />
+                    </motion.div>
+
+                    <h2 className="text-3xl font-black mb-2">غرفة الانتظار</h2>
+                    <p className="text-muted-foreground mb-8">
+                        شارك رمز الانضمام مع أصدقائك
+                    </p>
+
+                    {/* PIN Display */}
+                    <div className="mb-10 flex justify-center">
+                        <motion.div
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            className="relative group cursor-pointer"
+                            onClick={handleCopyPin}
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
+                            <div className="relative flex items-center gap-6 bg-card p-6 px-10 rounded-2xl border-2 border-primary/20 shadow-sm hover:border-primary/50 transition-all">
+                                <div className="text-5xl md:text-6xl font-black bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent tracking-widest">
+                                    {pin}
+                                </div>
+                                <div className="w-px h-12 bg-border" />
+                                <div className="text-muted-foreground flex flex-col items-center gap-1">
+                                    {copied ? <Check className="w-6 h-6 text-green-500" /> : <Copy className="w-6 h-6" />}
+                                    <span className="text-[10px] font-bold">نسخ</span>
+                                </div>
+                            </div>
+                        </motion.div>
                     </div>
-                )}
-            </Card>
-        </motion.div>
-    );
+
+                    {/* Players Section */}
+                    <div className="mb-10">
+                        <div className="flex items-center justify-center gap-2 mb-6">
+                            <Users className="w-5 h-5 text-primary" />
+                            <h3 className="text-lg font-bold">المشاركون الحاليون</h3>
+                            <span className="bg-primary/10 text-primary px-3 py-0.5 rounded-full text-sm font-bold">{players.length}</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            <AnimatePresence>
+                                {players.map((player, index) => (
+                                    <motion.div
+                                        key={player.id}
+                                        initial={{ scale: 0, rotate: -180 }}
+                                        animate={{ scale: 1, rotate: 0 }}
+                                        exit={{ scale: 0, rotate: 180 }}
+                                        transition={{ type: "spring", delay: index * 0.1 }}
+                                        className="relative group p-3 rounded-2xl border border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                                    >
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="relative">
+                                                <img
+                                                    src={player.avatar}
+                                                    className={`w-14 h-14 rounded-xl bg-muted shadow-sm transition-all ${player.isOnline ? "ring-2 ring-green-500 ring-offset-2" : "opacity-50 grayscale"}`}
+                                                    alt={player.name}
+                                                />
+                                                {player.isOnline && (
+                                                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse" />
+                                                )}
+                                                {player.isHost && (
+                                                    <div className="absolute -top-2 -right-2 bg-gradient-to-br from-amber-400 to-amber-600 p-1 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-sm">
+                                                        <Crown className="w-3 h-3 text-white" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="font-bold text-sm truncate w-full text-center px-1">
+                                                {player.name}
+                                            </span>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+
+                            {/* Empty Slots Placeholders */}
+                            {[...Array(Math.max(0, 4 - players.length))].map((_, i) => (
+                                <div key={`empty-${i}`} className="p-3 rounded-2xl border border-dashed border-border flex flex-col items-center justify-center gap-2 opacity-50">
+                                    <div className="w-14 h-14 rounded-xl bg-muted/50 animate-pulse" />
+                                    <div className="w-16 h-4 bg-muted/50 rounded animate-pulse" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Start Button */}
+                    {isHost || isCreator ? (
+                        <Button
+                            onClick={() => {
+                                play('click');
+                                handleStartGame();
+                            }}
+                            size="lg"
+                            variant="hero"
+                            className="w-full h-14 text-lg gap-2"
+                            disabled={players.length < 1}
+                        >
+                            <Play className="w-5 h-5 ml-2" />
+                            ابدأ التحدي
+                        </Button>
+                    ) : (
+                        <div className="p-4 rounded-xl bg-muted/50 animate-pulse text-center">
+                            <span className="font-bold">في انتظار المضيف لبدء اللعبة...</span>
+                        </div>
+                    )}
+                </Card>
+            </motion.div>
+        );
+    };
 
     // Countdown Phase
     const renderCountdown = () => (
@@ -1032,7 +1515,8 @@ const GroupChallenge = () => {
 
         // Host Live Dashboard
         const renderHostLiveDashboard = () => {
-            const answeredPlayers = players.filter(p => !p.isHost && playerAnswers[p.id]?.answered);
+            const currentTag = currentIndex + 1;
+            const answeredPlayers = players.filter(p => !p.isHost && Number(p.lastAnswerTime) === currentTag);
             const totalPlayers = players.filter(p => !p.isHost).length;
 
             return (
@@ -1044,7 +1528,7 @@ const GroupChallenge = () => {
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg">
-                                    {isEducationMode ? "لوحة تحكم المعلم" : "لوحة تحكم المضيف"}
+                                    لوحة تحكم المعلم
                                 </h3>
                                 <p className="text-xs text-muted-foreground">متابعة حية للإجابات</p>
                             </div>
@@ -1057,14 +1541,18 @@ const GroupChallenge = () => {
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {players.filter(p => !p.isHost).map(p => {
-                            const hasAnswered = playerAnswers[p.id]?.answered;
+                            const isThisPlayerAnswered = Number(p.lastAnswerTime) === (currentIndex + 1);
+                            const ans = playerAnswers[p.id];
+                            const hasAnswered = isThisPlayerAnswered || ans?.answered;
+                            const showResult = showQuestionResult && (isThisPlayerAnswered || ans);
+
                             return (
                                 <motion.div
                                     layout
                                     key={p.id}
-                                    className={`p-2 rounded-xl border flex items-center gap-3 transition-all ${hasAnswered
-                                        ? "bg-green-500/10 border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.1)]"
-                                        : "bg-muted/30 border-dashed border-border opacity-70"
+                                    className={`p-2 rounded-xl border flex items-center gap-3 transition-all ${showResult
+                                        ? ((ans?.isCorrect || isThisPlayerAnswered) ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30")
+                                        : (hasAnswered ? "bg-primary/10 border-primary/30" : "bg-muted/30 border-dashed border-border opacity-70")
                                         }`}
                                 >
                                     <div className="relative shrink-0">
@@ -1073,13 +1561,27 @@ const GroupChallenge = () => {
                                             <motion.div
                                                 initial={{ scale: 0 }}
                                                 animate={{ scale: 1 }}
-                                                className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center"
+                                                className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${showResult
+                                                    ? (ans.isCorrect ? "bg-green-500" : "bg-red-500")
+                                                    : "bg-primary"
+                                                    }`}
                                             >
-                                                <Check className="w-2 h-2 text-white" />
+                                                {showResult ? (
+                                                    ans.isCorrect ? <Check className="w-2 h-2 text-white" /> : <span className="text-[8px] text-white">✗</span>
+                                                ) : (
+                                                    <Check className="w-2 h-2 text-white" />
+                                                )}
                                             </motion.div>
                                         )}
                                     </div>
-                                    <span className="text-xs font-bold truncate">{p.name}</span>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-bold truncate">{p.name}</span>
+                                        {showResult && (
+                                            <span className={`text-[10px] font-black ${ans.isCorrect ? "text-green-600" : "text-red-600"}`}>
+                                                {ans.isCorrect ? `+${ans.points}` : "0"}
+                                            </span>
+                                        )}
+                                    </div>
                                 </motion.div>
                             )
                         })}
@@ -1117,7 +1619,7 @@ const GroupChallenge = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {currentPlayer && (
+                        {currentPlayer && showQuestionResult && (
                             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10">
                                 <Trophy className="w-4 h-4 text-primary" />
                                 <span className="font-bold">{currentPlayer.score}</span>
@@ -1172,7 +1674,8 @@ const GroupChallenge = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {currentQuestion.options.map((option, index) => {
                                 const isSelected = selectedAnswer === index;
-                                const isCorrectOpt = index === currentQuestion.correctAnswer;
+                                // Use loose equality since correctAnswer from DB is stored as string
+                                const isCorrectOpt = index == currentQuestion.correctAnswer;
 
                                 let buttonClass = "p-5 text-right rounded-xl border-2 transition-all ";
 
@@ -1186,6 +1689,7 @@ const GroupChallenge = () => {
                                     }
                                 } else {
                                     if (isSelected) {
+                                        // While waiting for other players, keep it blue/primary (Neutral)
                                         buttonClass += "border-primary bg-primary/20 ring-2 ring-primary ring-offset-2";
                                     } else if (selectedAnswer !== null) {
                                         buttonClass += "border-border opacity-50 grayscale cursor-not-allowed";
@@ -1204,18 +1708,16 @@ const GroupChallenge = () => {
                                         className={buttonClass + (isHost ? " cursor-default" : "")}
                                     >
                                         <div className="flex items-center gap-4">
-                                            <span className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold ${showQuestionResult && isCorrectOpt
-                                                ? "bg-green-500 text-white"
-                                                : showQuestionResult && isSelected
-                                                    ? "bg-red-500 text-white"
-                                                    : "bg-muted"
+                                            <span className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold ${showQuestionResult
+                                                ? (isCorrectOpt ? "bg-green-500 text-white" : isSelected ? "bg-red-500 text-white" : "bg-muted")
+                                                : (isSelected ? "bg-primary/20 border-2 border-primary" : "bg-muted")
                                                 }`}>
                                                 {showQuestionResult && isCorrectOpt ? (
                                                     <CheckCircle2 className="w-5 h-5" />
                                                 ) : showQuestionResult && isSelected ? (
                                                     <XCircle className="w-5 h-5" />
                                                 ) : isSelected ? (
-                                                    <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                                                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity }} className="w-3 h-3 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
                                                 ) : (
                                                     String.fromCharCode(1571 + index)
                                                 )}
@@ -1247,7 +1749,7 @@ const GroupChallenge = () => {
                                     <Clock className="w-4 h-4" />
                                     في انتظار باقي اللاعبين...
                                     <span className="text-xs opacity-70">
-                                        ({Object.values(playerAnswers).filter(a => a.answered).length}/{players.length})
+                                        ({players.filter(p => !p.isHost && Number(p.lastAnswerTime) === (currentIndex + 1)).length}/{players.filter(p => !p.isHost).length})
                                     </span>
                                 </div>
                             </motion.div>
@@ -1257,31 +1759,150 @@ const GroupChallenge = () => {
                             <motion.div
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="mt-6"
+                                className="mt-6 flex flex-col gap-4"
                             >
                                 <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 text-center">
                                     <p className="text-xl font-bold mb-2">انتهى السؤال!</p>
-                                    <p className="text-muted-foreground">{currentQuestion.explanation}</p>
+
+                                    {!isHost && currentPlayer && playerAnswers[currentPlayer.id] && (
+                                        <motion.div
+                                            initial={{ scale: 0.9, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            className={`mb-4 p-4 rounded-2xl flex flex-col items-center gap-2 ${playerAnswers[currentPlayer.id]?.isCorrect
+                                                ? "bg-green-500/10 border border-green-500/30 text-green-600"
+                                                : "bg-red-500/10 border border-red-500/30 text-red-600"
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {playerAnswers[currentPlayer.id]?.isCorrect ? (
+                                                    <CheckCircle2 className="w-8 h-8" />
+                                                ) : (
+                                                    <XCircle className="w-8 h-8" />
+                                                )}
+                                                <span className="text-2xl font-black">
+                                                    {playerAnswers[currentPlayer.id]?.isCorrect ? "إجابة صحيحة!" : "إجابة خاطئة!"}
+                                                </span>
+                                            </div>
+                                            {playerAnswers[currentPlayer.id]?.isCorrect && (
+                                                <p className="text-4xl font-black animate-bounce mt-2">
+                                                    +{playerAnswers[currentPlayer.id]?.points} <span className="text-sm">نقطة</span>
+                                                </p>
+                                            )}
+                                        </motion.div>
+                                    )}
+
+                                    {!isHost && currentPlayer && !playerAnswers[currentPlayer.id] && (
+                                        <motion.div
+                                            initial={{ scale: 0.9, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            className="mb-4 p-4 rounded-2xl flex flex-col items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-600"
+                                        >
+                                            <Clock className="w-8 h-8" />
+                                            <span className="text-2xl font-black">انتهى الوقت!</span>
+                                            <p className="text-sm font-bold">لم يتم استلام أي إجابة</p>
+                                        </motion.div>
+                                    )}
+
+                                    <p className="text-muted-foreground italic">"{currentQuestion.explanation}"</p>
                                 </div>
+
+                                {isHost && autoAdvanceCountdown > 0 && (
+                                    <motion.div
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className="mb-4 p-4 rounded-2xl flex flex-col items-center gap-3 bg-primary/10 border-2 border-primary/30"
+                                    >
+                                        <p className="text-sm font-bold text-muted-foreground">الانتقال التلقائي للسؤال التالي</p>
+                                        <motion.div
+                                            animate={{ scale: [1, 1.1, 1] }}
+                                            transition={{ repeat: Infinity, duration: 0.8 }}
+                                            className="text-4xl font-black text-primary"
+                                        >
+                                            {autoAdvanceCountdown}
+                                        </motion.div>
+                                        <p className="text-xs text-muted-foreground">انقر على زر لإيقاف العد التنازلي</p>
+                                    </motion.div>
+                                )}
+
+                                {isHost && (
+                                    <div className="flex flex-col gap-3">
+                                        <Button
+                                            onClick={handleShowLeaderboard}
+                                            size="lg"
+                                            variant="hero"
+                                            className="w-full h-14 text-lg shadow-xl"
+                                        >
+                                            كشف الترتيب
+                                            <ArrowLeft className="w-5 h-5 mr-2" />
+                                        </Button>
+                                        {currentIndex < questions.length - 1 && (
+                                            <Button
+                                                onClick={handleNextQuestion}
+                                                size="lg"
+                                                variant="outline"
+                                                className="w-full h-14 text-lg shadow-sm"
+                                            >
+                                                السؤال التالي مباشرة
+                                                <ArrowLeft className="w-5 h-5 mr-2" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>
                 </Card>
 
                 {/* Real-time Player Dash - Group Specific */}
-                <div className="flex flex-wrap justify-center gap-6 mt-10">
-                    {rankedPlayers.map((p, i) => (
-                        <motion.div key={p.id} layout className="flex items-center gap-3 p-3 rounded-2xl bg-card border shadow-sm pr-6">
-                            <div className="relative">
-                                <img src={p.avatar} className="w-12 h-12 rounded-xl bg-muted" />
-                                {i === 0 && <span className="absolute -top-2 -right-2 text-xl">👑</span>}
-                            </div>
-                            <div>
-                                <div className="font-bold text-sm">{p.name}</div>
-                                <div className="text-primary font-black text-lg">{p.score} <span className="text-[10px] text-muted-foreground">نقطة</span></div>
-                            </div>
-                        </motion.div>
-                    ))}
+                <div className="flex flex-wrap justify-center gap-4 mt-10">
+                    {rankedPlayers.map((p, i) => {
+                        const ans = playerAnswers[p.id];
+                        return (
+                            <motion.div
+                                key={p.id}
+                                layout
+                                className={`flex items-center gap-3 p-3 rounded-2xl bg-card border shadow-sm pr-6 min-w-[160px] transition-all ${showQuestionResult && ans?.isCorrect ? "ring-2 ring-green-500/50 border-green-500/50" : ""
+                                    }`}
+                            >
+                                <div className="relative">
+                                    <img src={p.avatar} className="w-12 h-12 rounded-xl bg-muted" alt={p.name} />
+                                    {i === 0 && <span className="absolute -top-3 -right-3 text-2xl animate-pulse">👑</span>}
+                                    {showQuestionResult && ans && (
+                                        <motion.div
+                                            initial={{ scale: 0 }}
+                                            animate={{ scale: 1 }}
+                                            className={`absolute -bottom-1 -left-1 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center ${ans.isCorrect ? "bg-green-500" : "bg-red-500"
+                                                }`}
+                                        >
+                                            {ans.isCorrect ? <Check className="w-3 h-3 text-white" /> : <span className="text-[10px] text-white font-bold">✗</span>}
+                                        </motion.div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col">
+                                    <div className="font-bold text-sm truncate max-w-[100px]">{p.name}</div>
+                                    {showQuestionResult ? (
+                                        <div className="text-primary font-black text-lg leading-tight">
+                                            {p.score}
+                                            <span className="text-[10px] text-muted-foreground ml-1">نقطة</span>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground font-bold italic">
+                                            {Number(p.lastAnswerTime) === (currentIndex + 1) ? "✓ جاهز للنتيجة" : "جاري التفكير..."}
+                                        </div>
+                                    )}
+                                    {showQuestionResult && ans?.isCorrect && (
+                                        <motion.div
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            className="text-[10px] text-green-600 font-bold"
+                                        >
+                                            +{ans.points} نقاط
+                                        </motion.div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -1343,6 +1964,23 @@ const GroupChallenge = () => {
                     ))}
                 </div>
 
+                {isHost && autoAdvanceCountdown > 0 && (
+                    <motion.div
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="mb-6 p-4 rounded-2xl flex flex-col items-center gap-3 bg-primary/10 border-2 border-primary/30 max-w-md mx-auto"
+                    >
+                        <p className="text-sm font-bold text-muted-foreground">الانتقال التلقائي للسؤال التالي</p>
+                        <motion.div
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{ repeat: Infinity, duration: 0.8 }}
+                            className="text-4xl font-black text-primary"
+                        >
+                            {autoAdvanceCountdown}
+                        </motion.div>
+                    </motion.div>
+                )}
+
                 {isHost && (
                     <div className="flex justify-center">
                         <Button onClick={handleNextQuestion} variant="hero" size="lg" className="w-full max-w-md h-16 text-xl rounded-[2rem] group shadow-xl">
@@ -1395,19 +2033,19 @@ const GroupChallenge = () => {
                     </AnimatePresence>
                 </div>
 
-                <div className="mb-12 md:mb-20 relative z-10 px-4">
+                <div className="mb-8 md:mb-12 relative z-10 px-4">
                     <motion.h1
                         initial={{ y: -50, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
-                        className="text-4xl md:text-7xl lg:text-8xl font-black mb-4 drop-shadow-[0_10px_30px_rgba(0,0,0,0.1)] bg-gradient-to-br from-primary via-slate-800 to-secondary bg-clip-text text-transparent"
+                        className="text-3xl md:text-5xl lg:text-6xl font-black mb-3 flex flex-col items-center gap-2"
                     >
-                        أبطال التحدي! 🏅
+                        <span className="text-foreground">أبطال التحدي! 🏅</span>
                     </motion.h1>
                     <motion.p
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.5 }}
-                        className="text-slate-500 dark:text-slate-400 text-lg md:text-2xl font-medium tracking-wide"
+                        className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed font-medium"
                     >
                         أداء مذهل.. مبارك للفائزين!
                     </motion.p>
@@ -1423,22 +2061,23 @@ const GroupChallenge = () => {
                                 transition={{ type: "spring", damping: 15 }}
                                 className="w-full md:w-72 order-2 md:order-1"
                             >
-                                <div className="relative mb-4 md:mb-8">
+                                <div className="relative mb-3 md:mb-6">
                                     <motion.img
                                         initial={{ scale: 0, rotate: -20 }}
                                         animate={{ scale: 1, rotate: 0 }}
                                         transition={{ delay: 0.5 }}
                                         src={winners[1].avatar}
-                                        className="w-24 h-24 md:w-32 md:h-32 mx-auto rounded-[2rem] md:rounded-[2.5rem] border-4 border-slate-200 p-1.5 bg-white shadow-2xl"
+                                        className="w-20 h-20 md:w-24 md:h-24 mx-auto rounded-full md:rounded-full border-4 border-muted p-1 bg-background shadow-lg"
                                     />
-                                    <div className="absolute -bottom-2 md:-bottom-3 left-1/2 -translate-x-1/2 bg-slate-500 text-white px-4 md:px-5 py-1 md:py-1.5 rounded-full text-[10px] md:text-xs font-black shadow-lg">
-                                        SILVER
+                                    <div className="absolute -bottom-2 md:-bottom-3 left-1/2 -translate-x-1/2 bg-muted-foreground text-white px-3 md:px-4 py-0.5 md:py-1 rounded-full text-[10px] font-bold shadow-lg">
+                                        المركز الثاني
                                     </div>
                                 </div>
-                                <div className="font-bold text-xl md:text-2xl mb-3 md:mb-5 text-slate-700 dark:text-slate-200">{winners[1].name}</div>
-                                <div className="h-40 md:h-56 bg-gradient-to-t from-slate-200/50 to-slate-50/10 dark:from-slate-800 dark:to-slate-900/50 backdrop-blur-xl border-x border-t border-slate-200 dark:border-slate-700/50 rounded-t-[2.5rem] md:rounded-t-[3rem] flex flex-col items-center justify-center p-4 md:p-6 shadow-2xl">
-                                    <span className="text-6xl md:text-8xl mb-3 md:mb-5 filter drop-shadow-md">🥈</span>
-                                    <div className="font-black text-2xl md:text-4xl text-slate-600 dark:text-slate-300">{winners[1].score}</div>
+                                <div className="font-bold text-xl md:text-2xl mb-3 md:mb-5 text-foreground">{winners[1].name}</div>
+                                <div className="h-32 md:h-44 bg-gradient-to-t from-muted to-background/50 backdrop-blur-xl border-x border-t border-border rounded-t-[2rem] md:rounded-t-[2.5rem] flex flex-col items-center justify-center p-3 md:p-5 shadow-xl relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-white/40 dark:bg-black/20" />
+                                    <span className="text-5xl md:text-6xl mb-2 md:mb-4 filter drop-shadow-md z-10">🥈</span>
+                                    <div className="font-black text-xl md:text-3xl text-foreground z-10">{winners[1].score}</div>
                                 </div>
                             </motion.div>
                         )}
@@ -1451,13 +2090,13 @@ const GroupChallenge = () => {
                                 initial={{ y: 400, opacity: 0, scale: 0.8 }}
                                 animate={{ y: 0, opacity: 1, scale: 1.15 }}
                                 transition={{ type: "spring", damping: 12, mass: 1.2 }}
-                                className="w-full md:w-[26rem] order-1 md:order-2 z-20 md:mx-4 group"
+                                className="w-full md:w-[26rem] order-1 md:order-2 z-20 md:mx-4 group relative"
                             >
-                                <div className="relative mb-6 md:mb-10">
+                                <div className="relative mb-5 md:mb-8">
                                     <motion.div
                                         animate={{ rotate: 360 }}
                                         transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                                        className="absolute inset-0 bg-gradient-to-r from-amber-400 via-white to-secondary rounded-full blur-3xl opacity-30"
+                                        className="absolute inset-0 bg-gradient-hero rounded-full blur-2xl opacity-30"
                                     />
                                     <motion.div
                                         initial={{ y: -50, opacity: 0 }}
@@ -1465,27 +2104,28 @@ const GroupChallenge = () => {
                                         transition={{ delay: 0.8, type: "spring" }}
                                         className="relative z-10"
                                     >
-                                        <Crown className="w-20 h-20 md:w-28 md:h-28 text-amber-500 mx-auto mb-4 md:mb-5 animate-bounce drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+                                        <Crown className="w-16 h-16 md:w-20 md:h-20 text-warning mx-auto mb-3 md:mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(var(--warning),0.5)]" />
                                         <img
                                             src={winners[0].avatar}
-                                            className="w-32 h-32 md:w-48 md:h-48 mx-auto rounded-[2.5rem] md:rounded-[3.5rem] border-4 border-amber-400 p-1.5 md:p-2 bg-white shadow-[0_20px_50px_rgba(245,158,11,0.3)]"
+                                            className="w-24 h-24 md:w-32 md:h-32 mx-auto rounded-full md:rounded-full border-4 border-warning p-1 md:p-1.5 bg-background shadow-[0_15px_30px_rgba(var(--warning),0.3)]"
                                         />
-                                        <div className="absolute -bottom-3 md:-bottom-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-amber-600 text-white px-6 md:px-8 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-black shadow-xl uppercase tracking-widest">
-                                            CHAMPION
+                                        <div className="absolute -bottom-2 md:-bottom-3 left-1/2 -translate-x-1/2 bg-gradient-warning text-warning-foreground px-4 md:px-6 py-1 md:py-1.5 rounded-full text-[10px] md:text-xs font-black shadow-xl uppercase tracking-widest whitespace-nowrap">
+                                            المركز الأول
                                         </div>
                                     </motion.div>
                                 </div>
-                                <div className="font-black text-2xl md:text-4xl mb-5 md:mb-8 text-slate-900 dark:text-white">{winners[0].name}</div>
-                                <div className="h-56 md:h-96 bg-gradient-to-t from-amber-400 to-amber-50 dark:from-amber-600 dark:to-amber-950 shadow-[0_30px_70px_-10px_rgba(245,158,11,0.4)] rounded-t-[3rem] md:rounded-t-[4rem] flex flex-col items-center justify-center p-6 md:p-10 relative overflow-hidden border-t-2 border-amber-200">
+                                <div className="font-black text-2xl md:text-4xl mb-5 md:mb-8 text-foreground">{winners[0].name}</div>
+                                <div className="h-44 md:h-64 gradient-warning shadow-lg rounded-t-[2.5rem] md:rounded-t-[3rem] flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden border-t-2 border-warning/50">
+                                    <div className="absolute inset-0 bg-white/20 dark:bg-black/20" />
                                     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_white_0%,_transparent_100%)] opacity-30" />
                                     <motion.span
                                         animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
                                         transition={{ repeat: Infinity, duration: 3 }}
-                                        className="text-7xl md:text-[10rem] mb-4 md:mb-6 drop-shadow-2xl z-10"
+                                        className="text-6xl md:text-[7rem] mb-3 md:mb-4 drop-shadow-2xl z-10"
                                     >
                                         🥇
                                     </motion.span>
-                                    <div className="font-black text-4xl md:text-6xl text-amber-950 dark:text-amber-50 z-10">{winners[0].score}</div>
+                                    <div className="font-black text-3xl md:text-5xl text-amber-950 dark:text-amber-50 z-10">{winners[0].score}</div>
                                 </div>
                             </motion.div>
                         )}
@@ -1500,22 +2140,23 @@ const GroupChallenge = () => {
                                 transition={{ type: "spring", damping: 18 }}
                                 className="w-full md:w-64 order-3 md:order-3"
                             >
-                                <div className="relative mb-6 md:mb-8">
+                                <div className="relative mb-3 md:mb-6">
                                     <motion.img
                                         initial={{ scale: 0, rotate: 20 }}
                                         animate={{ scale: 1, rotate: 0 }}
                                         transition={{ delay: 0.5 }}
                                         src={winners[2].avatar}
-                                        className="w-20 h-20 md:w-28 md:h-28 mx-auto rounded-[1.5rem] md:rounded-[2rem] border-4 border-amber-700/20 p-1 md:p-1.5 bg-white shadow-xl"
+                                        className="w-16 h-16 md:w-20 md:h-20 mx-auto rounded-full md:rounded-full border-4 border-amber-800 p-1 bg-background shadow-xl"
                                     />
-                                    <div className="absolute -bottom-2 md:-bottom-3 left-1/2 -translate-x-1/2 bg-amber-700/80 text-white px-4 md:px-5 py-1 md:py-1.5 rounded-full text-[10px] md:xs font-black shadow-lg">
-                                        BRONZE
+                                    <div className="absolute -bottom-2 md:-bottom-3 left-1/2 -translate-x-1/2 bg-amber-800 text-white px-3 md:px-4 py-0.5 md:py-1 rounded-full text-[10px] font-bold shadow-lg whitespace-nowrap">
+                                        المركز الثالث
                                     </div>
                                 </div>
-                                <div className="font-bold text-lg md:text-2xl mb-3 md:mb-5 text-slate-600 dark:text-slate-300">{winners[2].name}</div>
-                                <div className="h-32 md:h-44 bg-gradient-to-t from-amber-200/30 to-white dark:from-amber-900/40 dark:to-slate-900 backdrop-blur-xl border-x border-t border-amber-700/10 rounded-t-[2.5rem] md:rounded-t-[3rem] flex flex-col items-center justify-center p-4 md:p-6 shadow-2xl">
-                                    <span className="text-5xl md:text-7xl mb-3 md:mb-4 filter drop-shadow-md">🥉</span>
-                                    <div className="font-black text-xl md:text-3xl text-amber-900/80 dark:text-amber-400">{winners[2].score}</div>
+                                <div className="font-bold text-lg md:text-xl mb-3 md:mb-5 text-foreground">{winners[2].name}</div>
+                                <div className="h-24 md:h-36 bg-gradient-to-t from-amber-700/50 to-background/50 backdrop-blur-xl border-x border-t border-amber-800/20 rounded-t-[1.5rem] md:rounded-t-[2rem] flex flex-col items-center justify-center p-3 md:p-5 shadow-xl relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-white/40 dark:bg-black/20" />
+                                    <span className="text-4xl md:text-5xl mb-2 md:mb-3 filter drop-shadow-md z-10">🥉</span>
+                                    <div className="font-black text-lg md:text-2xl text-foreground z-10">{winners[2].score}</div>
                                 </div>
                             </motion.div>
                         )}
@@ -1532,12 +2173,12 @@ const GroupChallenge = () => {
                         <h3 className="text-xl font-bold mb-6 text-slate-500 uppercase tracking-widest">باقي المتنافسين</h3>
                         <div className="space-y-3">
                             {otherPlayers.map((p, i) => (
-                                <div key={p.id} className="flex items-center gap-4 p-4 rounded-2xl bg-white/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 backdrop-blur-sm shadow-sm group hover:scale-[1.02] transition-transform">
-                                    <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-500">
+                                <div key={p.id} className="flex items-center gap-4 p-4 rounded-2xl bg-card border border-border backdrop-blur-sm shadow-sm group hover:scale-[1.02] transition-transform">
+                                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center font-bold text-muted-foreground">
                                         {i + 4}
                                     </div>
                                     <img src={p.avatar} className="w-12 h-12 rounded-xl" />
-                                    <div className="flex-1 text-right font-bold text-lg">{p.name}</div>
+                                    <div className="flex-1 text-right font-bold text-lg text-foreground">{p.name}</div>
                                     <div className="text-2xl font-black text-primary">{p.score}</div>
                                 </div>
                             ))}
@@ -1576,8 +2217,8 @@ const GroupChallenge = () => {
                                 variant="hero"
                                 className="rounded-[2rem] px-12 h-16 text-lg shadow-[0_20px_40px_-10px_rgba(var(--primary),0.4)] font-black group transition-all hover:scale-105 active:scale-95"
                             >
-                                <Link to={`/channel/${channelId}`} className="flex items-center">
-                                    <span>العودة للقناة</span>
+                                <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`} className="flex items-center">
+                                    <span>العودة للمحتوى</span>
                                     <ArrowLeft className="w-6 h-6 mr-3 group-hover:-translate-x-2 transition-transform" />
                                 </Link>
                             </Button>
@@ -1693,18 +2334,21 @@ const GroupChallenge = () => {
 
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-slate-50 via-indigo-50/30 to-pink-50/30 dark:from-slate-950 dark:via-indigo-950/20 dark:to-pink-950/20 relative overflow-hidden">
-            {/* Animated background pattern */}
-            <div className="absolute inset-0 opacity-[0.02] pointer-events-none">
-                <div className="absolute inset-0" style={{
-                    backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
-                    backgroundSize: '40px 40px'
-                }} />
+        <div className="min-h-screen font-cairo bg-background relative overflow-hidden text-foreground">
+            {/* Animated background pattern matching HeroSection */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5 z-0" />
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+                <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 50, repeat: Infinity, ease: "linear" }}
+                    className="absolute -top-40 -left-40 w-[30rem] h-[30rem] rounded-full bg-primary/10 blur-3xl opacity-50"
+                />
+                <motion.div
+                    animate={{ rotate: -360 }}
+                    transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                    className="absolute -bottom-40 -right-40 w-[35rem] h-[35rem] rounded-full bg-secondary/10 blur-3xl opacity-50"
+                />
             </div>
-
-            {/* Floating gradient orbs */}
-            <div className="absolute top-20 right-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute bottom-20 left-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
 
             {/* Music Toggle Button */}
             <motion.button

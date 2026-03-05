@@ -140,7 +140,7 @@ localStorage.setItem("edu_user", JSON.stringify({
 
 ### الجديد ✅:
 ```tsx
-<h3>تجربة المنصة التعليمية</h3>
+<h3>تجربة Lab4</h3>
 <p>هذه الحسابات مخصصة للتجربة والعرض. يمكنك استكشاف جميع ميزات منصة وزارة التربية والتعليم</p>
 
 <div className="grid grid-cols-3 gap-3">

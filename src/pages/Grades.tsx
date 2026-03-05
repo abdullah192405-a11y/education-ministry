@@ -7,18 +7,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Users, Search, Filter, CheckCircle, GraduationCap, BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
-import { gradesData, getGradeLevels } from "@/data/educationData";
+import { useGrades } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Grades = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedLevel, setSelectedLevel] = useState("الكل");
 
-    const levels = getGradeLevels();
+    const { data: gradesData, isLoading, error } = useGrades();
 
-    const filteredGrades = gradesData.filter((grade) => {
+    const levels = ["الكل", "ابتدائي", "متوسط", "ثانوي"];
+
+    const filteredGrades = (gradesData || []).filter((grade) => {
         const matchesSearch = grade.name.includes(searchTerm) ||
             grade.description.includes(searchTerm);
-        const matchesLevel = selectedLevel === "الكل" || grade.level === selectedLevel;
+        const matchesLevel = selectedLevel === "الكل" || (
+            grade.level === "PRIMARY" ? "ابتدائي" :
+                grade.level === "MIDDLE" ? "متوسط" :
+                    grade.level === "SECONDARY" ? "ثانوي" : "الكل"
+        ) === selectedLevel;
         return matchesSearch && matchesLevel;
     });
 
@@ -38,13 +45,13 @@ const Grades = () => {
     return (
         <div className="min-h-screen font-cairo" dir="rtl">
             <Header />
-            <main className="pt-24 pb-16">
+            <main className="pt-32 pb-16">
                 <div className="container mx-auto px-4">
                     {/* Page Header */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="text-center mb-12"
+                        className="text-center mb-12 mt-8"
                     >
                         <h1 className="text-4xl md:text-5xl font-black mb-4">
                             اكتشف <span className="text-primary">الصفوف الدراسية</span>
@@ -96,73 +103,90 @@ const Grades = () => {
 
                     {/* Grades Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <AnimatePresence mode="popLayout">
-                            {filteredGrades.map((grade, index) => (
-                                <motion.div
-                                    key={grade.id}
-                                    layout
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.9 }}
-                                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                                >
-                                    <Link to={`/grade/${grade.id}`}>
-                                        <Card variant="interactive" className="h-full overflow-hidden group">
-                                            {/* Cover Image */}
-                                            <div className="relative h-36 overflow-hidden">
-                                                <img
-                                                    src={grade.coverImage}
-                                                    alt={grade.name}
-                                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+                        {isLoading ? (
+                            Array.from({ length: 6 }).map((_, i) => (
+                                <Skeleton key={i} className="h-[300px] w-full rounded-xl" />
+                            ))
+                        ) : error ? (
+                            <div className="col-span-full text-center py-10 text-destructive font-bold">
+                                <p className="mb-2">خطأ في تحميل البيانات:</p>
+                                <p className="text-sm font-mono opacity-80">{(error as any)?.message || JSON.stringify(error)}</p>
+                                <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>إعادة المحاولة</Button>
+                            </div>
+                        ) : (
 
-                                                {/* Icon */}
-                                                <div className="absolute -bottom-8 right-4">
+                            <AnimatePresence mode="popLayout">
+                                {filteredGrades.map((grade, index) => (
+                                    <motion.div
+                                        key={grade.id}
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{ duration: 0.3, delay: index * 0.05 }}
+                                    >
+                                        <Link to={`/grade/${grade.slug}`}>
+                                            <Card variant="interactive" className="h-full overflow-hidden group">
+                                                {/* Cover Image */}
+                                                <div className="relative h-36 overflow-hidden">
+                                                    <img
+                                                        src={grade.cover_image || grade.coverImage}
+                                                        alt={grade.name}
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                    />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+
+                                                    {/* Level Badge */}
+                                                    <div className="absolute top-3 right-3">
+                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${getLevelColor(
+                                                            grade.level === "PRIMARY" ? "ابتدائي" :
+                                                                grade.level === "MIDDLE" ? "متوسط" :
+                                                                    grade.level === "SECONDARY" ? "ثانوي" : "الكل"
+                                                        )}`}>
+                                                            {grade.level === "PRIMARY" ? "ابتدائي" : grade.level === "MIDDLE" ? "متوسط" : "ثانوي"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Icon - positioned over the background */}
+                                                <div className="relative z-10 -mt-8 mr-4">
                                                     <div className="w-16 h-16 rounded-xl border-4 border-background overflow-hidden shadow-lg bg-primary/10 flex items-center justify-center">
                                                         <GraduationCap className="w-10 h-10 text-primary" />
                                                     </div>
                                                 </div>
 
-                                                {/* Level Badge */}
-                                                <div className="absolute top-3 right-3">
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${getLevelColor(grade.level)}`}>
-                                                        {grade.level === "ابتدائي" ? "ابتدائي" : grade.level === "متوسط" ? "متوسط" : "ثانوي"}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <CardContent className="pt-10 pb-5 px-5">
-                                                {/* Grade Name & Verification */}
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <h3 className="text-lg font-bold">{grade.name}</h3>
-                                                    {grade.verified && (
-                                                        <CheckCircle className="w-5 h-5 text-primary fill-primary/20" />
-                                                    )}
-                                                </div>
-
-                                                {/* Description */}
-                                                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                                                    {grade.description}
-                                                </p>
-
-                                                {/* Stats */}
-                                                <div className="flex items-center justify-between text-sm pt-4 border-t">
-                                                    <div className="flex items-center gap-1 text-muted-foreground">
-                                                        <Users className="w-4 h-4" />
-                                                        <span>{grade.studentsCount.toLocaleString("ar-SA")} طالب</span>
+                                                <CardContent className="pt-2 pb-5 px-5">
+                                                    {/* Grade Name & Verification */}
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h3 className="text-lg font-bold">{grade.name}</h3>
+                                                        {grade.verified && (
+                                                            <CheckCircle className="w-5 h-5 text-primary fill-primary/20" />
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-1 text-primary">
-                                                        <BookOpen className="w-4 h-4" />
-                                                        <span>{grade.subjects.length} مواد</span>
+
+                                                    {/* Description */}
+                                                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                                                        {grade.description}
+                                                    </p>
+
+                                                    {/* Stats */}
+                                                    <div className="flex items-center justify-between text-sm pt-4 border-t">
+                                                        <div className="flex items-center gap-1 text-muted-foreground">
+                                                            <Users className="w-4 h-4" />
+                                                            <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")} طالب</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 text-primary">
+                                                            <BookOpen className="w-4 h-4" />
+                                                            <span>{grade.subjects?.length || 0} مواد</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </Link>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
+                                                </CardContent>
+                                            </Card>
+                                        </Link>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        )}
                     </div>
 
                     {filteredGrades.length === 0 && (

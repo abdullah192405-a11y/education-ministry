@@ -21,7 +21,7 @@ const NotFound = () => {
             <Link to="/"><Home className="w-4 h-4" />العودة للرئيسية</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/channels"><Search className="w-4 h-4" />استكشف القنوات</Link>
+            <Link to="/grades"><Search className="w-4 h-4" />استكشف المناهج</Link>
           </Button>
         </div>
       </motion.div>

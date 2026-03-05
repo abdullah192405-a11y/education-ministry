@@ -75,7 +75,7 @@ const JoinSection = () => {
                 size="lg"
                 className="h-14 bg-white text-primary hover:bg-white/90 font-bold text-lg px-8"
               >
-                <Link to="/channels">
+                <Link to="/grades">
                   <Play className="w-5 h-5" />
                   استكشف المحتوى
                 </Link>

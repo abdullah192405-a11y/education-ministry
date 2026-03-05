@@ -11,7 +11,8 @@ import {
     Shuffle, Copy, Share2, Sparkles, Zap, Target,
     Trophy, Check
 } from "lucide-react";
-import { getGradeById, getSubjectById, getTopicById } from "@/data/educationData";
+import { useTopic, useGrades, useSubject, useUser, useCreateChallengeSession } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
     categoryLabels,
     generatePin,
@@ -24,9 +25,13 @@ const ChallengeModeSelect = () => {
     const { gradeId, subjectId, topicId } = useParams();
     const navigate = useNavigate();
 
-    const grade = getGradeById(parseInt(gradeId || "0"));
-    const subject = getSubjectById(parseInt(gradeId || "0"), parseInt(subjectId || "0"));
-    const topic = getTopicById(parseInt(gradeId || "0"), parseInt(subjectId || "0"), parseInt(topicId || "0"));
+    const { data: grades = [] } = useGrades();
+    const grade = grades.find(g => g.id.toString() === gradeId || g.slug === gradeId);
+
+    const { data: topic, isLoading: isLoadingTopic } = useTopic(topicId || "");
+    const { data: subject, isLoading: isLoadingSubject } = useSubject(subjectId || "");
+
+    const isLoading = isLoadingTopic || isLoadingSubject;
 
     const [step, setStep] = useState<"mode" | "category" | "group_setup">("mode");
     const [selectedMode, setSelectedMode] = useState<ChallengeMode | null>(null);
@@ -34,6 +39,25 @@ const ChallengeModeSelect = () => {
     const [groupPin, setGroupPin] = useState<string>("");
     const [playerName, setPlayerName] = useState<string>("");
     const [copied, setCopied] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+
+    const { data: currentUser } = useUser();
+    const createSessionMutation = useCreateChallengeSession();
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <Skeleton className="h-12 w-64 mx-auto mb-4" />
+                        <Skeleton className="h-32 w-full max-w-2xl mx-auto" />
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
 
     if (!grade || !subject || !topic) {
         return (
@@ -57,23 +81,45 @@ const ChallengeModeSelect = () => {
         setStep("category");
     };
 
-    const handleCategorySelect = (category: ChallengeCategory) => {
+    const handleCategorySelect = async (category: ChallengeCategory) => {
         setSelectedCategory(category);
 
         if (selectedMode === "single") {
             // Navigate directly to single player challenge
             navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/single/${category}`);
         } else {
-            // Show group setup
+            setIsCreating(true);
             const pin = generatePin();
-            setGroupPin(pin);
-            setStep("group_setup");
+
+            try {
+                // Determine host ID if available, otherwise just use a placeholder
+                const hostId = currentUser?.id || "00000000-0000-0000-0000-000000000000";
+                await createSessionMutation.mutateAsync({
+                    topicId: topicId || "",
+                    hostId: hostId,
+                    mode: "GROUP",
+                    category: (category || "mixed").toUpperCase(),
+                    pin: pin
+                });
+
+                // Immediately navigate to the GroupChallenge lobby instead of a local step,
+                // so the host can see players joining real-time.
+                navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/group/${category}/${pin}?host=true&creator=true&name=${encodeURIComponent(currentUser?.name || 'المعلم')}`);
+            } catch (error: any) {
+                console.error("Failed to pre-create session", error);
+                alert("تفاصيل الخطأ: " + (error.message || JSON.stringify(error)));
+            } finally {
+                setIsCreating(false);
+            }
         }
     };
 
-    const handleStartGroupChallenge = () => {
-        if (!playerName.trim()) return;
-        navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/group/${selectedCategory}/${groupPin}?creator=true&name=${encodeURIComponent(playerName)}`);
+    const handleStartGroupChallenge = async () => {
+        if (!playerName.trim() || !currentUser?.id) return;
+
+        // Session is already created in DB, so we just navigate to it.
+        // GroupChallenge.tsx will handle changing the phase from lobby to playing.
+        navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/group/${selectedCategory}/${groupPin}?host=true&creator=true&name=${encodeURIComponent(playerName)}`);
     };
 
     const handleCopyPin = () => {
@@ -292,108 +338,6 @@ const ChallengeModeSelect = () => {
                                         </Card>
                                     </motion.button>
                                 </div>
-                            </motion.div>
-                        )}
-
-                        {/* Step 3: Group Setup */}
-                        {step === "group_setup" && (
-                            <motion.div
-                                key="group_setup"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -20 }}
-                                className="max-w-lg mx-auto"
-                            >
-                                <div className="flex items-center justify-between mb-8">
-                                    <Button variant="ghost" onClick={() => setStep("category")} className="gap-2">
-                                        <ChevronLeft className="w-4 h-4" />
-                                        رجوع
-                                    </Button>
-                                    <h2 className="text-2xl font-bold">إعداد التحدي</h2>
-                                    <div className="w-20" />
-                                </div>
-
-                                <Card className="p-8">
-                                    {/* PIN Display */}
-                                    <div className="text-center mb-8">
-                                        <div className="text-sm text-muted-foreground mb-2">رمز التحدي (PIN)</div>
-                                        <div className="flex items-center justify-center gap-2">
-                                            <motion.div
-                                                initial={{ scale: 0 }}
-                                                animate={{ scale: 1 }}
-                                                className="text-5xl font-black tracking-[0.3em] bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent"
-                                            >
-                                                {groupPin}
-                                            </motion.div>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={handleCopyPin}
-                                                className="relative"
-                                            >
-                                                {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    {/* Share Options */}
-                                    <div className="flex gap-2 mb-8">
-                                        <Button
-                                            variant="outline"
-                                            className="flex-1 gap-2"
-                                            onClick={handleCopyLink}
-                                        >
-                                            <Share2 className="w-4 h-4" />
-                                            نسخ الرابط
-                                        </Button>
-                                    </div>
-
-                                    {/* Divider */}
-                                    <div className="relative mb-6">
-                                        <div className="absolute inset-0 flex items-center">
-                                            <div className="w-full border-t" />
-                                        </div>
-                                        <div className="relative flex justify-center text-xs">
-                                            <span className="bg-card px-2 text-muted-foreground">شارك هذا الرمز مع أصدقائك</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Host Name Input */}
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-sm font-medium mb-2 block">اسمك (كمضيف)</label>
-                                            <Input
-                                                type="text"
-                                                placeholder="أدخل اسمك"
-                                                value={playerName}
-                                                onChange={(e) => setPlayerName(e.target.value)}
-                                                className="text-center text-lg h-12"
-                                                maxLength={20}
-                                            />
-                                        </div>
-
-                                        <Button
-                                            onClick={handleStartGroupChallenge}
-                                            disabled={!playerName.trim()}
-                                            size="lg"
-                                            className="w-full gap-2 h-14 text-lg"
-                                            variant="hero"
-                                        >
-                                            <Sparkles className="w-5 h-5" />
-                                            ابدأ التحدي
-                                        </Button>
-                                    </div>
-
-                                    {/* Tips */}
-                                    <div className="mt-6 p-4 rounded-xl bg-muted/50">
-                                        <div className="flex items-start gap-3">
-                                            <Zap className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-                                            <div className="text-sm text-muted-foreground">
-                                                <strong className="text-foreground">نصيحة:</strong> اللاعبون يمكنهم الانضمام عبر إدخال الرمز في الصفحة الرئيسية أو عبر الرابط المباشر
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Card>
                             </motion.div>
                         )}
                     </AnimatePresence>

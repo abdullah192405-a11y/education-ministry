@@ -14,12 +14,11 @@ import GroupChallenge from "./pages/GroupChallenge";
 import JoinChallenge from "./pages/JoinChallenge";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 // Dashboard Pages
-import { UserDashboard, ChannelDashboard, AdminDashboard, ChallengeAnalytics } from "./pages/dashboard";
-import StudentDashboard from "./pages/dashboard/StudentDashboard";
-import TeacherDashboard from "./pages/dashboard/TeacherDashboard";
-import NewAdminDashboard from "./pages/dashboard/NewAdminDashboard";
+import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect } from "./pages/dashboard";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -48,15 +47,44 @@ const App = () => (
           <Route path="/join/:pin" element={<JoinChallenge />} />
 
           {/* Dashboard Routes */}
-          <Route path="/dashboard" element={<UserDashboard />} />
-          <Route path="/dashboard/student" element={<StudentDashboard />} />
-          <Route path="/dashboard/teacher" element={<TeacherDashboard />} />
-          <Route path="/dashboard/admin" element={<NewAdminDashboard />} />
-          <Route path="/dashboard/analytics/:challengeId" element={<ChallengeAnalytics />} />
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
+          <Route
+            path="/dashboard/student"
+            element={
+              <ProtectedRoute allowedRoles={["STUDENT", "طالب", "ADMIN", "مسؤول"]}>
+                <StudentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/teacher"
+            element={
+              <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
+                <TeacherDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "مسؤول"]}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/analytics/:challengeId"
+            element={
+              <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
+                <ChallengeAnalytics />
+              </ProtectedRoute>
+            }
+          />
 
 
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

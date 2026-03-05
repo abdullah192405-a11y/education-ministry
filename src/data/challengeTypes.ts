@@ -1,4 +1,28 @@
 // Challenge Types and Game Types
+export interface ContentMedia {
+    id?: string;
+    type: "video" | "image" | "text" | "pdf";
+    url?: string;
+    content?: string; // For text type
+    caption?: string;
+    file?: File; // Temporary for upload
+    fileName?: string;
+    pdfBase64?: string; // For AI analysis
+}
+
+export interface EducationalContent {
+    id: string | number;
+    title: string;
+    description: string;
+    thumbnail: string;
+    targetAudience: "all" | "children" | "adults";
+    duration: string;
+    media: ContentMedia[];
+    quiz?: any[]; // Keep for compatibility if needed
+    views: number;
+    createdAt: string;
+}
+
 export type ChallengeMode = "single" | "group";
 
 export type ActivityType =
@@ -42,6 +66,7 @@ export interface ChallengeQuestion {
 // Player in a challenge
 export interface Player {
     id: string;
+    userId?: string;
     name: string;
     avatar: string;
     score: number;
@@ -61,7 +86,6 @@ export interface ChallengeSession {
     mode: ChallengeMode;
     category: ChallengeCategory;
     contentId: number;
-    channelId: number;
     questions: ChallengeQuestion[];
     players: Player[];
     currentQuestionIndex: number;

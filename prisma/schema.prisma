@@ -1,0 +1,639 @@
+// ============================================================================
+// Lab4 - Education Ministry Platform
+// Prisma Schema for Supabase (PostgreSQL)
+// ============================================================================
+// This schema covers the complete data model for the educational platform:
+// - Users & Authentication (Student, Teacher, Admin roles)
+// - Education Hierarchy (Grades > Subjects > Topics)
+// - Content & Media (Videos, Images, Text, PDFs)
+// - Quizzes & Questions
+// - Channels & Educational Content
+// - Challenges & Game Sessions (Single/Group)
+// - Gamification (Badges, Leaderboards, Streaks)
+// - Analytics & Audit Logs
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// 1. USERS & AUTHENTICATION
+// ============================================================================
+
+/// User roles in the platform
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+/// User account - integrates with Supabase Auth
+model User {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authId    String?   @unique @map("auth_id") // Supabase Auth user id
+  email     String    @unique
+  name      String
+  avatar    String?
+  role      UserRole  @default(STUDENT)
+  verified  Boolean   @default(false)
+  details   String? // e.g., "الصف الأول الابتدائي" or "مادة اللغة العربية"
+  isActive  Boolean   @default(true) @map("is_active")
+  lastLogin DateTime? @map("last_login")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Role-specific profiles
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+
+  // Relations
+  challengeResults ChallengeResult[]
+  playerSessions   PlayerSession[]
+  earnedBadges     UserBadge[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+
+
+
+  @@map("users")
+}
+
+/// Student-specific profile data
+model StudentProfile {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  gradeId         String?  @map("grade_id") @db.Uuid
+  totalPoints     Int      @default(0) @map("total_points")
+  totalChallenges Int      @default(0) @map("total_challenges")
+  completedTopics Int      @default(0) @map("completed_topics")
+  averageScore    Float    @default(0) @map("average_score")
+  longestStreak   Int      @default(0) @map("longest_streak")
+  currentStreak   Int      @default(0) @map("current_streak")
+  rank            Int?
+  totalStudyHours Float    @default(0) @map("total_study_hours")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grade           Grade?                   @relation(fields: [gradeId], references: [id])
+  subjectProgress StudentSubjectProgress[]
+  topicActivities StudentTopicActivity[]
+  enrollments     StudentEnrollment[]
+
+  @@map("student_profiles")
+}
+
+/// Teacher-specific profile data
+model TeacherProfile {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  subjectId       String?  @map("subject_id") @db.Uuid
+  gradeId         String?  @map("grade_id") @db.Uuid
+  totalStudents   Int      @default(0) @map("total_students")
+  totalTopics     Int      @default(0) @map("total_topics")
+  totalChallenges Int      @default(0) @map("total_challenges")
+  averageScore    Float    @default(0) @map("average_score")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id])
+  grade   Grade?   @relation(fields: [gradeId], references: [id])
+  topics  Topic[]  @relation("TeacherTopics")
+
+  @@map("teacher_profiles")
+}
+
+// ============================================================================
+// 2. EDUCATION HIERARCHY: Grades > Subjects > Topics
+// ============================================================================
+
+/// Education level enum (Primary, Middle, Secondary)
+enum GradeLevel {
+  PRIMARY // ابتدائي
+  MIDDLE // متوسط
+  SECONDARY // ثانوي
+}
+
+/// Grade (Class level) - المستوى الأول
+model Grade {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String // e.g., "الصف الأول الابتدائي"
+  slug          String     @unique
+  level         GradeLevel
+  description   String
+  coverImage    String?    @map("cover_image")
+  icon          String?
+  studentsCount Int        @default(0) @map("students_count")
+  verified      Boolean    @default(false)
+  sortOrder     Int        @default(0) @map("sort_order")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  subjects        Subject[]
+  studentProfiles StudentProfile[]
+  teacherProfiles TeacherProfile[]
+  enrollments     StudentEnrollment[]
+
+  @@map("grades")
+}
+
+/// Subject (within a Grade) - المستوى الثاني (e.g., اللغة العربية، الرياضيات)
+model Subject {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gradeId     String   @map("grade_id") @db.Uuid
+  name        String // e.g., "اللغة العربية"
+  description String
+  icon        String? // emoji or URL
+  color       String? // hex color for UI
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  grade           Grade                    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  topics          Topic[]
+  teacherProfiles TeacherProfile[]
+  subjectProgress StudentSubjectProgress[]
+
+  @@unique([gradeId, name])
+  @@map("subjects")
+}
+
+/// Topic (within a Subject) - المستوى الثالث (e.g., حروف الهجاء)
+model Topic {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subjectId   String   @map("subject_id") @db.Uuid
+  title       String
+  description String
+  thumbnail   String?
+  views       Int      @default(0)
+  duration    String? // e.g., "25 دقيقة"
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  subject           Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  mediaItems        TopicMedia[]
+  quizQuestions     QuizQuestion[]
+  challengeItems    ChallengeQuestion[]    @relation("TopicChallengeQuestions")
+  challengeSessions ChallengeSession[]
+  topicActivities   StudentTopicActivity[]
+  teachers          TeacherProfile[]       @relation("TeacherTopics")
+
+  @@map("topics")
+}
+
+// ============================================================================
+// 3. CONTENT & MEDIA
+// ============================================================================
+
+/// Media content type
+enum MediaType {
+  VIDEO
+  IMAGE
+  TEXT
+  PDF
+}
+
+/// Media item attached to a Topic
+model TopicMedia {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId       String    @map("topic_id") @db.Uuid
+  type          MediaType
+  url           String?
+  content       String?   @db.Text // For text-type media (rich content)
+  caption       String?
+  fileName      String?   @map("file_name")
+  extractedText String?   @map("extracted_text") @db.Text
+  pdfBase64     String?   @map("pdf_base64") @db.Text
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@map("topic_media")
+}
+
+// ============================================================================
+// 4. QUIZZES & QUESTIONS
+// ============================================================================
+
+/// Quiz question for a topic (standard quiz)
+model QuizQuestion {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId       String   @map("topic_id") @db.Uuid
+  question      String
+  options       String[] // array of option strings
+  correctAnswer Int      @map("correct_answer") // index into options
+  explanation   String?
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_questions")
+}
+
+
+
+// ============================================================================
+// 6. CHALLENGES & GAME SESSIONS
+// ============================================================================
+
+/// Challenge mode
+enum ChallengeMode {
+  SINGLE
+  GROUP
+}
+
+/// Activity types for challenges
+enum ActivityType {
+  MULTIPLE_CHOICE // اختيار متعدد
+  TRUE_FALSE // صح وخطأ
+  QA // سؤال وجواب
+  KNOW_DONT_KNOW // أعرف / لا أعرف
+  ORDER_QUESTIONS // رتب الأسئلة
+}
+
+/// Game types for challenges
+enum GameType {
+  PUZZLE // لعبة الألغاز
+  SHOOTING // لعبة التصويب
+  MATCHING // لعبة المطابقة
+  WHEEL_SPIN // دوران العجلة
+}
+
+/// Challenge category
+enum ChallengeCategory {
+  ACTIVITIES
+  GAMES
+  MIXED
+}
+
+/// Challenge question type (union of activity + game)
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  QA
+  KNOW_DONT_KNOW
+  ORDER_QUESTIONS
+  PUZZLE
+  SHOOTING
+  MATCHING
+  WHEEL_SPIN
+}
+
+/// Challenge question (rich question format for all types)
+model ChallengeQuestion {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId          String?      @map("topic_id") @db.Uuid
+
+  type             QuestionType
+  typeTitle        String?      @map("type_title")
+  question         String
+  options          String[] // For MCQ, True/False, Shooting
+  correctAnswer    String?      @map("correct_answer") // Can be index, string, or JSON array
+  imageUrl         String?      @map("image_url")
+  pairs            Json? // For matching: [{ left, right }]
+  orderItems       String[]     @map("order_items") // For ordering (in correct order)
+  explanation      String?
+  points           Int          @default(100)
+  timeLimit        Int          @default(15) @map("time_limit") // seconds
+  wheelSegments    Json?        @map("wheel_segments") // For wheel_spin
+  sortOrder        Int          @default(0) @map("sort_order")
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  topic            Topic?            @relation("TopicChallengeQuestions", fields: [topicId], references: [id], onDelete: Cascade)
+  sessionQuestions SessionQuestion[]
+  answers          ChallengeAnswer[]
+
+  @@map("challenge_questions")
+}
+
+/// Challenge session status
+enum SessionStatus {
+  WAITING
+  PLAYING
+  FINISHED
+}
+
+/// Challenge session (a game instance)
+model ChallengeSession {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pin                  String            @unique // 6-digit PIN
+  mode                 ChallengeMode
+  category             ChallengeCategory
+  topicId              String?           @map("topic_id") @db.Uuid
+
+  hostId               String            @map("host_id") @db.Uuid
+  currentQuestionIndex Int               @default(0) @map("current_question_index")
+  status               SessionStatus     @default(WAITING)
+
+  // Settings
+  showLeaderboard Boolean @default(true) @map("show_leaderboard")
+  allowLateJoin   Boolean @default(true) @map("allow_late_join")
+  musicEnabled    Boolean @default(true) @map("music_enabled")
+  maxPlayers      Int     @default(30) @map("max_players")
+
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  topic            Topic?            @relation(fields: [topicId], references: [id])
+
+  players          PlayerSession[]
+  sessionQuestions SessionQuestion[]
+  results          ChallengeResult[]
+
+  @@index([pin])
+  @@index([status])
+  @@map("challenge_sessions")
+}
+
+/// Links a challenge question to a session (question order within session)
+model SessionQuestion {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String @map("session_id") @db.Uuid
+  questionId    String @map("question_id") @db.Uuid
+  questionOrder Int    @map("question_order")
+
+  // Relations
+  session  ChallengeSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question ChallengeQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@map("session_questions")
+}
+
+/// Player within a challenge session
+model PlayerSession {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid // nullable for anonymous players
+  name           String
+  avatar         String?
+  score          Int      @default(0)
+  correctAnswers Int      @default(0) @map("correct_answers")
+  wrongAnswers   Int      @default(0) @map("wrong_answers")
+  streak         Int      @default(0)
+  rank           Int?
+  isHost         Boolean  @default(false) @map("is_host")
+  isOnline       Boolean  @default(true) @map("is_online")
+  lastAnswerTime Float?   @map("last_answer_time") // milliseconds
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  // Relations
+  session ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User?            @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+  @@map("player_sessions")
+}
+
+/// Challenge result (for single player / overall summary)
+model ChallengeResult {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId              String   @map("session_id") @db.Uuid
+  userId                 String   @map("user_id") @db.Uuid
+  totalQuestions         Int      @map("total_questions")
+  correctAnswers         Int      @map("correct_answers")
+  wrongAnswers           Int      @map("wrong_answers")
+  score                  Int
+  maxScore               Int      @map("max_score")
+  percentage             Float
+  timeTaken              Float    @map("time_taken") // seconds
+  averageTimePerQuestion Float    @map("avg_time_per_question")
+  longestStreak          Int      @map("longest_streak")
+  accuracy               Float
+  level                  String // e.g., "أسطورة", "خبير"
+  questionResults        Json     @map("question_results") // [{questionId, correct, timeTaken, pointsEarned}]
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  // Relations
+  session      ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id])
+  resultBadges ResultBadge[]
+  answers      ChallengeAnswer[]
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("challenge_results")
+}
+
+/// Individual answer/response for a challenge question
+model ChallengeAnswer {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resultId        String   @map("result_id") @db.Uuid
+  questionId      String   @map("question_id") @db.Uuid
+  userAnswer      String?  @map("user_answer") // The user's response (can be text, number, or JSON for complex answers)
+  isCorrect       Boolean  @map("is_correct")
+  timeTaken       Float    @map("time_taken") // seconds
+  pointsEarned    Int      @default(0) @map("points_earned")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  result   ChallengeResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  question ChallengeQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([resultId])
+  @@index([questionId])
+  @@map("challenge_answers")
+}
+
+// ============================================================================
+// 7. GAMIFICATION: Badges, Leaderboards, Streaks
+// ============================================================================
+
+/// Badge definition
+model Badge {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique // e.g., "مثالي"
+  slug        String   @unique
+  icon        String // emoji or URL
+  description String
+  condition   String // human-readable condition, e.g., "100% accuracy"
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  userBadges   UserBadge[]
+  resultBadges ResultBadge[]
+
+  @@map("badges")
+}
+
+/// Many-to-many: user has earned badge
+model UserBadge {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  badgeId  String   @map("badge_id") @db.Uuid
+  earnedAt DateTime @default(now()) @map("earned_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+/// Badges earned in a specific result
+model ResultBadge {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resultId String @map("result_id") @db.Uuid
+  badgeId  String @map("badge_id") @db.Uuid
+
+  // Relations
+  result ChallengeResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  badge  Badge           @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, badgeId])
+  @@map("result_badges")
+}
+
+// ============================================================================
+// 8. STUDENT PROGRESS TRACKING
+// ============================================================================
+
+/// Student enrollment in a grade
+model StudentEnrollment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId  String   @map("student_id") @db.Uuid
+  gradeId    String   @map("grade_id") @db.Uuid
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  // Relations
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  grade   Grade          @relation(fields: [gradeId], references: [id])
+
+  @@unique([studentId, gradeId])
+  @@map("student_enrollments")
+}
+
+/// Progress per subject for a student
+model StudentSubjectProgress {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId       String   @map("student_id") @db.Uuid
+  subjectId       String   @map("subject_id") @db.Uuid
+  completedTopics Int      @default(0) @map("completed_topics")
+  totalTopics     Int      @default(0) @map("total_topics")
+  averageScore    Float    @default(0) @map("average_score")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentId, subjectId])
+  @@map("student_subject_progress")
+}
+
+/// Individual topic activity log for a student
+model StudentTopicActivity {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId  String   @map("student_id") @db.Uuid
+  topicId    String   @map("topic_id") @db.Uuid
+  topicTitle String   @map("topic_title")
+  score      Float    @default(0)
+  completed  Boolean  @default(false)
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  topic   Topic          @relation(fields: [topicId], references: [id])
+
+  @@map("student_topic_activities")
+}
+
+// ============================================================================
+// 9. PLATFORM SETTINGS & ANALYTICS
+// ============================================================================
+
+/// Audit log for admin tracking
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String // e.g., "user.login", "topic.create", "challenge.start"
+  entity    String? // e.g., "Topic", "Challenge"
+  entityId  String?  @map("entity_id")
+  metadata  Json? // additional context
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// System-wide platform settings (key-value store)
+model PlatformSetting {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key       String   @unique
+  value     String   @db.Text
+  type      String   @default("string") // "string", "number", "boolean", "json"
+  label     String? // Human-readable label (Arabic)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+/// Notifications
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  message   String   @db.Text
+  type      String   @default("info") // "info", "success", "warning", "error"
+  isRead    Boolean  @default(false) @map("is_read")
+  link      String? // optional navigation link
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+/// Announcements (system-wide, from admin)
+model Announcement {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  content     String    @db.Text
+  targetRole  UserRole? @map("target_role") // null = everyone
+  isActive    Boolean   @default(true) @map("is_active")
+  publishedAt DateTime  @default(now()) @map("published_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("announcements")
+}

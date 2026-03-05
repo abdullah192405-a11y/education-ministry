@@ -43,7 +43,7 @@ const CTASection = () => {
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button variant="hero" size="xl" asChild>
-                  <Link to="/create-channel" className="group">
+                  <Link to="/register" className="group">
                     أنشئ محتواك مجاناً
                     <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
                   </Link>

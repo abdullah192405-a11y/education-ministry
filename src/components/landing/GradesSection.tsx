@@ -3,24 +3,47 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, BookOpen, CheckCircle, GraduationCap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { gradesData } from "@/data/educationData";
-
-// Get first 4 grades for the homepage
-const featuredGrades = gradesData.slice(0, 4);
+import { useGrades } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const GradesSection = () => {
+    const { data: gradesData = [], isLoading } = useGrades();
+    const featuredGrades = gradesData.slice(0, 4);
+
     const getLevelColor = (level: string) => {
         switch (level) {
-            case "ابتدائي":
+            case "PRIMARY":
                 return "bg-emerald-500/90 text-white";
-            case "متوسط":
+            case "MIDDLE":
                 return "bg-blue-500/90 text-white";
-            case "ثانوي":
+            case "SECONDARY":
                 return "bg-purple-500/90 text-white";
             default:
                 return "bg-gray-500/90 text-white";
         }
     };
+
+    const getLevelLabel = (level: string) => {
+        switch (level) {
+            case "PRIMARY": return "ابتدائي";
+            case "MIDDLE": return "متوسط";
+            case "SECONDARY": return "ثانوي";
+            default: return level;
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <section className="py-20 md:py-32">
+                <div className="container mx-auto px-4">
+                    <Skeleton className="h-12 w-64 mb-12" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}
+                    </div>
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="py-20 md:py-32">
@@ -54,12 +77,12 @@ const GradesSection = () => {
                             viewport={{ once: true }}
                             transition={{ duration: 0.5, delay: index * 0.1 }}
                         >
-                            <Link to={`/grade/${grade.id}`}>
+                            <Link to={`/grade/${grade.slug}`}>
                                 <Card variant="interactive" className="h-full overflow-hidden group">
                                     {/* Cover Image */}
                                     <div className="relative h-32 overflow-hidden">
                                         <img
-                                            src={grade.coverImage}
+                                            src={grade.cover_image || grade.coverImage}
                                             alt={grade.name}
                                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                         />
@@ -75,7 +98,7 @@ const GradesSection = () => {
                                         {/* Level Badge */}
                                         <div className="absolute top-3 left-3">
                                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${getLevelColor(grade.level)}`}>
-                                                {grade.level}
+                                                {getLevelLabel(grade.level)}
                                             </span>
                                         </div>
                                     </div>
@@ -98,11 +121,11 @@ const GradesSection = () => {
                                         <div className="flex items-center justify-between text-xs pt-3 border-t">
                                             <div className="flex items-center gap-1 text-muted-foreground">
                                                 <Users className="w-3 h-3" />
-                                                <span>{grade.studentsCount.toLocaleString("ar-SA")}</span>
+                                                <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")}</span>
                                             </div>
                                             <div className="flex items-center gap-1 text-primary">
                                                 <BookOpen className="w-3 h-3" />
-                                                <span>{grade.subjects.length} مواد</span>
+                                                <span>{grade.subjects?.length || 0} مواد</span>
                                             </div>
                                         </div>
                                     </CardContent>

@@ -1,19 +1,37 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Trophy, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import AnnouncementBar from "./AnnouncementBar";
+import { useUser } from "@/hooks/useDatabase";
+import { LayoutDashboard, LogIn, User, Menu, X, Trophy } from "lucide-react";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { data: user } = useUser();
+
+  const getDashboardPath = () => {
+    if (!user?.role) return "/dashboard/student";
+    const role = user.role.toUpperCase();
+    if (role === "ADMIN" || role === "مسؤول") return "/dashboard/admin";
+    if (role === "TEACHER" || role === "معلم" || role === "معلمة") return "/dashboard/teacher";
+    return "/dashboard/student";
+  };
+
+  const dashboardPath = getDashboardPath();
 
   const navItems = [
     { label: "الرئيسية", href: "/" },
     { label: "الصفوف الدراسية", href: "/grades" },
   ];
 
+  if (user) {
+    navItems.push({ label: "لوحة التحكم", href: dashboardPath });
+  }
+
   return (
     <header className="fixed top-0 right-0 left-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+      <AnnouncementBar />
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
@@ -39,18 +57,37 @@ const Header = () => {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/login">
-                <LogIn className="w-4 h-4" />
-                تسجيل الدخول
-              </Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link to="/login">
-                <User className="w-4 h-4" />
-                إنشاء حساب
-              </Link>
-            </Button>
+            {user ? (
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to={dashboardPath}>
+                    <LayoutDashboard className="w-4 h-4" />
+                    لوحة التحكم
+                  </Link>
+                </Button>
+                <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+                    <User className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium text-primary">{user.name}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/login">
+                    <LogIn className="w-4 h-4" />
+                    تسجيل الدخول
+                  </Link>
+                </Button>
+                <Button size="sm" asChild>
+                  <Link to="/register">
+                    <User className="w-4 h-4" />
+                    إنشاء حساب
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -84,18 +121,29 @@ const Header = () => {
                 </Link>
               ))}
               <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
-                <Button variant="outline" className="w-full" asChild>
-                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <LogIn className="w-4 h-4" />
-                    تسجيل الدخول
-                  </Link>
-                </Button>
-                <Button className="w-full" asChild>
-                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <User className="w-4 h-4" />
-                    إنشاء حساب
-                  </Link>
-                </Button>
+                {user ? (
+                  <Button className="w-full" asChild>
+                    <Link to={dashboardPath} onClick={() => setIsMenuOpen(false)}>
+                      <LayoutDashboard className="w-4 h-4" />
+                      لوحة التحكم
+                    </Link>
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" className="w-full" asChild>
+                      <Link to="/login" onClick={() => setIsMenuOpen(false)}>
+                        <LogIn className="w-4 h-4" />
+                        تسجيل الدخول
+                      </Link>
+                    </Button>
+                    <Button className="w-full" asChild>
+                      <Link to="/register" onClick={() => setIsMenuOpen(false)}>
+                        <User className="w-4 h-4" />
+                        إنشاء حساب
+                      </Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </nav>
           </motion.div>

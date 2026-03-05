@@ -59,7 +59,7 @@ const FeaturesSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-5xl font-black mb-4">
-            لماذا <span className="text-primary">المنصة التعليمية</span>؟
+            لماذا <span className="text-primary">Lab4</span>؟
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             منصة متكاملة تجمع بين التعلم والمتعة في تجربة واحدة لا تُنسى

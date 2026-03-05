@@ -13,41 +13,57 @@ import {
     ArrowLeft, ArrowRight, GripVertical, Sparkles, ArrowUp, ArrowDown,
     Volume2, VolumeX, Music, Trash2
 } from "lucide-react";
-import { getChannelById, getContentById } from "@/data/channelsData";
-import { getTopicById } from "@/data/educationData";
 import {
-    generateQuestionsFromContent,
+    useTopic,
+    useUser,
+    useStudentProfile,
+    useCreateChallengeSession,
+    useSaveChallengeResult,
+    useUpdateStudentProfile,
+    useSaveTopicActivity,
+    useUpsertSubjectProgress,
+    useStudentSubjectProgress,
+    useStudentTopicActivities,
+    useAwardBadges,
+    useSaveAnswers
+} from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
     getWheelSubQuestion,
     getLevelFromScore,
     availableBadges,
     type ChallengeQuestion,
-    type ChallengeCategory,
     type SinglePlayerResult,
     type Badge
 } from "@/data/challengeTypes";
 import { useSound } from "@/hooks/useSound";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 type GameState = "intro" | "playing" | "results";
 
 const SingleChallenge = () => {
-    const { channelId, contentId, category, gradeId, subjectId, topicId } = useParams();
+    const { category, gradeId, subjectId, topicId } = useParams();
     const navigate = useNavigate();
 
-    const isEducationMode = !!gradeId && !!subjectId && !!topicId;
+    const { toast } = useToast();
+    const { data: topic, isLoading } = useTopic(topicId || "");
+    const content = topic;
 
-    let channel: any = null;
-    let content: any = null;
+    // Current user & student profile for saving results
+    const { data: currentUser } = useUser();
+    const { data: studentProfile } = useStudentProfile(currentUser?.id || "");
 
-    if (isEducationMode) {
-        content = getTopicById(
-            parseInt(gradeId || "0"),
-            parseInt(subjectId || "0"),
-            parseInt(topicId || "0")
-        );
-    } else {
-        channel = getChannelById(parseInt(channelId || "0"));
-        content = getContentById(parseInt(channelId || "0"), parseInt(contentId || "0"));
-    }
+    // Mutation hooks for saving results
+    const createSessionMutation = useCreateChallengeSession();
+    const saveResultMutation = useSaveChallengeResult();
+    const updateStudentProfileMutation = useUpdateStudentProfile();
+    const saveTopicActivityMutation = useSaveTopicActivity();
+    const upsertSubjectProgressMutation = useUpsertSubjectProgress();
+    const { data: subjectProgress } = useStudentSubjectProgress(studentProfile?.id || "");
+    const awardBadgesMutation = useAwardBadges();
+    const saveAnswersMutation = useSaveAnswers();
+    const [resultsSaved, setResultsSaved] = useState(false);
 
     const [gameState, setGameState] = useState<GameState>("intro");
     const [questions, setQuestions] = useState<ChallengeQuestion[]>([]);
@@ -93,7 +109,7 @@ const SingleChallenge = () => {
         if (content && category) {
             let loadedQuestions: ChallengeQuestion[] = [];
 
-            // Try to use new challengeItems from content
+            // Load challenge questions from database
             if (content.challengeItems && content.challengeItems.length > 0) {
                 if (category === 'activities') {
                     loadedQuestions = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
@@ -102,14 +118,6 @@ const SingleChallenge = () => {
                 } else { // mixed
                     loadedQuestions = content.challengeItems;
                 }
-            }
-
-            // Fallback to generator if empty
-            if (loadedQuestions.length === 0) {
-                loadedQuestions = generateQuestionsFromContent(
-                    content.id,
-                    category as ChallengeCategory
-                );
             }
 
             setQuestions(loadedQuestions);
@@ -140,6 +148,7 @@ const SingleChallenge = () => {
         setLongestStreak(0);
         setQuestionResults([]);
         setTotalTime(0);
+        setResultsSaved(false);
 
         // Start background music
         play('background');
@@ -430,6 +439,31 @@ const SingleChallenge = () => {
         processAnswer(isCorrect, timeTaken);
     };
 
+    const handleShare = () => {
+        const results = getResults();
+        const shareText = `لقد حصلت على ${results.score} نقطة بنسبة ${results.percentage}% في تحدي ${topic?.title || 'تحدي جديد'}! 🏆`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: 'نتيجة التحدي',
+                text: shareText,
+                url: window.location.href,
+            }).catch(() => {
+                navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+                toast({
+                    title: "تم نسخ الرابط",
+                    description: "يمكنك الآن مشاركته مع أصدقائك",
+                });
+            });
+        } else {
+            navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+            toast({
+                title: "تم نسخ الرابط",
+                description: "يمكنك الآن مشاركته مع أصدقائك",
+            });
+        }
+    };
+
     const handleNextQuestion = () => {
         if (currentIndex < questions.length - 1) {
             setCurrentIndex(currentIndex + 1);
@@ -438,6 +472,223 @@ const SingleChallenge = () => {
             setGameState("results");
         }
     };
+
+    // --- Save results to database when game ends ---
+    useEffect(() => {
+        if (gameState !== "results" || resultsSaved) return;
+        if (!currentUser?.id || !studentProfile?.id || !topicId || !content) return;
+
+        const saveResults = async () => {
+            try {
+                setResultsSaved(true);
+                const results = getResults();
+                const subjectData = content.subject;
+
+                // Skip DB save if there are no questions
+                if (results.totalQuestions === 0) {
+                    console.warn("No questions to save results for.");
+                    stop('background');
+                    play('achievement');
+                    return;
+                }
+                // 0. Pre-check: Was this topic already completed?
+                // This must happen BEFORE we save the new activity!
+                console.log("[Save] Step 0: Checking for previous completions...");
+                const { data: previousCompletions } = await supabase
+                    .from("student_topic_activities")
+                    .select("id")
+                    .eq("student_id", studentProfile.id)
+                    .eq("topic_id", topicId)
+                    .eq("completed", true);
+
+                const wasTopicAlreadyCompleted = (previousCompletions || []).length > 0;
+                console.log("[Save] Was topic already completed?", wasTopicAlreadyCompleted);
+
+                // 1. Create a challenge session
+                console.log("[Save] Step 1: Creating challenge session...");
+                const session = await createSessionMutation.mutateAsync({
+                    topicId: topicId,
+                    hostId: currentUser.id,
+                    mode: "SINGLE",
+                    category: (category || "mixed").toUpperCase(),
+                });
+                console.log("[Save] Step 1 complete. Session ID:", session.id);
+
+                // 2. Save challenge result
+                console.log("[Save] Step 2: Saving challenge result...");
+                const savedResult = await saveResultMutation.mutateAsync({
+                    sessionId: session.id,
+                    userId: currentUser.id,
+                    totalQuestions: results.totalQuestions,
+                    correctAnswers: results.correctAnswers,
+                    wrongAnswers: results.wrongAnswers,
+                    score: results.score,
+                    maxScore: results.maxScore,
+                    percentage: results.percentage,
+                    timeTaken: results.timeTaken,
+                    averageTimePerQuestion: results.averageTimePerQuestion,
+                    longestStreak: results.longestStreak,
+                    accuracy: results.accuracy,
+                    level: results.level,
+                    questionResults: results.questionResults,
+                });
+                console.log("[Save] Step 2 complete. Result ID:", savedResult.id);
+
+                // 2.5. Save individual participant answers
+                console.log("[Save] Step 2.5: Saving individual participant answers...");
+                const answersToSave = results.questionResults.map((qr: any, index: number) => ({
+                    resultId: String(savedResult.id),
+                    questionId: String(questions[index]?.id || qr.questionId),
+                    userAnswer: qr.userAnswer ? String(qr.userAnswer) : null,
+                    isCorrect: !!qr.correct,
+                    timeTaken: Number(qr.timeTaken || 0),
+                    pointsEarned: Number(qr.pointsEarned || 0),
+                }));
+
+                if (answersToSave.length > 0) {
+                    await saveAnswersMutation.mutateAsync(answersToSave);
+                    console.log("[Save] Step 2.5 complete. Saved", answersToSave.length, "answers.");
+                }
+
+                // 3. Log topic activity
+                if (studentProfile?.id) {
+                    console.log("[Save] Step 3: Saving topic activity...");
+                    await saveTopicActivityMutation.mutateAsync({
+                        studentProfileId: studentProfile.id,
+                        topicId: topicId,
+                        topicTitle: content.title || "تحدي",
+                        score: results.percentage,
+                        completed: results.percentage >= 50,
+                    });
+                    console.log("[Save] Step 3 complete.");
+
+                    // 4. Update student profile stats (Recalculating from Source of Truth)
+                    console.log("[Save] Step 4: Recalculating totals from activities...");
+
+                    // A: Fetch ALL unique completed topics to ensure perfect accuracy
+                    const { data: allCompletions } = await supabase
+                        .from("student_topic_activities")
+                        .select("topic_id")
+                        .eq("student_id", studentProfile.id)
+                        .eq("completed", true);
+
+                    const completedTopicIds = [...new Set((allCompletions || []).map(c => c.topic_id))];
+                    const newTotalCompletedCount = completedTopicIds.length;
+
+                    // B: Recalculate global profile stats
+                    const newTotalPoints = (studentProfile.total_points || 0) + results.score;
+                    const newTotalChallenges = (studentProfile.total_challenges || 0) + 1;
+
+                    const oldTotal = studentProfile.total_challenges || 0;
+                    const oldAvg = studentProfile.average_score || 0;
+                    const newTotalAvg = ((oldAvg * oldTotal) + results.percentage) / (newTotalChallenges || 1);
+
+                    const studyHoursAdded = results.timeTaken / 3600;
+                    const newStudyHours = (studentProfile.total_study_hours || 0) + studyHoursAdded;
+
+                    const currentStreak = results.percentage >= 50 ? (studentProfile.current_streak || 0) + 1 : 0;
+                    const newLongestStreak = Math.max(studentProfile.longest_streak || 0, currentStreak);
+
+                    await updateStudentProfileMutation.mutateAsync({
+                        studentProfileId: studentProfile.id,
+                        updates: {
+                            totalPoints: newTotalPoints,
+                            totalChallenges: newTotalChallenges,
+                            completedTopics: newTotalCompletedCount,
+                            averageScore: Math.round(newTotalAvg * 100) / 100,
+                            longestStreak: newLongestStreak,
+                            currentStreak: currentStreak,
+                            totalStudyHours: Math.round(newStudyHours * 100) / 100,
+                        },
+                    });
+                    console.log("[Save] Step 4 complete. Global Completed:", newTotalCompletedCount);
+
+                    // 5. Update subject progress
+                    if (subjectData?.id) {
+                        try {
+                            console.log("[Save] Step 5: Updating subject progress (Recalculating subject totals)...");
+
+                            // A: Fetch all topics for THIS specific subject
+                            const { data: subjectTopics } = await supabase
+                                .from("topics")
+                                .select("id")
+                                .eq("subject_id", subjectData.id);
+
+                            const subjectTopicIds = (subjectTopics || []).map(t => t.id);
+
+                            // B: Count how many of THESE specific topics are completed by this student
+                            const subjectCompletedCount = completedTopicIds.filter(id => subjectTopicIds.includes(id)).length;
+
+                            // C: Calculate rolling average for the subject progress record
+                            const currentProgress = (subjectProgress || []).find((p: any) =>
+                                String(p.subject_id).toLowerCase() === String(subjectData.id).toLowerCase()
+                            );
+
+                            const existingAvg = Number(currentProgress?.average_score || 0);
+                            const subjectNewAvg = existingAvg > 0
+                                ? ((existingAvg * 2) + results.percentage) / 3 // Simple smoothing update
+                                : results.percentage;
+
+                            await upsertSubjectProgressMutation.mutateAsync({
+                                studentProfileId: studentProfile.id,
+                                subjectId: subjectData.id,
+                                completedTopics: subjectCompletedCount,
+                                totalTopics: Math.max(subjectTopicIds.length, 1),
+                                averageScore: Math.round(subjectNewAvg * 100) / 100,
+                            });
+                            console.log("[Save] Step 5 complete. Subject Progress:", subjectCompletedCount, "/", subjectTopicIds.length);
+                        } catch (e) {
+                            console.error("[Save] Step 5 failed (subject progress):", e);
+                        }
+                    }
+                } else {
+                    console.warn("[Save] No student profile found, skipping steps 3-5.");
+                }
+
+                // 6. Award badges
+                if (results.badges.length > 0) {
+                    const badgeSlugs = results.badges
+                        .filter(Boolean)
+                        .map(b => b.id); // badge ids in challengeTypes map to slugs in DB
+                    if (badgeSlugs.length > 0) {
+                        try {
+                            console.log("[Save] Step 6: Awarding badges...", badgeSlugs);
+                            await awardBadgesMutation.mutateAsync({
+                                userId: currentUser.id,
+                                badgeSlugs: badgeSlugs,
+                                resultId: savedResult.id,
+                            });
+                            console.log("[Save] Step 6 complete.");
+                        } catch (e) {
+                            console.warn("[Save] Step 6 failed (badge awarding):", e);
+                        }
+                    }
+                }
+
+                // Stop background music
+                stop('background');
+                // Play fanfare
+                play('achievement');
+
+                toast({
+                    title: "تم حفظ النتيجة ✅",
+                    description: `حصلت على ${results.score} نقطة بنسبة ${results.percentage}%`,
+                });
+            } catch (error) {
+                console.error("[Save] Failed to save challenge results at step:", error);
+                // Still stop music even if save fails
+                stop('background');
+                play('achievement');
+                toast({
+                    variant: "destructive",
+                    title: "تنبيه",
+                    description: "تم حساب النتيجة لكن حدث خطأ أثناء حفظها في قاعدة البيانات.",
+                });
+            }
+        };
+
+        saveResults();
+    }, [gameState, resultsSaved, currentUser?.id, studentProfile?.id, topicId, content]);
 
     // Calculate results
     const getResults = (): SinglePlayerResult => {
@@ -482,7 +733,22 @@ const SingleChallenge = () => {
         };
     };
 
-    if ((!channel && !isEducationMode) || !content) {
+    if (isLoading) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <Skeleton className="h-12 w-64 mx-auto mb-4" />
+                        <Skeleton className="h-40 w-full max-w-2xl mx-auto" />
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (!content) {
         return (
             <div className="min-h-screen font-cairo">
                 <Header />
@@ -490,8 +756,8 @@ const SingleChallenge = () => {
                     <div className="container mx-auto px-4 text-center py-20">
                         <h1 className="text-3xl font-bold mb-4">المحتوى غير موجود</h1>
                         <Button asChild>
-                            <Link to={isEducationMode ? "/grades" : "/channels"}>
-                                {isEducationMode ? "العودة للصفوف" : "العودة للقنوات"}
+                            <Link to="/grades">
+                                العودة للصفوف
                             </Link>
                         </Button>
                     </div>
@@ -892,10 +1158,10 @@ const SingleChallenge = () => {
                 {/* Constructed Answer Display */}
                 <div
                     className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors ${showResult
-                            ? selectedAnswer === "correct"
-                                ? "border-green-500 text-green-700 bg-green-50"
-                                : "border-red-500 text-red-700 bg-red-50"
-                            : "border-dashed border-primary/30"
+                        ? selectedAnswer === "correct"
+                            ? "border-green-500 text-green-700 bg-green-50"
+                            : "border-red-500 text-red-700 bg-red-50"
+                        : "border-dashed border-primary/30"
                         }`}
                     onClick={handlePuzzleBackspace}
                     title="انقر للمسح"
@@ -1336,40 +1602,53 @@ const SingleChallenge = () => {
 
                     {/* Actions */}
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 1 }}
-                        className="flex flex-col sm:flex-row gap-4 justify-center relative z-10"
+                        className="flex flex-wrap gap-4 justify-center relative z-20 pb-10"
                     >
                         <Button
                             onClick={handleStartGame}
                             variant="outline"
                             size="lg"
-                            className="gap-2"
+                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
                         >
-                            <RotateCcw className="w-4 h-4" />
-                            إعادة التحدي
+                            <RotateCcw className="w-5 h-5 text-primary" />
+                            <span>إعادة التحدي</span>
                         </Button>
+
                         <Button
                             asChild
                             variant="outline"
                             size="lg"
-                            className="gap-2"
+                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
                         >
-                            <Link to={isEducationMode
-                                ? `/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`
-                                : `/channel/${channelId}/content/${contentId}`
-                            }>
-                                <Home className="w-4 h-4" />
-                                المحتوى
+                            <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`} className="flex items-center">
+                                <Home className="w-5 h-5 text-secondary" />
+                                <span>المحتوى</span>
                             </Link>
                         </Button>
+
                         <Button
+                            asChild
                             size="lg"
-                            className="gap-2"
+                            variant="hero"
+                            className="rounded-[2rem] px-12 h-16 text-lg shadow-[0_20px_40px_-10px_rgba(var(--primary),0.4)] font-black transition-all hover:scale-105 active:scale-95 gap-3"
                         >
-                            <Share2 className="w-4 h-4" />
-                            مشاركة
+                            <Link to="/dashboard/student" className="flex items-center">
+                                <Trophy className="w-5 h-5" />
+                                <span>لوحة التحكم</span>
+                            </Link>
+                        </Button>
+
+                        <Button
+                            onClick={handleShare}
+                            size="lg"
+                            variant="outline"
+                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
+                        >
+                            <Share2 className="w-5 h-5 text-primary" />
+                            <span>مشاركة</span>
                         </Button>
                     </motion.div>
                 </Card>
@@ -1428,10 +1707,7 @@ const SingleChallenge = () => {
                             className="mb-8"
                         >
                             <Link
-                                to={isEducationMode
-                                    ? `/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge`
-                                    : `/channel/${channelId}/content/${contentId}/challenge`
-                                }
+                                to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge`}
                                 className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <ChevronLeft className="w-4 h-4" />

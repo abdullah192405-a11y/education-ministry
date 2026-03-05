@@ -11,33 +11,57 @@ import {
     Trophy, BookOpen, Gamepad2, Users, Zap,
     FileText, Image as ImageIcon, AlignLeft, Video
 } from "lucide-react";
-import { getGradeById, getSubjectById, getTopicById } from "@/data/educationData";
+import { useTopic } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 
 const TopicView = () => {
-    const { gradeId, subjectId, topicId } = useParams();
+    const { topicId } = useParams();
     const navigate = useNavigate();
-
-    const grade = getGradeById(parseInt(gradeId || "0"));
-    const subject = getSubjectById(parseInt(gradeId || "0"), parseInt(subjectId || "0"));
-    const topic = getTopicById(parseInt(gradeId || "0"), parseInt(subjectId || "0"), parseInt(topicId || "0"));
+    const { data: topic, isLoading, error } = useTopic(topicId || "");
+    const subject = topic?.subject;
+    const grade = subject?.grade;
 
     const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
     const [hasViewedAllMedia, setHasViewedAllMedia] = useState(false);
 
+    // Normalize media data
+    const media = (topic?.mediaItems || []).map((m: any) => ({
+        type: (m.type || "").toLowerCase(),
+        url: m.url,
+        content: m.content,
+        caption: m.caption
+    }));
+
     // Track if all media has been viewed
     useEffect(() => {
-        if (topic && currentMediaIndex === topic.media.length - 1) {
+        if (media.length > 0 && currentMediaIndex === media.length - 1) {
             setHasViewedAllMedia(true);
         }
-    }, [currentMediaIndex, topic]);
+    }, [currentMediaIndex, media]);
 
-    if (!grade || !subject || !topic) {
+    if (isLoading) {
+        return (
+            <div className="min-h-screen font-cairo" dir="rtl">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4">
+                        <Skeleton className="h-8 w-64 mb-6" />
+                        <Skeleton className="h-32 w-full mb-8" />
+                        <Skeleton className="h-[400px] w-full rounded-2xl" />
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (error || !topic || !subject || !grade) {
         return <NotFound />;
     }
 
-    const currentMedia = topic.media[currentMediaIndex];
-    const totalMedia = topic.media.length;
+    const currentMedia = media[currentMediaIndex];
+    const totalMedia = media.length;
 
     const handleNextMedia = () => {
         if (currentMediaIndex < totalMedia - 1) {
@@ -52,7 +76,7 @@ const TopicView = () => {
     };
 
     const handleJoinChallenge = () => {
-        navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge`);
+        navigate(`/grade/${grade.slug}/subject/${subject.id}/topic/${topic.id}/challenge`);
     };
 
     const getMediaIcon = (type: string) => {
@@ -66,6 +90,7 @@ const TopicView = () => {
     };
 
     const renderMedia = () => {
+        if (!currentMedia) return null;
         switch (currentMedia.type) {
             case "video":
                 return (
@@ -93,7 +118,7 @@ const TopicView = () => {
                 return (
                     <Card className="p-6 md:p-8">
                         <div className="prose prose-lg dark:prose-invert max-w-none text-right leading-relaxed">
-                            {currentMedia.content?.split('\n').map((paragraph, index) => {
+                            {currentMedia.content?.split('\n').map((paragraph: string, index: number) => {
                                 if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
                                     return <h3 key={index} className="text-xl font-bold mt-6 mb-3">{paragraph.replace(/\*\*/g, '')}</h3>;
                                 }
@@ -141,6 +166,7 @@ const TopicView = () => {
                     </div>
                 );
             }
+            default: return null;
         }
     };
 
@@ -159,11 +185,11 @@ const TopicView = () => {
                             الصفوف
                         </Link>
                         <span>/</span>
-                        <Link to={`/grade/${gradeId}`} className="hover:text-primary transition-colors">
+                        <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors">
                             {grade.name}
                         </Link>
                         <span>/</span>
-                        <Link to={`/grade/${gradeId}/subject/${subjectId}`} className="hover:text-primary transition-colors">
+                        <Link to={`/grade/${grade.slug}/subject/${subject.id}`} className="hover:text-primary transition-colors">
                             {subject.icon} {subject.name}
                         </Link>
                         <span>/</span>
@@ -188,7 +214,7 @@ const TopicView = () => {
                             </span>
                             <span className="flex items-center gap-1 text-muted-foreground text-sm">
                                 <Eye className="w-4 h-4" />
-                                {topic.views.toLocaleString("ar-SA")} مشاهدة
+                                {(topic.views || 0).toLocaleString("ar-SA")} مشاهدة
                             </span>
                             {topic.duration && (
                                 <span className="flex items-center gap-1 text-muted-foreground text-sm">
@@ -225,7 +251,7 @@ const TopicView = () => {
                             </AnimatePresence>
 
                             {/* Caption */}
-                            {currentMedia.caption && (
+                            {currentMedia?.caption && (
                                 <p className="text-center text-muted-foreground mt-4 text-lg">
                                     {currentMedia.caption}
                                 </p>
@@ -245,7 +271,7 @@ const TopicView = () => {
                             </Button>
 
                             <div className="flex flex-wrap justify-center gap-2 max-h-[200px] overflow-y-auto p-2">
-                                {topic.media.map((media, index) => (
+                                {media.map((item: any, index: number) => (
                                     <button
                                         key={index}
                                         onClick={() => setCurrentMediaIndex(index)}
@@ -255,9 +281,9 @@ const TopicView = () => {
                                                 ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
                                                 : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
                                             }`}
-                                        title={media.type}
+                                        title={item.type}
                                     >
-                                        {getMediaIcon(media.type)}
+                                        {getMediaIcon(item.type)}
                                     </button>
                                 ))}
                             </div>

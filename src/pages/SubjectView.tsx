@@ -6,15 +6,33 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Eye, Clock, ArrowRight, PlayCircle } from "lucide-react";
-import { getGradeById, getSubjectById } from "@/data/educationData";
+import { useSubject } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 
 const SubjectView = () => {
-    const { gradeId, subjectId } = useParams();
-    const grade = getGradeById(Number(gradeId));
-    const subject = getSubjectById(Number(gradeId), Number(subjectId));
+    const { subjectId } = useParams();
+    const { data: subject, isLoading, error } = useSubject(subjectId || "");
+    const grade = subject?.grade;
 
-    if (!grade || !subject) {
+    if (isLoading) {
+        return (
+            <div className="min-h-screen font-cairo" dir="rtl">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4">
+                        <Skeleton className="h-48 w-full rounded-2xl mb-12" />
+                        <div className="space-y-4">
+                            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full" />)}
+                        </div>
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (error || !subject || !grade) {
         return <NotFound />;
     }
 
@@ -35,7 +53,7 @@ const SubjectView = () => {
                                 الصفوف
                             </Link>
                             <span>/</span>
-                            <Link to={`/grade/${gradeId}`} className="hover:text-primary transition-colors">
+                            <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors">
                                 {grade.name}
                             </Link>
                             <span>/</span>
@@ -62,7 +80,7 @@ const SubjectView = () => {
                                         <div className="flex items-center gap-4">
                                             <Badge variant="secondary" className="gap-1">
                                                 <BookOpen className="w-3 h-3" />
-                                                {subject.topics.length} موضوع
+                                                {subject.topics?.length || 0} موضوع
                                             </Badge>
                                             <Badge variant="outline">
                                                 {grade.name}
@@ -91,14 +109,14 @@ const SubjectView = () => {
                         </div>
 
                         <div className="space-y-4">
-                            {subject.topics.map((topic, index) => (
+                            {subject.topics?.map((topic: any, index: number) => (
                                 <motion.div
                                     key={topic.id}
                                     initial={{ opacity: 0, x: -20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: 0.1 * index }}
                                 >
-                                    <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topic.id}`}>
+                                    <Link to={`/grade/${grade.slug}/subject/${subject.id}/topic/${topic.id}`}>
                                         <Card variant="interactive" className="group">
                                             <CardContent className="p-0">
                                                 <div className="flex flex-col md:flex-row">
@@ -145,7 +163,7 @@ const SubjectView = () => {
                                                         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-4">
                                                             <div className="flex items-center gap-1">
                                                                 <Eye className="w-4 h-4" />
-                                                                <span>{topic.views.toLocaleString("ar-SA")} مشاهدة</span>
+                                                                <span>{(topic.views || 0).toLocaleString("ar-SA")} مشاهدة</span>
                                                             </div>
                                                             {topic.duration && (
                                                                 <div className="flex items-center gap-1">
@@ -155,18 +173,18 @@ const SubjectView = () => {
                                                             )}
                                                             <div className="flex items-center gap-1">
                                                                 <BookOpen className="w-4 h-4" />
-                                                                <span>{topic.media.length} محتوى</span>
+                                                                <span>{topic.mediaItems?.length || 0} محتوى</span>
                                                             </div>
                                                             <div className="flex items-center gap-1">
                                                                 <span>❓</span>
-                                                                <span>{topic.quiz.length} سؤال</span>
+                                                                <span>{topic.quizQuestions?.length || 0} سؤال</span>
                                                             </div>
                                                         </div>
 
                                                         {/* Action Button */}
                                                         <div className="mt-4 pt-4 border-t flex items-center justify-between">
                                                             <span className="text-xs text-muted-foreground">
-                                                                {new Date(topic.createdAt).toLocaleDateString("ar-SA")}
+                                                                {new Date(topic.created_at || topic.createdAt).toLocaleDateString("ar-SA")}
                                                             </span>
                                                             <Button className="gap-2 group-hover:gap-3 transition-all">
                                                                 شاهد المحتوى
@@ -182,7 +200,7 @@ const SubjectView = () => {
                             ))}
                         </div>
 
-                        {subject.topics.length === 0 && (
+                        {(subject.topics?.length || 0) === 0 && (
                             <div className="text-center py-16">
                                 <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
                                 <p className="text-muted-foreground text-lg">لا توجد مواضيع متاحة حالياً</p>

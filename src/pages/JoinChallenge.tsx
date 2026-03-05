@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import {
     Users, Trophy, Gamepad2, Sparkles, ArrowLeft
 } from "lucide-react";
+import { useChallengeSession, useJoinChallengeSession, useUser } from "@/hooks/useDatabase";
+import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/lib/supabase";
 
 const JoinChallenge = () => {
     const { pin: urlPin } = useParams();
@@ -19,26 +22,94 @@ const JoinChallenge = () => {
     const [error, setError] = useState("");
     const [step, setStep] = useState<"pin" | "name">(urlPin ? "name" : "pin");
 
-    const handlePinSubmit = () => {
+    const { data: session, isLoading, refetch } = useChallengeSession(pin);
+    const joinSessionMutation = useJoinChallengeSession();
+    const { data: currentUser } = useUser();
+    const [isJoining, setIsJoining] = useState(false);
+
+    const handlePinSubmit = async () => {
         if (pin.length !== 6) {
             setError("الرمز يجب أن يتكون من 6 أرقام");
             return;
         }
 
-        // In real app, validate PIN with server
+        console.log("Validating PIN logic in click handler:", pin);
+
+        // Manual query to be 100% sure we bypass React Query cache or refetch logic issues
+        try {
+            const { data: directData, error: directError } = await supabase
+                .from("challenge_sessions")
+                .select("*")
+                .eq("pin", pin)
+                .single();
+
+            console.log("Supabase direct query result:", directData, directError);
+
+            if (!directData) {
+                setError(`رمز التحدي غير صالح للمحاولة المباشرة: ${directError?.message || 'غير موجود'}`);
+                return;
+            }
+
+            if (directData.status === "FINISHED") {
+                setError("عذراً، هذا التحدي قد انتهى بالفعل.");
+                return;
+            }
+        } catch (e: any) {
+            setError(`رسالة الخطأ المباشر: ${e.message}`);
+            return;
+        }
+
+        const { data: validSession, error: refetchError } = await refetch();
+        console.log("React Query refetch result:", validSession, refetchError);
+
+        if (!validSession) {
+            setError("رمز التحدي غير صالح أو انتهت صلاحيته");
+            return;
+        }
+
+        if (validSession.status === "FINISHED") {
+            setError("هذا التحدي انتهى.");
+            return;
+        }
+
         setError("");
         setStep("name");
     };
 
-    const handleJoin = () => {
+    const handleJoin = async () => {
         if (!playerName.trim()) {
             setError("الرجاء إدخال اسمك");
             return;
         }
 
-        // Navigate to the challenge
-        // In real app, this would get challenge details from server
-        navigate(`/channel/1/content/1/challenge/group/mixed/${pin}?name=${encodeURIComponent(playerName)}`);
+        if (!session || !session.id) {
+            setError("لم يتم العثور على بيانات الجلسة. حاول مرة أخرى.");
+            setIsJoining(false);
+            return;
+        }
+
+        setIsJoining(true);
+        try {
+            await joinSessionMutation.mutateAsync({
+                sessionId: session.id,
+                userId: currentUser?.id,
+                name: playerName,
+            });
+
+            const topicIdToUse = session.topic_id || session.topicId;
+            // Navigate to the challenge
+            if (topicIdToUse) {
+                const categoryToUse = (session.category || 'activities').toLowerCase();
+                navigate(`/grade/${session.topic?.grade_id || 'grade'}/subject/${session.topic?.subject_id || 'subject'}/topic/${topicIdToUse}/challenge/group/${categoryToUse}/${pin}?name=${encodeURIComponent(playerName)}`);
+            } else {
+                setError("لم يتم العثور على موضوع لهذا التحدي.");
+            }
+        } catch (error: any) {
+            console.error("Failed to join session", error);
+            setError(`حدث خطأ أثناء الانضمام: ${error.message || 'قد يكون الرمز غير صالح'}`);
+        } finally {
+            setIsJoining(false);
+        }
     };
 
     const handlePinChange = (value: string) => {
@@ -150,10 +221,10 @@ const JoinChallenge = () => {
                                         size="lg"
                                         variant="hero"
                                         className="w-full gap-2 h-14 text-lg"
-                                        disabled={!playerName.trim()}
+                                        disabled={!playerName.trim() || isJoining}
                                     >
                                         <Sparkles className="w-5 h-5" />
-                                        انضم للتحدي
+                                        {isJoining ? "جاري الانضمام..." : "انضم للتحدي"}
                                     </Button>
 
                                     <Button
