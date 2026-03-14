@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Library, Users, Gamepad2, ChartBar, Cog,
     Bell, LogOut, ChevronRight, GraduationCap, Award, Search,
     Plus, Trophy, History, Clock, Eye, Star, Info, AlertTriangle,
-    CheckCircle, TrendingUp, Zap, Copy
+    CheckCircle, TrendingUp, Zap, Copy, Upload
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { generatePin } from "@/data/challengeTypes";
@@ -23,6 +23,7 @@ import TeacherChallengesTab from "./components/TeacherChallengesTab";
 import TeacherStudentsTab from "./components/TeacherStudentsTab";
 import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
+import ContentUploadTab from "./components/ContentUploadTab";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { supabase } from "@/lib/supabase";
@@ -335,6 +336,7 @@ const TeacherDashboard = () => {
                                         { id: "overview", icon: LayoutDashboard, label: "نظرة عامة" },
                                         { id: "topics", icon: Library, label: "الدروس" },
                                         { id: "challenges", icon: Gamepad2, label: "التحديات" },
+                                        { id: "content", icon: Upload, label: "المحتوى" },
                                         { id: "students", icon: Users, label: "الطلاب" },
                                         { id: "analytics", icon: ChartBar, label: "الإحصائيات" },
                                         { id: "settings", icon: Cog, label: "الإعدادات" }
@@ -737,6 +739,7 @@ const TeacherDashboard = () => {
                                             }}
                                         />
                                     )}
+                                    {activeTab === "content" && <ContentUploadTab />}
                                     {activeTab === "students" && <TeacherStudentsTab />}
                                     {activeTab === "analytics" && <TeacherAnalyticsTab />}
                                     {activeTab === "settings" && <TeacherSettingsTab />}

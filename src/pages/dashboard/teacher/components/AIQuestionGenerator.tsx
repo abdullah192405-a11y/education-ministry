@@ -75,8 +75,9 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 throw new Error("لم يتم تكوين مفتاح Gemini API");
             }
 
+            const modelName = "gemini-2.5-flash"; // Restored
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                 {
                     method: "POST",
                     headers: {

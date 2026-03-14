@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
+import { extractPdfText } from "@/lib/pdfExtractor";
+import { supabase } from "@/lib/supabase";
 
 interface AIQuestionGeneratorFromResourcesProps {
     media: ContentMedia[];
@@ -178,39 +180,8 @@ const AIQuestionGeneratorFromResources = ({
                             bytes[i] = binaryStr.charCodeAt(i);
                         }
 
-                        // Extract text using pdfjs-dist
-                        const pdfjsLib = await import('pdfjs-dist');
-                        // Use jsdelivr CDN for worker (has latest versions)
-                        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs';
-
-                        const loadingTask = pdfjsLib.getDocument({ data: bytes });
-                        const pdfDoc = await loadingTask.promise;
-
-                        let extractedText = '';
-                        const maxPages = Math.min(pdfDoc.numPages, 50); // Limit to 50 pages
-
-                        for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
-                            setProgress(`جاري استخراج النص من صفحة ${pageNum}/${maxPages}...`);
-                            try {
-                                const page = await pdfDoc.getPage(pageNum);
-                                const textContent = await page.getTextContent();
-                                const pageText = textContent.items
-                                    .map((item: any) => item.str || '')
-                                    .filter(Boolean)
-                                    .join(' ');
-
-                                if (pageText.trim()) {
-                                    extractedText += `\n--- صفحة ${pageNum} ---\n${pageText}`;
-                                }
-                            } catch (pageError) {
-                                console.warn(`Error on page ${pageNum}:`, pageError);
-                            }
-                        }
-
-                        // Limit text length
-                        if (extractedText.length > 50000) {
-                            extractedText = extractedText.substring(0, 50000) + '\n\n[... تم اقتصاص المحتوى الزائد]';
-                        }
+                        // Use the centralized extraction utility
+                        const extractedText = await extractPdfText(new Blob([bytes], { type: 'application/pdf' }));
 
                         if (extractedText.trim()) {
                             // Add extracted text as text content
@@ -245,7 +216,7 @@ const AIQuestionGeneratorFromResources = ({
             parts.push({ text: promptText });
 
             // Use gemini-2.5-flash for all requests
-            const modelToUse = "gemini-2.5-flash";
+            const modelToUse = "gemini-2.5-flash"; // Restored
             console.log(`Using model: ${modelToUse} (PDFs: ${pdfParts.length})`);
 
             const response = await fetch(

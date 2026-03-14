@@ -12,6 +12,8 @@ import {
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
 import QuestionGameEditor from "./QuestionGameEditor";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
+import { useUser } from "@/hooks/useDatabase";
 
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
@@ -33,8 +35,38 @@ const targetAudienceOptions = [
 ];
 
 const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
+    const { data: user } = useUser();
     const [activeTab, setActiveTab] = useState<"info" | "media" | "questions">("info");
     const { toast } = useToast();
+    const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+    const handleImageUpload = async (file: File, onComplete: (url: string) => void, setIsUploading: (val: boolean) => void) => {
+        if (!file || !user) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت", variant: "destructive" });
+            return;
+        }
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/content/${fileName}`;
+            const { error } = await supabase.storage.from('teacher-content').upload(filePath, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from('teacher-content').getPublicUrl(filePath);
+            onComplete(data.publicUrl);
+            toast({ title: "تم الرفع", description: "تم رفع الصورة بنجاح" });
+        } catch (error) {
+            console.error(error);
+            toast({ title: "خطأ", description: "حدث خطأ أثناء الرفع", variant: "destructive" });
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     // Basic info
     const [title, setTitle] = useState(content?.title || "");
@@ -232,12 +264,32 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-sm font-medium mb-2 block">رابط الصورة المصغرة</label>
-                                <Input
-                                    value={thumbnail}
-                                    onChange={(e) => setThumbnail(e.target.value)}
-                                    placeholder="https://..."
-                                />
+                                <label className="text-sm font-medium mb-2 block">الصورة المصغرة</label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={thumbnail}
+                                        onChange={(e) => setThumbnail(e.target.value)}
+                                        placeholder="رابط الصورة المباشر"
+                                        className="flex-1"
+                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="file"
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            accept="image/*"
+                                            disabled={isUploadingThumbnail}
+                                            onChange={(e) => {
+                                                if (e.target.files?.[0]) {
+                                                    handleImageUpload(e.target.files[0], setThumbnail, setIsUploadingThumbnail);
+                                                }
+                                            }}
+                                        />
+                                        <Button type="button" variant="outline" disabled={isUploadingThumbnail}>
+                                            {isUploadingThumbnail ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                                            رفع
+                                        </Button>
+                                    </div>
+                                </div>
                                 {thumbnail && (
                                     <img src={thumbnail} alt="Preview" className="mt-2 w-32 h-20 object-cover rounded-lg" />
                                 )}
@@ -329,11 +381,43 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     </div>
                                                 )}
                                             </div>
+                                        ) : newMedia.type === "video" ? (
+                                            <Input
+                                                value={newMedia.url || ""}
+                                                onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
+                                                placeholder="رابط الفيديو (YouTube embed)"
+                                            />
+                                        ) : newMedia.type === "image" ? (
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    value={newMedia.url || ""}
+                                                    onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
+                                                    placeholder="رابط الصورة"
+                                                    className="flex-1"
+                                                />
+                                                <div className="relative">
+                                                    <input
+                                                        type="file"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                        accept="image/*"
+                                                        disabled={isUploadingMedia}
+                                                        onChange={(e) => {
+                                                            if (e.target.files?.[0]) {
+                                                                handleImageUpload(e.target.files[0], (url) => setNewMedia({ ...newMedia, url }), setIsUploadingMedia);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <Button type="button" variant="outline" disabled={isUploadingMedia}>
+                                                        {isUploadingMedia ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                                                        رفع
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         ) : (
                                             <Input
                                                 value={newMedia.url || ""}
                                                 onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                placeholder={newMedia.type === "video" ? "رابط الفيديو (YouTube embed)" : "رابط الصورة"}
+                                                placeholder="الرابط"
                                             />
                                         )}
 

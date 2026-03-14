@@ -4,11 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, Bell, User, Lock, Globe } from "lucide-react";
+import { Save, Bell, User, Lock, Globe, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser, useTeacherProfile, useUpdateUser, useUpdateTeacherProfile, useGrades } from "@/hooks/useDatabase";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
 import {
     Select,
     SelectContent,
@@ -29,6 +30,8 @@ const TeacherSettingsTab = () => {
     const [avatar, setAvatar] = useState("");
     const [gradeId, setGradeId] = useState("");
     const [subjectId, setSubjectId] = useState("");
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (user) {
@@ -43,6 +46,52 @@ const TeacherSettingsTab = () => {
             setSubjectId(profile.subject_id || "");
         }
     }, [profile]);
+
+    const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !user) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            toast({
+                title: "حجم الملف كبير",
+                description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/avatars/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('teacher-content')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage
+                .from('teacher-content')
+                .getPublicUrl(filePath);
+
+            setAvatar(data.publicUrl);
+            toast({
+                title: "تم رفع الصورة",
+                description: "تم تحديث صورتك الرمزية بنجاح",
+            });
+        } catch (error) {
+            console.error("Error uploading avatar:", error);
+            toast({
+                title: "خطأ",
+                description: "حدث خطأ أثناء رفع الصورة",
+                variant: "destructive"
+            });
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     const handleSaveChanges = () => {
         if (!user) return;
@@ -175,10 +224,17 @@ const TeacherSettingsTab = () => {
                                 <AvatarImage src={avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${user?.id}`} />
                                 <AvatarFallback>{name?.[0] || "U"}</AvatarFallback>
                             </Avatar>
-                            <Button variant="outline" onClick={() => {
-                                const newAvatar = prompt("أدخل رابط الصورة الجديدة:", avatar);
-                                if (newAvatar !== null) setAvatar(newAvatar);
-                            }}>تغيير الصورة</Button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept="image/*"
+                                onChange={handleAvatarUpload}
+                            />
+                            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                                {isUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                                {isUploading ? "جاري الرفع..." : "تغيير الصورة"}
+                            </Button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
