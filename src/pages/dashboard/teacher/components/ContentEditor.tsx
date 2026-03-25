@@ -60,9 +60,13 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             const { data } = supabase.storage.from('teacher-content').getPublicUrl(filePath);
             onComplete(data.publicUrl);
             toast({ title: "تم الرفع", description: "تم رفع الصورة بنجاح" });
-        } catch (error) {
-            console.error(error);
-            toast({ title: "خطأ", description: "حدث خطأ أثناء الرفع", variant: "destructive" });
+        } catch (error: any) {
+            console.error("Upload error:", error);
+            toast({
+                title: "خطأ في الرفع",
+                description: error.message || "حدث خطأ أثناء الرفع. الرجاء التأكد من وجود bucket باسم teacher-content في Supabase.",
+                variant: "destructive"
+            });
         } finally {
             setIsUploading(false);
         }
@@ -401,9 +405,23 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                                         accept="image/*"
                                                         disabled={isUploadingMedia}
-                                                        onChange={(e) => {
-                                                            if (e.target.files?.[0]) {
-                                                                handleImageUpload(e.target.files[0], (url) => setNewMedia({ ...newMedia, url }), setIsUploadingMedia);
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                // 1. Convert to base64 for AI analysis
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => {
+                                                                    const base64 = reader.result?.toString().split(',')[1];
+                                                                    if (base64) {
+                                                                        setNewMedia(prev => ({ ...prev, imageBase64: base64 }));
+                                                                    }
+                                                                };
+                                                                reader.readAsDataURL(file);
+
+                                                                // 2. Upload to Supabase
+                                                                handleImageUpload(file, (url) => {
+                                                                    setNewMedia(prev => ({ ...prev, url }));
+                                                                }, setIsUploadingMedia);
                                                             }
                                                         }}
                                                     />

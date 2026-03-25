@@ -7,11 +7,23 @@ import { Input } from "@/components/ui/input";
 import {
     User, Lock, Eye, EyeOff, LogIn, Sparkles,
     Shield, GraduationCap, BookOpen, ChevronLeft,
-    Mail, CheckCircle, AlertCircle, UserPlus, ArrowLeft, ArrowRight
+    Mail, CheckCircle, AlertCircle, UserPlus, ArrowLeft, ArrowRight,
+    KeyRound
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useGrades } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSignUp, useAuth } from "@clerk/clerk-react";
+
+// Google SVG Icon
+const GoogleIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+);
 
 type UserRole = "STUDENT" | "TEACHER";
 
@@ -19,9 +31,11 @@ const Register = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { data: grades } = useGrades();
+    const { signUp, isLoaded: isClerkLoaded, setActive } = useSignUp();
+    const { signOut, isSignedIn } = useAuth();
 
     // Form state
-    const [step, setStep] = useState<1 | 2>(1); // Step 1: Role, Step 2: Details
+    const [step, setStep] = useState<1 | 2 | 3>(1); // Step 1: Role, Step 2: Details, Step 3: Verify Code
     const [role, setRole] = useState<UserRole | null>(null);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -31,11 +45,122 @@ const Register = () => {
     const [selectedGradeId, setSelectedGradeId] = useState("");
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [registerSuccess, setRegisterSuccess] = useState(false);
+    const [verificationCode, setVerificationCode] = useState("");
 
     const handleRoleSelect = (selectedRole: UserRole) => {
         setRole(selectedRole);
         setStep(2);
+    };
+
+    const handleGoogleSignUp = async () => {
+        if (!isClerkLoaded || !signUp) return;
+
+        setIsGoogleLoading(true);
+        setError("");
+
+        try {
+            // Sign out any existing Clerk session first
+            if (isSignedIn) {
+                await signOut();
+            }
+
+            await signUp.authenticateWithRedirect({
+                strategy: "oauth_google",
+                redirectUrl: "/sso-callback",
+                redirectUrlComplete: "/sso-callback",
+            });
+        } catch (err: any) {
+            console.error("[Register] Google sign-up error:", err);
+            setError("حدث خطأ أثناء التسجيل بحساب Google");
+            setIsGoogleLoading(false);
+        }
+    };
+
+    // Helper: create user in Supabase DB after Clerk signup completes
+    const createSupabaseUser = async () => {
+        const now = new Date().toISOString();
+
+        const { data: newUser, error: userError } = await supabase
+            .from("users")
+            .insert({
+                email,
+                name,
+                role: role,
+                verified: true,
+                is_active: true,
+                details: role === "STUDENT" ? "طالب جديد" : "معلم جديد",
+                updated_at: now,
+            })
+            .select()
+            .single();
+
+        if (userError) {
+            if (userError.message.includes("duplicate") || userError.message.includes("unique")) {
+                const { data: existingUser } = await supabase
+                    .from("users")
+                    .select("*")
+                    .eq("email", email)
+                    .maybeSingle();
+                if (existingUser) return existingUser;
+            }
+            console.error("User insert error:", userError);
+            return null;
+        }
+
+        // Create role-specific profile
+        if (role === "STUDENT") {
+            await supabase.from("student_profiles").insert({
+                user_id: newUser.id,
+                grade_id: selectedGradeId || null,
+                total_points: 0,
+                total_challenges: 0,
+                completed_topics: 0,
+                average_score: 0,
+                longest_streak: 0,
+                current_streak: 0,
+                total_study_hours: 0,
+                updated_at: now,
+            });
+        } else if (role === "TEACHER") {
+            await supabase.from("teacher_profiles").insert({
+                user_id: newUser.id,
+                total_students: 0,
+                total_topics: 0,
+                total_challenges: 0,
+                average_score: 0,
+                updated_at: now,
+            });
+        }
+
+        return newUser;
+    };
+
+    // Helper: finish registration after Clerk is done
+    const finishRegistration = async (sessionId: string | null) => {
+        // Set the active session in Clerk
+        if (sessionId) {
+            await setActive({ session: sessionId });
+        }
+
+        // Create user in Supabase DB
+        const dbUser = await createSupabaseUser();
+
+        if (dbUser) {
+            localStorage.setItem("edu_user", JSON.stringify({
+                id: dbUser.id,
+                name: dbUser.name,
+                email: dbUser.email,
+                role: dbUser.role,
+                details: dbUser.details,
+            }));
+            queryClient.setQueryData(["current_user"], dbUser);
+        }
+
+        setRegisterSuccess(true);
+        const dashboardPath = role === "TEACHER" ? "/dashboard/teacher" : "/dashboard/student";
+        setTimeout(() => navigate(dashboardPath), 2500);
     };
 
     const handleRegister = async (e: React.FormEvent) => {
@@ -60,185 +185,104 @@ const Register = () => {
             return;
         }
 
+        if (!isClerkLoaded || !signUp) {
+            setError("جارٍ تحميل النظام، يرجى الانتظار...");
+            return;
+        }
+
         setIsLoading(true);
 
         try {
-            // 1. Create Supabase Auth user
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: {
-                        name,
-                        role: role,
-                    },
-                    emailRedirectTo: undefined,
-                }
+            // Sign out any existing Clerk session first
+            if (isSignedIn) {
+                await signOut();
+            }
+
+            // 1. Create user in Clerk (appears in Clerk dashboard)
+            const nameParts = name.trim().split(" ");
+            const firstName = nameParts[0];
+            const lastName = nameParts.slice(1).join(" ") || undefined;
+
+            const result = await signUp.create({
+                emailAddress: email,
+                password: password,
+                firstName: firstName,
+                lastName: lastName,
             });
 
-            if (authError) {
-                if (authError.message.includes("already registered")) {
-                    setError("هذا البريد الإلكتروني مسجل بالفعل");
-                } else if (authError.status === 500 || authError.message.includes("500") || authError.message.toLowerCase().includes("rate limit")) {
-                    // Fallback: create user record without Supabase Auth
-                    console.warn("Supabase Auth signup failed (likely no SMTP configured or rate limited). Creating user directly.");
-                    const now = new Date().toISOString();
-                    const { data: directUser, error: directError } = await supabase
-                        .from("users")
-                        .insert({
-                            email,
-                            name,
-                            role: role,
-                            verified: false,
-                            is_active: true,
-                            details: role === "STUDENT" ? "طالب جديد" : "معلم جديد",
-                            updated_at: now,
-                        })
-                        .select()
-                        .single();
+            console.log("[Register] Clerk signUp status:", result.status);
 
-                    if (directError) {
-                        if (directError.message.includes("duplicate") || directError.message.includes("unique")) {
-                            setError("هذا البريد الإلكتروني مسجل بالفعل");
-                        } else {
-                            setError("خطأ في إنشاء الحساب: " + directError.message);
-                        }
-                        setIsLoading(false);
-                        return;
-                    }
+            if (result.status === "complete") {
+                // No email verification needed — complete directly
+                await finishRegistration(result.createdSessionId);
 
-                    // Create role-specific profile for the direct user
-                    if (role === "STUDENT") {
-                        await supabase.from("student_profiles").insert({
-                            user_id: directUser.id,
-                            grade_id: selectedGradeId || null,
-                            total_points: 0,
-                            total_challenges: 0,
-                            completed_topics: 0,
-                            average_score: 0,
-                            longest_streak: 0,
-                            current_streak: 0,
-                            total_study_hours: 0,
-                            updated_at: now,
-                        });
-                    } else if (role === "TEACHER") {
-                        await supabase.from("teacher_profiles").insert({
-                            user_id: directUser.id,
-                            total_students: 0,
-                            total_topics: 0,
-                            total_challenges: 0,
-                            average_score: 0,
-                            updated_at: now,
-                        });
-                    }
-
-                    // Store user and navigate
-                    localStorage.setItem("edu_user", JSON.stringify({
-                        id: directUser.id,
-                        name: directUser.name,
-                        email: directUser.email,
-                        role: directUser.role,
-                        details: directUser.details,
-                    }));
-                    queryClient.setQueryData(["current_user"], directUser);
-                    setRegisterSuccess(true);
-                    const dashboardPath = role === "TEACHER" ? "/dashboard/teacher" : "/dashboard/student";
-                    setTimeout(() => navigate(dashboardPath), 2500);
-                    return;
-                } else {
-                    setError(authError.message);
-                }
+            } else if (result.status === "missing_requirements") {
+                // Email verification is required by Clerk
+                await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+                setStep(3); // Show verification code input
                 setIsLoading(false);
-                return;
-            }
-
-            if (!authData.user) {
-                setError("حدث خطأ أثناء إنشاء الحساب");
+            } else {
+                setError("حدث خطأ غير متوقع أثناء إنشاء الحساب");
                 setIsLoading(false);
-                return;
             }
-
-            // 2. Create user record in the users table
-            const now = new Date().toISOString();
-            const { data: newUser, error: userError } = await supabase
-                .from("users")
-                .insert({
-                    auth_id: authData.user.id,
-                    email,
-                    name,
-                    role: role,
-                    verified: false,
-                    is_active: true,
-                    details: role === "STUDENT" ? "طالب جديد" : "معلم جديد",
-                    updated_at: now,
-                })
-                .select()
-                .single();
-
-            if (userError) {
-                console.error("User insert error:", userError);
-                setError("تم إنشاء الحساب لكن فشل في حفظ البيانات. يرجى التواصل مع الدعم.");
-                setIsLoading(false);
-                return;
-            }
-
-            // 3. Create role-specific profile
-            if (role === "STUDENT") {
-                const { error: profileError } = await supabase
-                    .from("student_profiles")
-                    .insert({
-                        user_id: newUser.id,
-                        grade_id: selectedGradeId || null,
-                        total_points: 0,
-                        total_challenges: 0,
-                        completed_topics: 0,
-                        average_score: 0,
-                        longest_streak: 0,
-                        current_streak: 0,
-                        total_study_hours: 0,
-                        updated_at: now,
-                    });
-
-                if (profileError) {
-                    console.error("Student profile error:", profileError);
-                }
-            } else if (role === "TEACHER") {
-                const { error: profileError } = await supabase
-                    .from("teacher_profiles")
-                    .insert({
-                        user_id: newUser.id,
-                        total_students: 0,
-                        total_topics: 0,
-                        total_challenges: 0,
-                        average_score: 0,
-                        updated_at: now,
-                    });
-
-                if (profileError) {
-                    console.error("Teacher profile error:", profileError);
-                }
-            }
-
-            // 4. Success — store user and go to dashboard directly
-            localStorage.setItem("edu_user", JSON.stringify({
-                id: newUser.id,
-                name: newUser.name,
-                email: newUser.email,
-                role: newUser.role,
-                details: newUser.details,
-            }));
-
-            // Pre-load the user into the query cache so ProtectedRoute sees it immediately
-            queryClient.setQueryData(["current_user"], newUser);
-            setRegisterSuccess(true);
-
-            const dashboardPath = role === "TEACHER" ? "/dashboard/teacher" : "/dashboard/student";
-            setTimeout(() => {
-                navigate(dashboardPath);
-            }, 2500);
 
         } catch (err: any) {
-            setError(err.message || "حدث خطأ غير متوقع");
+            console.error("[Register] Clerk signup error:", err);
+
+            const clerkErrors = err?.errors;
+            if (clerkErrors && clerkErrors.length > 0) {
+                const firstError = clerkErrors[0];
+                if (firstError.code === "form_identifier_exists") {
+                    setError("هذا البريد الإلكتروني مسجل بالفعل");
+                } else if (firstError.code === "form_password_pwned") {
+                    setError("كلمة المرور هذه غير آمنة، يرجى اختيار كلمة مرور أقوى");
+                } else if (firstError.code === "form_password_too_short") {
+                    setError("كلمة المرور قصيرة جداً");
+                } else {
+                    setError(firstError.longMessage || firstError.message || "حدث خطأ أثناء إنشاء الحساب");
+                }
+            } else {
+                setError(err.message || "حدث خطأ غير متوقع");
+            }
+            setIsLoading(false);
+        }
+    };
+
+    const handleVerifyCode = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError("");
+
+        if (!verificationCode.trim()) {
+            setError("يرجى إدخال رمز التحقق");
+            return;
+        }
+
+        if (!isClerkLoaded || !signUp) return;
+
+        setIsLoading(true);
+
+        try {
+            const result = await signUp.attemptEmailAddressVerification({
+                code: verificationCode,
+            });
+
+            console.log("[Register] Verification result:", result.status);
+
+            if (result.status === "complete") {
+                await finishRegistration(result.createdSessionId);
+            } else {
+                setError("لم يتم التحقق بنجاح، يرجى المحاولة مرة أخرى");
+                setIsLoading(false);
+            }
+
+        } catch (err: any) {
+            console.error("[Register] Verification error:", err);
+            const clerkErrors = err?.errors;
+            if (clerkErrors && clerkErrors.length > 0) {
+                setError(clerkErrors[0].longMessage || "رمز التحقق غير صحيح");
+            } else {
+                setError("حدث خطأ أثناء التحقق");
+            }
             setIsLoading(false);
         }
     };
@@ -276,7 +320,7 @@ const Register = () => {
                             إنشاء حساب جديد
                         </h1>
                         <p className="text-muted-foreground">
-                            {step === 1 ? "اختر نوع الحساب" : "أكمل بياناتك"}
+                            {step === 1 ? "اختر نوع الحساب" : step === 2 ? "أكمل بياناتك" : "أدخل رمز التحقق"}
                         </p>
                     </motion.div>
 
@@ -303,6 +347,7 @@ const Register = () => {
                                     </CardContent>
                                 </Card>
                             </motion.div>
+
                         ) : step === 1 ? (
                             <motion.div
                                 key="step1"
@@ -321,6 +366,39 @@ const Register = () => {
                                         <p className="text-sm text-muted-foreground">
                                             اختر الدور الذي يناسبك للبدء
                                         </p>
+
+                                        {/* Google Sign-Up Button */}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="w-full h-12 text-base gap-3 border-2 hover:bg-muted/50 transition-all"
+                                            onClick={handleGoogleSignUp}
+                                            disabled={isGoogleLoading || !isClerkLoaded}
+                                        >
+                                            {isGoogleLoading ? (
+                                                <>
+                                                    <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                                    جارٍ التسجيل...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <GoogleIcon />
+                                                    التسجيل بحساب Google
+                                                </>
+                                            )}
+                                        </Button>
+
+                                        {/* Divider */}
+                                        <div className="relative">
+                                            <div className="absolute inset-0 flex items-center">
+                                                <span className="w-full border-t" />
+                                            </div>
+                                            <div className="relative flex justify-center text-xs uppercase">
+                                                <span className="bg-card px-2 text-muted-foreground">
+                                                    أو اختر نوع الحساب
+                                                </span>
+                                            </div>
+                                        </div>
 
                                         {/* Student Role */}
                                         <button
@@ -370,6 +448,21 @@ const Register = () => {
                                             </div>
                                         </button>
 
+                                        {/* Error Message */}
+                                        <AnimatePresence>
+                                            {error && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, y: -10 }}
+                                                    className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm"
+                                                >
+                                                    <AlertCircle className="w-4 h-4" />
+                                                    {error}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
                                         {/* Login Link */}
                                         <div className="text-center pt-4 border-t">
                                             <span className="text-sm text-muted-foreground">
@@ -382,7 +475,94 @@ const Register = () => {
                                     </CardContent>
                                 </Card>
                             </motion.div>
+
+                        ) : step === 3 ? (
+                            /* Step 3: Email Verification Code */
+                            <motion.div
+                                key="step3"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                            >
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <KeyRound className="w-5 h-5 text-primary" />
+                                            تحقق من بريدك الإلكتروني
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <form onSubmit={handleVerifyCode} className="space-y-4">
+                                            <p className="text-sm text-muted-foreground">
+                                                تم إرسال رمز التحقق إلى <strong className="text-foreground">{email}</strong>
+                                            </p>
+
+                                            {/* Verification Code */}
+                                            <div>
+                                                <label className="text-sm font-medium mb-2 block">رمز التحقق</label>
+                                                <div className="relative">
+                                                    <KeyRound className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <Input
+                                                        type="text"
+                                                        placeholder="أدخل رمز التحقق"
+                                                        className="pr-10 text-center text-lg tracking-widest"
+                                                        dir="ltr"
+                                                        value={verificationCode}
+                                                        onChange={(e) => setVerificationCode(e.target.value)}
+                                                        required
+                                                        maxLength={6}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Error Message */}
+                                            <AnimatePresence>
+                                                {error && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: -10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -10 }}
+                                                        className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm"
+                                                    >
+                                                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                        {error}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+
+                                            {/* Verify Button */}
+                                            <Button
+                                                type="submit"
+                                                className="w-full h-12 text-lg gap-2"
+                                                disabled={isLoading}
+                                            >
+                                                {isLoading ? (
+                                                    <>
+                                                        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                        جارٍ التحقق...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle className="w-5 h-5" />
+                                                        تأكيد الرمز
+                                                    </>
+                                                )}
+                                            </Button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => { setStep(2); setError(""); }}
+                                                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                العودة للخطوة السابقة
+                                            </button>
+                                        </form>
+                                    </CardContent>
+                                </Card>
+                            </motion.div>
+
                         ) : (
+                            /* Step 2: Registration Form */
                             <motion.div
                                 key="step2"
                                 initial={{ opacity: 0, x: 20 }}

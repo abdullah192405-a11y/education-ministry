@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -222,10 +223,48 @@ export const useAnnouncements = () => {
 // --- Users & Profiles ---
 
 export const useUser = () => {
+    // Get Clerk auth state (works because ClerkProvider wraps the app)
+    let clerkUserId: string | null | undefined = undefined;
+    let clerkEmail: string | undefined = undefined;
+    let isClerkSignedIn = false;
+
+    try {
+        const clerkAuth = useClerkAuth();
+        isClerkSignedIn = clerkAuth.isSignedIn || false;
+        clerkUserId = clerkAuth.userId;
+    } catch {
+        // Clerk not available — ignore
+    }
+
     return useQuery({
-        queryKey: ["current_user"],
+        queryKey: ["current_user", clerkUserId || "none"],
         queryFn: async () => {
-            // 1. Try Supabase Auth session first (registered users)
+            // 1. Try Clerk session first (Google login users)
+            if (isClerkSignedIn && clerkUserId) {
+                try {
+                    // We can't get the email from useAuth directly,
+                    // so we check localStorage first for the cached user
+                    const stored = localStorage.getItem("edu_user");
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (parsed.email) {
+                            const { data: user } = await supabase
+                                .from("users")
+                                .select("*")
+                                .eq("email", parsed.email)
+                                .maybeSingle();
+
+                            if (user) return user;
+                        }
+                        // Return cached data if DB lookup fails
+                        return parsed;
+                    }
+                } catch {
+                    // Parse error — continue
+                }
+            }
+
+            // 2. Try Supabase Auth session (email/password users)
             try {
                 const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
 
@@ -237,12 +276,23 @@ export const useUser = () => {
                         .maybeSingle();
 
                     if (user) return user;
+
+                    // Fallback: try by email
+                    if (authUser.email) {
+                        const { data: userByEmail } = await supabase
+                            .from("users")
+                            .select("*")
+                            .eq("email", authUser.email)
+                            .maybeSingle();
+
+                        if (userByEmail) return userByEmail;
+                    }
                 }
             } catch {
                 // Auth session missing or expired — continue to fallback
             }
 
-            // 2. Fallback to localStorage (demo accounts / seeded users without auth_id)
+            // 3. Fallback to localStorage (demo accounts / seeded users without auth_id)
             try {
                 const stored = localStorage.getItem("edu_user");
                 if (stored) {
@@ -998,12 +1048,16 @@ export const useCreateChallengeSession = () => {
                 // Setting it to PLAYING is safe based on the app logic, but let's stick to the previous pattern if it's strictly single
             }
 
+            console.log("Supabase Insert Data:", insertData);
             const { data, error } = await supabase
                 .from("challenge_sessions")
                 .insert([insertData])
                 .select()
                 .single();
-            if (error) throw error;
+            if (error) {
+                console.error("Supabase Insert Error:", error);
+                throw error;
+            }
             return data;
         },
         onSuccess: () => {

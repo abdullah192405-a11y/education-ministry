@@ -104,20 +104,80 @@ const AIQuestionGeneratorFromResources = ({
     };
 
     // Get PDF resources with base64 data
-    const getPdfParts = (): { fileName: string; base64: string }[] => {
+    const getPdfParts = async (): Promise<{ fileName: string; base64: string }[]> => {
         const selectedResources = selectedMedia.map(index => media[index]);
         const pdfParts: { fileName: string; base64: string }[] = [];
 
         for (const resource of selectedResources) {
-            if (resource.type === "pdf" && resource.pdfBase64) {
-                pdfParts.push({
-                    fileName: resource.fileName || 'document.pdf',
-                    base64: resource.pdfBase64
-                });
+            if (resource.type === "pdf") {
+                if (resource.pdfBase64) {
+                    pdfParts.push({
+                        fileName: resource.fileName || 'document.pdf',
+                        base64: resource.pdfBase64
+                    });
+                } else if (resource.url) {
+                    try {
+                        const response = await fetch(resource.url);
+                        const blob = await response.blob();
+                        const base64 = await new Promise<string>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result?.toString().split(',')[1] || "");
+                            reader.readAsDataURL(blob);
+                        });
+
+                        if (base64) {
+                            pdfParts.push({
+                                fileName: resource.fileName || resource.url.split('/').pop() || 'document.pdf',
+                                base64: base64
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Error fetching PDF for AI:", err);
+                    }
+                }
             }
         }
 
         return pdfParts;
+    };
+
+    // Get Image resources with base64 data for visual analysis
+    const getImageParts = async (): Promise<{ fileName: string; base64: string }[]> => {
+        const selectedResources = selectedMedia.map(index => media[index]);
+        const imageParts: { fileName: string; base64: string }[] = [];
+
+        for (const resource of selectedResources) {
+            if (resource.type === "image") {
+                if (resource.imageBase64) {
+                    imageParts.push({
+                        fileName: resource.url?.split('/').pop() || 'image.jpg',
+                        base64: resource.imageBase64
+                    });
+                } else if (resource.url) {
+                    try {
+                        // Fetch image and convert to base64 if not already present
+                        const response = await fetch(resource.url);
+                        const blob = await response.blob();
+                        const base64 = await new Promise<string>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result?.toString().split(',')[1] || "");
+                            reader.readAsDataURL(blob);
+                        });
+
+                        if (base64) {
+                            imageParts.push({
+                                fileName: resource.url.split('/').pop() || 'image.jpg',
+                                base64: base64
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Error fetching image for AI:", err);
+                    }
+                }
+            }
+        }
+
+        return imageParts;
     };
 
     const handleGenerate = async () => {
@@ -146,14 +206,20 @@ const AIQuestionGeneratorFromResources = ({
             // Gather content
             setProgress("جاري تحضير المحتوى...");
             const textContent = gatherTextContent();
-            const pdfParts = getPdfParts();
+
+            setProgress("جاري جلب ملفات PDF المحددة...");
+            const pdfParts = await getPdfParts();
+
+            setProgress("جاري جلب الصور المحددة...");
+            const imageParts = await getImageParts();
 
             console.log("Text content:", textContent);
             console.log("PDF parts count:", pdfParts.length);
+            console.log("Image parts count:", imageParts.length);
 
             // Check if we have any content
-            if (!textContent.trim() && pdfParts.length === 0) {
-                throw new Error("لم يتم العثور على محتوى قابل للتحليل. تأكد من أن الموارد تحتوي على محتوى (نص أو ملف PDF).");
+            if (!textContent.trim() && pdfParts.length === 0 && imageParts.length === 0) {
+                throw new Error("لم يتم العثور على محتوى قابل للتحليل. تأكد من أن الموارد تحتوي على محتوى (نص، صورة أو ملف PDF).");
             }
 
             setProcessingPhase("analyzing");
@@ -208,16 +274,26 @@ const AIQuestionGeneratorFromResources = ({
                 }
             }
 
+            // Process Images for visual analysis
+            imageParts.forEach(img => {
+                parts.push({
+                    inline_data: {
+                        mime_type: "image/jpeg", // Fallback to jpeg
+                        data: img.base64
+                    }
+                });
+            });
+
             setProcessingPhase("generating");
             setProgress("جاري توليد الأسئلة والألعاب...");
 
             // Build comprehensive prompt
-            const promptText = buildPrompt(textContent, prompt, pdfParts.length, generateType);
+            const promptText = buildPrompt(textContent, prompt, pdfParts.length, imageParts.length, generateType);
             parts.push({ text: promptText });
 
-            // Use gemini-2.5-flash for all requests
-            const modelToUse = "gemini-2.5-flash"; // Restored
-            console.log(`Using model: ${modelToUse} (PDFs: ${pdfParts.length})`);
+            // Using gemini-2.5-flash as requested by user
+            const modelToUse = "gemini-2.5-flash";
+            console.log(`Using model: ${modelToUse} (PDFs: ${pdfParts.length}, Images: ${imageParts.length})`);
 
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`,
@@ -281,13 +357,14 @@ const AIQuestionGeneratorFromResources = ({
         }
     };
 
-    const buildPrompt = (textContent: string, userPrompt: string, pdfCount: number = 0, genType: "questions" | "games" | "both" = "both"): string => {
-        const pdfNote = pdfCount > 0
-            ? `\n\nملاحظة: تم إرفاق ${pdfCount} ملف PDF للتحليل المباشر. قم بقراءة وتحليل محتوى ملفات PDF المرفقة بعناية.`
+    const buildPrompt = (textContent: string, userPrompt: string, pdfCount: number = 0, imageCount: number = 0, genType: "questions" | "games" | "both" = "both"): string => {
+        const fileNote = (pdfCount > 0 || imageCount > 0)
+            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF` : ''}${pdfCount > 0 && imageCount > 0 ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}. 
+يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الملفات (الصور و/أو الـ PDF). لا تستخدم أي معلومات خارجية أو معرفة عامة غير موجودة في المرفقات.`
             : '';
 
         const contentSection = textContent.trim()
-            ? `\nالمحتوى النصي الإضافي:\n${textContent}`
+            ? `\nالمحتوى النصي المرجعي:\n${textContent}`
             : '';
 
         // Customize based on generation type
@@ -328,12 +405,14 @@ const AIQuestionGeneratorFromResources = ({
 4. ألغاز (puzzle) - حل لغز`;
         }
 
-        return `أنت مساعد ذكي متخصص في إنشاء محتوى تعليمي تفاعلي باللغة العربية.${pdfNote}${contentSection}
+        return `أنت مساعد ذكي متخصص في إنشاء محتوى تعليمي تفاعلي باللغة العربية.
+مهمتك: توليد محتوى مستنداً **حصرياً** على الموارد التي قام المعلم باختيارها من القائمة المرفقة أدناه.
+${fileNote}${contentSection}
 
 طلب المعلم:
 ${userPrompt}
 
-${typeInstruction} بناءً على محتوى ملفات PDF المرفقة والمحتوى النصي (إن وجد)، مع الالتزام بالتنسيق التالي بدقة.
+${typeInstruction} بناءً **فقط** على المعلومات المستخرجة من الصور أو ملفات PDF أو النصوص المختارة، مع الالتزام بالتنسيق التالي بدقة. لا تولد أي سؤال من خارج المحتوى المختار.
 ${availableTypes}
 
 يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي:
@@ -368,16 +447,16 @@ ${availableTypes}
       {
         "label": "سؤال سهل",
         "points": 100,
-        "question": "ما هو عاصمة مصر؟",
-        "options": ["القاهرة", "الإسكندرية", "أسوان"],
+        "question": "سؤال مستخرج من الصورة...",
+        "options": ["خيار 1", "خيار 2", "خيار 3"],
         "correctAnswer": 0
       }
     ]
   },
   {
     "type": "shooting",
-    "question": "أطلق النار على الإجابة الصحيحة: ما هي عاصمة المملكة العربية السعودية؟",
-    "options": ["الرياض", "جدة", "الدمام", "مكة"],
+    "question": "أطلق النار على الإجابة الصحيحة: سؤال مستخرج من الصورة...",
+    "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
     "correctAnswer": 0,
     "points": 150,
     "timeLimit": 15
@@ -385,14 +464,15 @@ ${availableTypes}
   {
     "type": "puzzle",
     "question": "ركب الكلمات لتكوين الجملة الصحيحة",
-    "correctAnswer": "الشمس تشرق من الشرق",
-    "options": ["الشمس", "من", "تشرق", "الشرق"],
+    "correctAnswer": "جملة من المحتوى المرفق",
+    "options": ["الكلمة 1", "الكلمة 2", "الكلمة 3"],
     "points": 200,
     "timeLimit": 45
   }
 ]
 
 ملاحظات مهمة:
+- التزم بنسبة 100% بالمحتوى المرفق (الصور وPDF والنصوص). ممنوع تماماً توليد أسئلة من خارجها.
 - استخدم اللغة العربية الفصحى
 - اجعل المحتوى واضحاً ومفيداً ومستنداً إلى المحتوى المقدم
 - بالنسبة لعجلة الحظ (wheel_spin): يجب أن تحتوي العجلة على 4-6 شرائح (segments) مع أسئلة كاملة
@@ -637,7 +717,7 @@ ${availableTypes}
                                     <p className="font-medium">كيف يعمل التوليد من الموارد:</p>
                                     <ul className="space-y-1 mr-4 list-disc text-muted-foreground">
                                         <li>سيقوم الذكاء الاصطناعي بقراءة وفهم محتوى ملفات PDF والنصوص</li>
-                                        <li>سيأخذ بعين الاعتبار أوصاف الفيديوهات والصور</li>
+                                        <li>سيقوم بتحليل الصور مباشرة لاستخراج الأسئلة منها (Visual Analysis)</li>
                                         <li>سيولد أسئلة وألعاب مبنية على المحتوى الفعلي للموارد</li>
                                         <li>يمكنك مراجعة وتعديل الأسئلة المولدة قبل الحفظ</li>
                                     </ul>

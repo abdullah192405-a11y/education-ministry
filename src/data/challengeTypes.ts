@@ -8,6 +8,7 @@ export interface ContentMedia {
     file?: File; // Temporary for upload
     fileName?: string;
     pdfBase64?: string; // For AI analysis
+    imageBase64?: string; // For AI analysis
 }
 
 export interface EducationalContent {

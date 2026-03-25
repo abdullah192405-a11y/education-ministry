@@ -222,7 +222,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
                                     className="gap-2 border-purple-500/30 hover:border-purple-500 hover:bg-purple-500/10"
                                 >
                                     <FileUp className="w-4 h-4" />
-                                    رفع ملف PDF
+                                    رفع ملفات أو صور
                                 </Button>
                             </div>
                         </div>

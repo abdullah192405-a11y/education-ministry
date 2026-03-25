@@ -23,7 +23,7 @@ import TeacherChallengesTab from "./components/TeacherChallengesTab";
 import TeacherStudentsTab from "./components/TeacherStudentsTab";
 import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
-import ContentUploadTab from "./components/ContentUploadTab";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { supabase } from "@/lib/supabase";
@@ -186,6 +186,15 @@ const TeacherDashboard = () => {
         const topic = topics.find((t: any) => t.id === topicId);
         if (!topic) return;
 
+        if (!teacherData.id) {
+            toast({
+                title: "خطأ في الجلسة",
+                description: "لم يتم العثور على بيانات المعلم. يرجى محاولة تسجيل الدخول مرة أخرى.",
+                variant: "destructive"
+            });
+            return;
+        }
+
         const pin = generatePin();
         const newChallenge = {
             id: Date.now(),
@@ -220,11 +229,24 @@ const TeacherDashboard = () => {
 
             // Transition to challenges tab to see the new lobby row
             setActiveTab("challenges");
-        } catch (error) {
-            console.error("Failed to create session from dashboard", error);
+        } catch (error: any) {
+            console.error("Detailed Error creating challenge:", error);
+
+            // Extract the most descriptive error message
+            const errorMessage = error?.message ||
+                error?.error_description ||
+                (typeof error === 'string' ? error : "تعذر إنشاء التحدي في قاعدة البيانات.");
+
             toast({
-                title: "خطأ",
-                description: "تعذر إنشاء التحدي في قاعدة البيانات.",
+                title: "خطأ في إنشاء التحدي",
+                description: (
+                    <div className="mt-1 flex flex-col gap-1">
+                        <p>{errorMessage}</p>
+                        {error?.details && <p className="text-[10px] opacity-70">Details: {error.details}</p>}
+                        {error?.hint && <p className="text-[10px] opacity-70">Hint: {error.hint}</p>}
+                        {error?.code && <p className="text-[10px] font-mono">Code: {error.code}</p>}
+                    </div>
+                ),
                 variant: "destructive"
             });
         }
@@ -336,7 +358,6 @@ const TeacherDashboard = () => {
                                         { id: "overview", icon: LayoutDashboard, label: "نظرة عامة" },
                                         { id: "topics", icon: Library, label: "الدروس" },
                                         { id: "challenges", icon: Gamepad2, label: "التحديات" },
-                                        { id: "content", icon: Upload, label: "المحتوى" },
                                         { id: "students", icon: Users, label: "الطلاب" },
                                         { id: "analytics", icon: ChartBar, label: "الإحصائيات" },
                                         { id: "settings", icon: Cog, label: "الإعدادات" }
@@ -739,17 +760,17 @@ const TeacherDashboard = () => {
                                             }}
                                         />
                                     )}
-                                    {activeTab === "content" && <ContentUploadTab />}
+
                                     {activeTab === "students" && <TeacherStudentsTab />}
                                     {activeTab === "analytics" && <TeacherAnalyticsTab />}
                                     {activeTab === "settings" && <TeacherSettingsTab />}
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                    </motion.div>
-                </div>
-            </div>
-        </div>
+                    </motion.div >
+                </div >
+            </div >
+        </div >
     );
 };
 

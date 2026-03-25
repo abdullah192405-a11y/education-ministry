@@ -81,11 +81,11 @@ const TeacherSettingsTab = () => {
                 title: "تم رفع الصورة",
                 description: "تم تحديث صورتك الرمزية بنجاح",
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error uploading avatar:", error);
             toast({
                 title: "خطأ",
-                description: "حدث خطأ أثناء رفع الصورة",
+                description: error.message || "حدث خطأ أثناء رفع الصورة. الرجاء التأكد من وجود bucket باسم teacher-content في Supabase.",
                 variant: "destructive"
             });
         } finally {

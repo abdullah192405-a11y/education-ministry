@@ -110,56 +110,98 @@ const TeacherTopicsTab = ({ gradeId, subjectId, onCreateChallenge }: TeacherTopi
         const mediaItems = topicData.media || [];
         const challengeItems = topicData.challengeItems || [];
 
-        if (editingTopic) {
-            // Update existing topic
-            updateTopicMutation.mutate({
-                id: editingTopic.id,
-                updates: {
+        try {
+            if (editingTopic) {
+                // Update existing topic
+                updateTopicMutation.mutate({
+                    id: editingTopic.id,
+                    updates: {
+                        title: topicData.title,
+                        description: topicData.description,
+                        thumbnail: topicData.thumbnail,
+                        duration: topicData.duration,
+                    }
+                }, {
+                    onSuccess: async (updatedTopic) => {
+                        const topicId = updatedTopic?.id || editingTopic.id;
+                        try {
+                            // Save media items to DB if any
+                            if (mediaItems.length > 0 || (editingTopic.media && editingTopic.media.length > 0)) {
+                                await saveMediaMutation.mutateAsync({ topicId, media: mediaItems });
+                            }
+                            // Save challenge questions to DB if any
+                            if (challengeItems.length > 0 || (editingTopic.challengeItems && editingTopic.challengeItems.length > 0)) {
+                                await saveChallengeQuestionsMutation.mutateAsync({ topicId, questions: challengeItems });
+                            }
+                            toast({ title: "تم تحديث الدرس بنجاح ✓" });
+                            setIsEditorOpen(false);
+                        } catch (err: any) {
+                            console.error("Error saving topic details:", err);
+                            toast({
+                                title: "خطأ في حفظ المكونات",
+                                description: err.message || "حدث خطأ أثناء حفظ الوسائط أو الأسئلة.",
+                                variant: "destructive"
+                            });
+                        }
+                    },
+                    onError: (err: any) => {
+                        toast({
+                            title: "خطأ في التحديث",
+                            description: err.message || "تعذر تحديث الدرس الأساسي.",
+                            variant: "destructive"
+                        });
+                    }
+                });
+            } else {
+                // Create new topic
+                createTopicMutation.mutate({
+                    subject_id: String(subjectId),
                     title: topicData.title,
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
                     duration: topicData.duration,
-                }
-            }, {
-                onSuccess: (updatedTopic) => {
-                    const topicId = updatedTopic?.id || editingTopic.id;
-                    // Save media items to DB
-                    if (mediaItems.length > 0 || (editingTopic.media && editingTopic.media.length > 0)) {
-                        saveMediaMutation.mutate({ topicId, media: mediaItems });
-                    }
-                    // Save challenge questions to DB
-                    if (challengeItems.length > 0 || (editingTopic.challengeItems && editingTopic.challengeItems.length > 0)) {
-                        saveChallengeQuestionsMutation.mutate({ topicId, questions: challengeItems });
-                    }
-                    toast({ title: "تم تحديث الدرس بنجاح ✓" });
-                    setIsEditorOpen(false);
-                }
-            });
-        } else {
-            // Create new topic
-            createTopicMutation.mutate({
-                subject_id: subjectId,
-                title: topicData.title,
-                description: topicData.description,
-                thumbnail: topicData.thumbnail,
-                duration: topicData.duration,
-                views: 0
-            }, {
-                onSuccess: (newTopic) => {
-                    const topicId = newTopic?.id;
-                    if (topicId) {
-                        // Save media items to DB
-                        if (mediaItems.length > 0) {
-                            saveMediaMutation.mutate({ topicId, media: mediaItems });
+                    views: 0
+                }, {
+                    onSuccess: async (newTopic) => {
+                        const topicId = newTopic?.id;
+                        if (topicId) {
+                            try {
+                                // Save media items to DB
+                                if (mediaItems.length > 0) {
+                                    await saveMediaMutation.mutateAsync({ topicId, media: mediaItems });
+                                }
+                                // Save challenge questions to DB
+                                if (challengeItems.length > 0) {
+                                    await saveChallengeQuestionsMutation.mutateAsync({ topicId, questions: challengeItems });
+                                }
+                                toast({ title: "تم إنشاء الدرس بنجاح ✓" });
+                                setIsEditorOpen(false);
+                            } catch (err: any) {
+                                console.error("Error saving new topic details:", err);
+                                toast({
+                                    title: "تم إنشاء الدرس ولكن مع خطأ",
+                                    description: "تم إنشاء الدرس، لكن فشل حفظ الوسائط أو الأسئلة.",
+                                    variant: "destructive"
+                                });
+                                // Still close editor, let them retry editing
+                                setIsEditorOpen(false);
+                            }
                         }
-                        // Save challenge questions to DB
-                        if (challengeItems.length > 0) {
-                            saveChallengeQuestionsMutation.mutate({ topicId, questions: challengeItems });
-                        }
+                    },
+                    onError: (err: any) => {
+                        toast({
+                            title: "خطأ في الإنشاء",
+                            description: err.message || "تعذر إنشاء الدرس في قاعدة البيانات.",
+                            variant: "destructive"
+                        });
                     }
-                    toast({ title: "تم إنشاء الدرس بنجاح ✓" });
-                    setIsEditorOpen(false);
-                }
+                });
+            }
+        } catch (error: any) {
+            toast({
+                title: "خطأ غير متوقع",
+                description: error.message || "حدث خطأ أثناء محاولة الحفظ.",
+                variant: "destructive"
             });
         }
     };

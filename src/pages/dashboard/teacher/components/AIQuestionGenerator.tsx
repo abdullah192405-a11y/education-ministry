@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
     Upload, FileText, Sparkles, AlertCircle, CheckCircle2,
-    Loader2, X, FileUp, Wand2
+    Loader2, X, FileUp, Wand2, Image as ImageIcon
 } from "lucide-react";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
@@ -18,25 +18,46 @@ interface AIQuestionGeneratorProps {
 }
 
 const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps) => {
-    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [file, setFile] = useState<File | null>(null);
+    const [fileType, setFileType] = useState<"pdf" | "image" | null>(null);
     const [prompt, setPrompt] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState("");
     const { toast } = useToast();
 
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                const result = reader.result as string;
+                resolve(result.split(',')[1]);
+            };
+            reader.onerror = (error) => reject(error);
+        });
+    };
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.type === "application/pdf") {
-                setPdfFile(file);
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            if (selectedFile.type === "application/pdf") {
+                setFile(selectedFile);
+                setFileType("pdf");
                 toast({
-                    title: "تم اختيار الملف ✓",
-                    description: file.name,
+                    title: "تم اختيار ملف PDF ✓",
+                    description: selectedFile.name,
+                });
+            } else if (selectedFile.type.startsWith("image/")) {
+                setFile(selectedFile);
+                setFileType("image");
+                toast({
+                    title: "تم اختيار صورة ✓",
+                    description: selectedFile.name,
                 });
             } else {
                 toast({
                     title: "خطأ في نوع الملف",
-                    description: "يرجى اختيار ملف PDF فقط",
+                    description: "يرجى اختيار ملف PDF أو صورة فقط",
                     variant: "destructive",
                 });
             }
@@ -56,15 +77,28 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
         setIsProcessing(true);
 
         try {
-            let pdfText = "";
+            let extractedText = "";
+            let imagePart = null;
 
-            // Step 1: Read PDF content if provided
-            if (pdfFile) {
-                setProgress("جاري قراءة ملف PDF...");
-                pdfText = await extractPdfText(pdfFile);
+            // Step 1: Read File Content
+            if (file) {
+                if (fileType === "pdf") {
+                    setProgress("جاري قراءة ملف PDF...");
+                    extractedText = await extractPdfText(file);
+                } else if (fileType === "image") {
+                    setProgress("جاري معالجة الصورة...");
+                    const base64Data = await fileToBase64(file);
+                    imagePart = {
+                        inline_data: {
+                            mime_type: file.type,
+                            data: base64Data
+                        }
+                    };
+                    extractedText = "[تم رفع صورة للتحليل]";
+                }
             } else {
                 setProgress("جاري التحضير...");
-                pdfText = "لم يتم رفع ملف PDF. سيعتمد التوليد على التعليمات المقدمة فقط.";
+                extractedText = "لم يتم رفع ملف. سيعتمد التوليد على التعليمات المقدمة فقط.";
             }
 
             setProgress("جاري التواصل مع Gemini AI...");
@@ -75,7 +109,16 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 throw new Error("لم يتم تكوين مفتاح Gemini API");
             }
 
-            const modelName = "gemini-2.5-flash"; // Restored
+            const modelName = "gemini-2.5-flash"; // Reverted to 2.5-flash as requested by user
+
+            const parts: any[] = [];
+
+            if (imagePart) {
+                parts.push(imagePart);
+            }
+
+            parts.push({ text: buildPrompt(extractedText, prompt) });
+
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                 {
@@ -86,11 +129,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                     body: JSON.stringify({
                         contents: [
                             {
-                                parts: [
-                                    {
-                                        text: buildPrompt(pdfText, prompt)
-                                    }
-                                ]
+                                parts
                             }
                         ],
                         generationConfig: {
@@ -223,19 +262,20 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
 
     // Fallback method: Just read file name and let user provide context
     const fallbackExtractText = async (file: File): Promise<string> => {
-        return `\n[ملف PDF: ${file.name}]\n\nملاحظة: تعذر قراءة محتوى PDF. سيعتمد الذكاء الاصطناعي على التعليمات المقدمة فقط.\n`;
+        return `\n[ملف: ${file.name}]\n\nملاحظة: تعذر قراءة محتوى الملف برمجياً. سيعتمد الذكاء الاصطناعي على التحليل البصري أو التعليمات المقدمة فقط.\n`;
     };
 
-    const buildPrompt = (pdfContent: string, userPrompt: string): string => {
+    const buildPrompt = (fileContent: string, userPrompt: string): string => {
         return `أنت مساعد ذكي متخصص في إنشاء أسئلة تعليمية وألعاب تفاعلية باللغة العربية.
+مهمتك الأساسية هي توليد محتوى مستنداً **حصرياً** على الملف المرفق (صورة أو PDF).
 
-المحتوى التعليمي من ملف PDF:
-${pdfContent}
+المحتوى التعليمي من الملف المرفق:
+${fileContent}
 
 طلب المعلم:
 ${userPrompt}
 
-يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على الطلب، مع الالتزام بالتنسيق التالي بدقة.
+يرجى إنشاء أسئلة وألعاب تفاعلية بناءً **فقط** على المعلومات الموجودة في الملف المرفق، مع الالتزام بالتنسيق التالي بدقة. لا تستخدم أي معلومات خارجية أو معرفة عامة.
 
 أنواع الأسئلة المتاحة:
 1. اختيار متعدد (multiple_choice) - سؤال مع 2-6 خيارات
@@ -256,7 +296,7 @@ ${userPrompt}
 [
   {
     "type": "multiple_choice",
-    "question": "ما هو...",
+    "question": "سؤال مستخرج من الملف المرفق...",
     "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
     "correctAnswer": 0,
     "explanation": "الشرح...",
@@ -265,23 +305,39 @@ ${userPrompt}
   },
   {
     "type": "matching",
-    "question": "طابق بين...",
+    "question": "طابق بين مفاهيم من الملف...",
     "pairs": [
       {"left": "العنصر 1", "right": "المطابق 1"},
       {"left": "العنصر 2", "right": "المطابق 2"}
     ],
     "points": 150,
     "timeLimit": 45
+  },
+  {
+      "type": "wheel_spin",
+      "question": "أدر العجلة: سؤال من الملف المرفق...",
+      "points": 0,
+      "timeLimit": 60,
+      "wheelSegments": [
+        {
+          "label": "سؤال 1",
+          "points": 100,
+          "question": "...",
+          "options": ["خيار 1", "خيار 2"],
+          "correctAnswer": 0
+        }
+      ]
   }
 ]
 
 ملاحظات مهمة:
+- التزم بنسبة 100% بالمحتوى المرفق (الصورة أو PDF). ممنوع تماماً توليد أسئلة من خارجها.
 - استخدم اللغة العربية الفصحى
-- اجعل الأسئلة واضحة ومفيدة
+- اجعل الأسئلة واضحة ومفيدة ومستخلصة بدقة
 - نوّع بين الأسئلة والألعاب
 - اجعل النقاط مناسبة للصعوبة (50-200 نقطة)
 - الوقت المحدد يتراوح بين 15-60 ثانية
-- تأكد من صحة JSON وعدم وجود أخطاء في التنسيق`;
+- تأكد من صحة JSON تماماً`;
     };
 
     const parseGeneratedQuestions = (text: string): ChallengeQuestion[] => {
@@ -321,47 +377,54 @@ ${userPrompt}
                         توليد الأسئلة والألعاب بالذكاء الاصطناعي
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-2">
-                        استخدم Gemini 2.5 Flash لتوليد أسئلة وألعاب تفاعلية من ملف PDF
+                        استخدم Gemini AI لتوليد أسئلة وألعاب تفاعلية من ملف PDF أو صورة
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Step 1: Upload PDF */}
+                    {/* Step 1: Upload File */}
                     <div className="space-y-3">
                         <Label className="text-base font-bold flex items-center gap-2">
                             <FileUp className="w-5 h-5" />
-                            الخطوة 1: رفع ملف PDF (اختياري)
+                            الخطوة 1: رفع ملف (PDF أو صورة)
                         </Label>
                         <div className="flex items-center gap-3">
                             <Input
                                 type="file"
-                                accept=".pdf"
+                                accept=".pdf,image/*"
                                 onChange={handleFileChange}
                                 className="flex-1"
                                 disabled={isProcessing}
                             />
-                            {pdfFile && (
+                            {file && (
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    onClick={() => setPdfFile(null)}
+                                    onClick={() => {
+                                        setFile(null);
+                                        setFileType(null);
+                                    }}
                                     disabled={isProcessing}
                                 >
                                     <X className="w-4 h-4" />
                                 </Button>
                             )}
                         </div>
-                        {pdfFile && (
+                        {file && (
                             <div className="flex items-center gap-2 text-sm text-success">
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>{pdfFile.name}</span>
+                                {fileType === "pdf" ? (
+                                    <FileText className="w-4 h-4" />
+                                ) : (
+                                    <ImageIcon className="w-4 h-4" />
+                                )}
+                                <span>{file.name}</span>
                                 <span className="text-muted-foreground">
-                                    ({(pdfFile.size / 1024 / 1024).toFixed(2)} MB)
+                                    ({(file.size / 1024 / 1024).toFixed(2)} MB)
                                 </span>
                             </div>
                         )}
-                        {!pdfFile && (
+                        {!file && (
                             <p className="text-xs text-muted-foreground">
-                                💡 إذا لم ترفع PDF، يمكنك كتابة المحتوى مباشرة في التعليمات
+                                💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية
                             </p>
                         )}
                     </div>
@@ -412,7 +475,7 @@ ${userPrompt}
                                 <div className="text-sm space-y-2">
                                     <p className="font-medium">ملاحظات هامة:</p>
                                     <ul className="space-y-1 mr-4 list-disc text-muted-foreground">
-                                        <li>الذكاء الاصطناعي سيقرأ محتوى الـ PDF ويستخدمه كمرجع</li>
+                                        <li>الذكاء الاصطناعي سيحلل محتوى الـ PDF أو الصور ويستخدمها كمرجع</li>
                                         <li>سيتم توليد أسئلة وألعاب متنوعة حسب طلبك</li>
                                         <li>يمكنك مراجعة وتعديل النتائج قبل الحفظ</li>
                                         <li>تأكد من وجود مفتاح Gemini API في ملف .env</li>

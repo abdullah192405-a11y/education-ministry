@@ -158,7 +158,7 @@ ${generateType === "games" || generateType === "both" ? "- توليد ألعاب
 العودة بتنسيق JSON محدد للغاية.
 `;
 
-            const modelName = "gemini-2.5-flash"; // Fixed from gemini-1.5-flash
+            const modelName = "gemini-2.5-flash"; // Reverted to 2.5-flash as requested by user
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                 {

@@ -15,10 +15,13 @@ import JoinChallenge from "./pages/JoinChallenge";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 // Dashboard Pages
 import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect } from "./pages/dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ClerkSSOCallback from "./components/ClerkSSOCallback";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +88,9 @@ const App = () => (
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/sso-callback" element={<ClerkSSOCallback />} />
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
