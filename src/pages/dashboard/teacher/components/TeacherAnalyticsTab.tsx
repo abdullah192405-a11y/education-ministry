@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { TrendingUp, Users, BookOpen, Gamepad2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUser, useTeacherProfile, useHostedChallengeResults, useActiveChallengesByHost, useStudentsInGrade, useGradeSubjectProgress } from "@/hooks/useDatabase";
+import { useUser, useTeacherProfile, useHostedChallengeResults, useActiveChallengesByHost, useStudentsInGrade, useGradeSubjectProgress, useSubject } from "@/hooks/useDatabase";
 
 const TeacherAnalyticsTab = () => {
     const { data: user } = useUser();
@@ -14,13 +14,19 @@ const TeacherAnalyticsTab = () => {
     const { data: activeChallenges } = useActiveChallengesByHost(user?.id || "");
     const { data: gradeStudents } = useStudentsInGrade(profile?.grade_id || "");
     const { data: gradeSubjectProgress, isLoading: isLoadingAnalytics } = useGradeSubjectProgress(profile?.grade_id || "", profile?.subject_id || "");
+    const { data: teacherSubject } = useSubject(profile?.subject_id || "", profile?.id);
 
     // Derive analytics from results
-    const uniqueStudents = gradeStudents?.length || 0;
+    // Derive analytics from results
+    const uniqueStudentsParticipated = new Set((hostedResults || []).map((r: any) => r.user_id || r.userId));
+    const uniqueStudents = uniqueStudentsParticipated.size;
     const totalChallenges = (hostedResults || []).length;
 
-    // Class average score from all students in this subject
-    const subjectProgressList = gradeSubjectProgress || [];
+    // Filter subject progress to only include students who actually participated in this teacher's challenges
+    const subjectProgressList = (gradeSubjectProgress || []).filter((sp: any) =>
+        uniqueStudentsParticipated.has(sp.student_id) || uniqueStudentsParticipated.has(sp.student?.user_id)
+    );
+
     const averageScore = subjectProgressList.length > 0
         ? Math.round(subjectProgressList.reduce((acc: number, r: any) => acc + (r.average_score || 0), 0) / subjectProgressList.length)
         : totalChallenges > 0
@@ -76,7 +82,7 @@ const TeacherAnalyticsTab = () => {
                         <div>
                             <p className="text-sm text-muted-foreground">الدروس</p>
                             <p className="text-2xl font-bold">
-                                {isLoading ? <Skeleton className="h-7 w-10" /> : (profile?.total_topics || 0)}
+                                {isLoading ? <Skeleton className="h-7 w-10" /> : (teacherSubject?.topics?.length || profile?.total_topics || 0)}
                             </p>
                         </div>
                     </CardContent>

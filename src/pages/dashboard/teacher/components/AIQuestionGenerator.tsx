@@ -7,10 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
     Upload, FileText, Sparkles, AlertCircle, CheckCircle2,
-    Loader2, X, FileUp, Wand2, Image as ImageIcon
+    Loader2, X, FileUp, Wand2, Image as ImageIcon, Video, Link2
 } from "lucide-react";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface AIQuestionGeneratorProps {
     onGenerate: (questions: ChallengeQuestion[]) => void;
@@ -18,6 +19,8 @@ interface AIQuestionGeneratorProps {
 }
 
 const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps) => {
+    const [inputType, setInputType] = useState<"file" | "video">("file");
+    const [videoUrl, setVideoUrl] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const [fileType, setFileType] = useState<"pdf" | "image" | null>(null);
     const [prompt, setPrompt] = useState("");
@@ -78,15 +81,11 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
 
         try {
             let extractedText = "";
-            let imagePart = null;
+            let imagePart: any = null;
 
-            // Step 1: Read File Content
-            if (file) {
-                if (fileType === "pdf") {
-                    setProgress("جاري قراءة ملف PDF...");
-                    extractedText = await extractPdfText(file);
-                } else if (fileType === "image") {
-                    setProgress("جاري معالجة الصورة...");
+            if (inputType === "file" && file) {
+                setProgress("جاري تحليل الملف...");
+                if (file.type.includes("image")) {
                     const base64Data = await fileToBase64(file);
                     imagePart = {
                         inline_data: {
@@ -94,14 +93,55 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                             data: base64Data
                         }
                     };
-                    extractedText = "[تم رفع صورة للتحليل]";
+                    extractedText = "تم توفير صورة للتحليل. يرجى تحليل محتواها العلمي بدقة.";
+                } else if (file.type === "application/pdf") {
+                    extractedText = await extractPdfText(file);
                 }
-            } else {
-                setProgress("جاري التحضير...");
-                extractedText = "لم يتم رفع ملف. سيعتمد التوليد على التعليمات المقدمة فقط.";
-            }
+            } else if (inputType === "video" && videoUrl) {
+                setProgress("جاري استخراج محتوى الفيديو...");
 
-            setProgress("جاري التواصل مع Gemini AI...");
+                // Helper to get YouTube ID
+                const getYoutubeId = (url: string) => {
+                    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                    const match = url.match(regExp);
+                    return (match && match[2].length === 11) ? match[2] : null;
+                };
+
+                const videoId = getYoutubeId(videoUrl);
+                if (videoId) {
+                    try {
+                        // Attempt to fetch transcript via public API to mimic NotebookLM behavior
+                        const transcriptRes = await fetch(`https://subtitles-youtube.vercel.app/api/transcript?videoId=${videoId}`);
+                        if (transcriptRes.ok) {
+                            const transcriptData = await transcriptRes.json();
+                            if (transcriptData && transcriptData.transcript) {
+                                extractedText = `[نص الفيديو الكامل من اليوتيوب - NotebookLM Mode]:\n${transcriptData.transcript.map((t: any) => t.text).join(" ")}`;
+                                setProgress("تم استخراج نص الفيديو وتحليله بنجاح ✓");
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Transcript API error", e);
+                    }
+                }
+
+                if (!extractedText) {
+                    // Fallback to oEmbed if transcript failed - now with more specific extraction
+                    try {
+                        setProgress("جاري استجماع معلومات الفيديو البديلة...");
+                        const oEmbedRes = await fetch(`https://www.youtube.com/oembed?url=${videoUrl}&format=json`);
+                        if (oEmbedRes.ok) {
+                            const data = await oEmbedRes.json();
+                            extractedText = `[بيانات الفيديو للتحليل]:\nالعنوان: ${data.title}\nالمؤلف: ${data.author_name}\nالرابط: ${videoUrl}\n\nيرجى محاكاة NotebookLM واستخدام معرفتك الداخلية بهذا الفيديو أو موضوعه (Grounded Knowledge) لإنتاج أسئلة دقيقة جداً.`;
+                        }
+                    } catch (e) {
+                        extractedText = `[رابط فيديو للتحليل]: ${videoUrl}`;
+                    }
+                }
+            }
+            else {
+                setProgress("جاري التحضير...");
+                extractedText = "لم يتم توفير ملف أو رابط. سيعتمد التوليد على التعليمات المقدمة فقط.";
+            }
 
             // Step 2: Call Gemini API
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -109,7 +149,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 throw new Error("لم يتم تكوين مفتاح Gemini API");
             }
 
-            const modelName = "gemini-2.5-flash"; // Reverted to 2.5-flash as requested by user
+            const modelName = "gemini-2.5-flash"; // Reverted to 2.5-flash as specifically requested
 
             const parts: any[] = [];
 
@@ -267,15 +307,20 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
 
     const buildPrompt = (fileContent: string, userPrompt: string): string => {
         return `أنت مساعد ذكي متخصص في إنشاء أسئلة تعليمية وألعاب تفاعلية باللغة العربية.
-مهمتك الأساسية هي توليد محتوى مستنداً **حصرياً** على الملف المرفق (صورة أو PDF).
+مهمتك الأساسية هي توليد محتوى مستنداً **حصرياً** على المصدر المقدم (صورة، PDF، أو رابط فيديو).
 
-المحتوى التعليمي من الملف المرفق:
+المحتوى التعليمي من المصدر:
 ${fileContent}
 
 طلب المعلم:
 ${userPrompt}
 
-يرجى إنشاء أسئلة وألعاب تفاعلية بناءً **فقط** على المعلومات الموجودة في الملف المرفق، مع الالتزام بالتنسيق التالي بدقة. لا تستخدم أي معلومات خارجية أو معرفة عامة.
+يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على المعلومات المتوفرة في المصدر المقدم، مع الالتزام بالتنسيق التالي بدقة. 
+**في حال كان المصدر رابط فيديو (يوتيوب):**
+1. استخدم العنوان والبيانات المتاحة لفهم الموضوع الأساسي.
+2. قم بتحليله بناءً على معرفتك الواسعة بمحتوى الفيديو التعليمي (Grounded Knowledge) إذا كان الفيديو مشهوراً أو متاحاً في قاعدة بياناتك.
+3. التزم تماماً بمحتوى الفيديو ولا تخرج عن سياقه العلمي.
+4. إذا لم تتمكن من "مشاهدة" الفيديو مباشرة، اعتمد على العنوان والتعليمات المقدمة من المعلم لإنشاء أسئلة دقيقة جداً.
 
 أنواع الأسئلة المتاحة:
 1. اختيار متعدد (multiple_choice) - سؤال مع 2-6 خيارات
@@ -381,52 +426,87 @@ ${userPrompt}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Step 1: Upload File */}
-                    <div className="space-y-3">
+                    {/* Step 1: Content Source */}
+                    <div className="space-y-4">
                         <Label className="text-base font-bold flex items-center gap-2">
                             <FileUp className="w-5 h-5" />
-                            الخطوة 1: رفع ملف (PDF أو صورة)
+                            الخطوة 1: مصدر المحتوى
                         </Label>
-                        <div className="flex items-center gap-3">
-                            <Input
-                                type="file"
-                                accept=".pdf,image/*"
-                                onChange={handleFileChange}
-                                className="flex-1"
-                                disabled={isProcessing}
-                            />
-                            {file && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                        setFile(null);
-                                        setFileType(null);
-                                    }}
-                                    disabled={isProcessing}
-                                >
-                                    <X className="w-4 h-4" />
-                                </Button>
-                            )}
-                        </div>
-                        {file && (
-                            <div className="flex items-center gap-2 text-sm text-success">
-                                {fileType === "pdf" ? (
+
+                        <Tabs value={inputType} onValueChange={(v) => setInputType(v as any)} className="w-full">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="file" className="gap-2">
                                     <FileText className="w-4 h-4" />
-                                ) : (
-                                    <ImageIcon className="w-4 h-4" />
+                                    ملف (PDF/صورة)
+                                </TabsTrigger>
+                                <TabsTrigger value="video" className="gap-2">
+                                    <Video className="w-4 h-4" />
+                                    رابط فيديو (YouTube)
+                                </TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="file" className="space-y-3 mt-4">
+                                <div className="flex items-center gap-3">
+                                    <Input
+                                        type="file"
+                                        accept=".pdf,image/*"
+                                        onChange={handleFileChange}
+                                        className="flex-1"
+                                        disabled={isProcessing}
+                                    />
+                                    {file && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => {
+                                                setFile(null);
+                                                setFileType(null);
+                                            }}
+                                            disabled={isProcessing}
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                                {file && (
+                                    <div className="flex items-center gap-2 text-sm text-success">
+                                        {fileType === "pdf" ? (
+                                            <FileText className="w-4 h-4" />
+                                        ) : (
+                                            <ImageIcon className="w-4 h-4" />
+                                        )}
+                                        <span>{file.name}</span>
+                                        <span className="text-muted-foreground">
+                                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                        </span>
+                                    </div>
                                 )}
-                                <span>{file.name}</span>
-                                <span className="text-muted-foreground">
-                                    ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                </span>
-                            </div>
-                        )}
-                        {!file && (
-                            <p className="text-xs text-muted-foreground">
-                                💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية
-                            </p>
-                        )}
+                                {!file && (
+                                    <p className="text-xs text-muted-foreground">
+                                        💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية
+                                    </p>
+                                )}
+                            </TabsContent>
+
+                            <TabsContent value="video" className="space-y-3 mt-4">
+                                <div className="space-y-2">
+                                    <div className="relative">
+                                        <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                        <Input
+                                            type="url"
+                                            placeholder="https://www.youtube.com/watch?v=..."
+                                            value={videoUrl}
+                                            onChange={(e) => setVideoUrl(e.target.value)}
+                                            className="pl-10"
+                                            disabled={isProcessing}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        💡 ضع رابط فيديو يوتيوب تعليمي ليقوم الذكاء الاصطناعي بتحليله
+                                    </p>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
                     </div>
 
                     {/* Step 2: Enter Prompt */}
@@ -475,10 +555,10 @@ ${userPrompt}
                                 <div className="text-sm space-y-2">
                                     <p className="font-medium">ملاحظات هامة:</p>
                                     <ul className="space-y-1 mr-4 list-disc text-muted-foreground">
-                                        <li>الذكاء الاصطناعي سيحلل محتوى الـ PDF أو الصور ويستخدمها كمرجع</li>
+                                        <li>الذكاء الاصطناعي سيحلل محتوى ملفات PDF، الصور، أو روابط الفيديو</li>
+                                        <li>بالنسبة للفيديوهات، سيقوم النموذج بتحليل الرابط لاستنتاج المحتوى</li>
                                         <li>سيتم توليد أسئلة وألعاب متنوعة حسب طلبك</li>
                                         <li>يمكنك مراجعة وتعديل النتائج قبل الحفظ</li>
-                                        <li>تأكد من وجود مفتاح Gemini API في ملف .env</li>
                                     </ul>
                                 </div>
                             </div>
@@ -497,7 +577,7 @@ ${userPrompt}
                         </Button>
                         <Button
                             onClick={handleGenerate}
-                            disabled={!prompt.trim() || isProcessing}
+                            disabled={!prompt.trim() || isProcessing || (inputType === 'video' && !videoUrl.trim()) || (inputType === 'file' && !file && !prompt.trim())}
                             className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                         >
                             {isProcessing ? (

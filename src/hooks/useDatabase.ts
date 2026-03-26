@@ -62,6 +62,7 @@ export const useGradeDetail = (slug: string) => {
             *,
             topics (
               *,
+              _TeacherTopics(A),
               mediaItems:topic_media (*),
               quizQuestions:quiz_questions (*)
             )
@@ -83,11 +84,11 @@ export const useGradeDetail = (slug: string) => {
     });
 };
 
-export const useSubject = (id: string) => {
+export const useSubject = (id: string, teacherId?: string) => {
     return useQuery({
-        queryKey: ["subject", id],
+        queryKey: ["subject", id, teacherId],
         queryFn: async () => {
-            const { data, error } = await supabase
+            let query = supabase
                 .from("subjects")
                 .select(`
           *,
@@ -98,10 +99,16 @@ export const useSubject = (id: string) => {
             quizQuestions:quiz_questions (*),
             challengeItems:challenge_questions (*),
             challengeSessions:challenge_sessions (*)
+            ${teacherId ? ", _TeacherTopics!inner(A)" : ""}
           )
-        `)
-                .eq("id", id)
-                .single();
+        `);
+
+            query = query.eq("id", id);
+            if (teacherId) {
+                query = query.eq("topics._TeacherTopics.A", teacherId);
+            }
+
+            const { data, error } = await query.single();
 
             if (error) throw error;
 
@@ -724,7 +731,8 @@ export const useUpdateUser = () => {
 export const useCreateTopic = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (topic: any) => {
+        mutationFn: async (payload_with_teacher: any) => {
+            const { teacherId, ...topic } = payload_with_teacher;
             const now = new Date().toISOString();
             const payload = { ...topic, updated_at: now };
             const { data, error } = await supabase
@@ -733,6 +741,14 @@ export const useCreateTopic = () => {
                 .select()
                 .single();
             if (error) throw error;
+
+            // Link to teacher profile if provided
+            if (teacherId && data.id) {
+                await supabase
+                    .from("_TeacherTopics")
+                    .insert([{ A: teacherId, B: data.id }]);
+            }
+
             return data;
         },
         onSuccess: (data) => {

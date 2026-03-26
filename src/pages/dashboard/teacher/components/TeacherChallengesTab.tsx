@@ -2,13 +2,19 @@ import {
     Gamepad2, Zap, Users, Calendar, History,
     Trophy, Clock, Eye, Copy, ArrowRight, Play, Radio,
     Trash2, StopCircle, RefreshCw, BarChart3, PieChart,
-    CheckCircle2, XCircle, Info, ChevronLeft
+    CheckCircle2, XCircle, Info, ChevronLeft, Share2, MessageCircle, Twitter, Send
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
 import { useUser, useHostedChallengeResults, useHostedSessions, useTopic } from "@/hooks/useDatabase";
@@ -530,6 +536,53 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                             >
                                                 <Copy className="w-4 h-4" />
                                             </Button>
+
+                                            <DropdownMenu dir="rtl">
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-11 w-11"
+                                                        title="مشاركة التحدي"
+                                                    >
+                                                        <Share2 className="w-4 h-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-48">
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
+                                                        window.open(`https://wa.me/?text=${encodeURIComponent(text + "\\n" + link)}`, '_blank');
+                                                    }}>
+                                                        <MessageCircle className="w-4 h-4 ml-2 text-emerald-500" />
+                                                        واتساب
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
+                                                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
+                                                    }}>
+                                                        <Twitter className="w-4 h-4 ml-2 text-blue-400" />
+                                                        تويتر / X
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
+                                                        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
+                                                    }}>
+                                                        <Send className="w-4 h-4 ml-2 text-sky-500" />
+                                                        تيليجرام
+                                                    </DropdownMenuItem>
+                                                    <div className="h-px bg-border my-1" />
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        onCopyToClipboard(link);
+                                                    }}>
+                                                        <Copy className="w-4 h-4 ml-2" />
+                                                        نسخ الرابط
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
 
                                         {challenge.status === "waiting" && (challenge.players?.length || 0) < 1 && (

@@ -190,7 +190,7 @@ const TeacherSettingsTab = () => {
     const availableSubjects = selectedGrade?.subjects || [];
 
     return (
-        <Tabs defaultValue="profile" className="w-full">
+        <Tabs defaultValue="profile" className="w-full" dir="rtl">
             <TabsList className="w-full justify-start mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto">
                 <TabsTrigger
                     value="profile"
@@ -283,7 +283,7 @@ const TeacherSettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-6">
+            <TabsContent value="notifications" className="space-y-6" dir="rtl">
                 <Card>
                     <CardHeader>
                         <CardTitle>تفضيلات الإشعارات</CardTitle>
@@ -311,7 +311,7 @@ const TeacherSettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="class" className="space-y-6">
+            <TabsContent value="class" className="space-y-6" dir="rtl">
                 <Card>
                     <CardHeader>
                         <CardTitle>تفضيلات الفصل الدراسي</CardTitle>

@@ -36,38 +36,43 @@ const TeacherStudentsTab = () => {
 
     const isLoading = isLoadingStudents || isLoadingResults;
 
-    // Use student profiles from the grade as the source of truth
-    const students = (gradeStudents || []).map((profile: any) => {
-        // Collect specific performance data for this student from hosted results
-        const studentResults = (hostedResults || []).filter(
-            (r: any) => (r.user_id || r.userId) === profile.user_id
-        );
+    // Use student profiles from the grade, but filtered for only those who participated
+    // in this teacher's challenges (under this teacher's content)
+    const students = (gradeStudents || [])
+        .filter((profile: any) =>
+            (hostedResults || []).some((r: any) => (r.user_id || r.userId) === profile.user_id)
+        )
+        .map((profile: any) => {
+            // Collect specific performance data for this student from hosted results
+            const studentResults = (hostedResults || []).filter(
+                (r: any) => (r.user_id || r.userId) === profile.user_id
+            );
 
-        const subjectProgress = (gradeSubjectProgress || []).find(
-            (sp: any) => sp.student_id === profile.id
-        );
+            const subjectProgress = (gradeSubjectProgress || []).find(
+                (sp: any) => sp.student_id === profile.id
+            );
 
-        const totalChallenges = studentResults.length;
-        const totalScore = studentResults.reduce((acc: number, r: any) => acc + (r.score || 0), 0);
-        const lastActiveResult = studentResults.sort((a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )[0];
+            const totalChallenges = studentResults.length;
+            const totalScore = studentResults.reduce((acc: number, r: any) => acc + (r.score || 0), 0);
+            const lastActiveResult = [...studentResults].sort((a, b) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            )[0];
 
-        return {
-            id: profile.id,
-            userId: profile.user_id,
-            name: profile.user?.name || "طالب",
-            email: profile.user?.email || "",
-            avatar: profile.user?.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${profile.user_id}`,
-            totalChallenges: totalChallenges,
-            avgScore: subjectProgress?.average_score !== undefined
-                ? Math.round(subjectProgress.average_score)
-                : totalChallenges > 0
-                    ? Math.round(totalScore / totalChallenges)
-                    : Math.round(profile.average_score || 0),
-            lastActive: lastActiveResult?.created_at || null,
-        };
-    });
+            return {
+                id: profile.id,
+                userId: profile.user_id,
+                name: profile.user?.name || "طالب",
+                email: profile.user?.email || "",
+                avatar: profile.user?.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${profile.user_id}`,
+                totalChallenges: totalChallenges,
+                avgScore: subjectProgress?.average_score !== undefined
+                    ? Math.round(subjectProgress.average_score)
+                    : totalChallenges > 0
+                        ? Math.round(totalScore / totalChallenges)
+                        : Math.round(profile.average_score || 0),
+                lastActive: lastActiveResult?.created_at || null,
+            };
+        });
 
     const filteredStudents = students.filter((student: any) =>
         String(student.name || "").includes(searchTerm) ||

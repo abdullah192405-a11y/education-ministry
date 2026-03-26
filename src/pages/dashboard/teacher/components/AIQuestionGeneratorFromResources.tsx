@@ -230,6 +230,52 @@ const AIQuestionGeneratorFromResources = ({
                 throw new Error("لم يتم تكوين مفتاح Gemini API");
             }
 
+            // Fetch metadata or transcripts for videos if any
+            let videoResourceMetadata = "";
+            const getYoutubeId = (url: string) => {
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                const match = url.match(regExp);
+                return (match && match[2].length === 11) ? match[2] : null;
+            };
+
+            const videoResources = selectedMedia.map(idx => media[idx]).filter(m => m.type === "video");
+
+            if (videoResources.length > 0) {
+                setProgress("جاري استخراج نصوص الفيديوهات...");
+                for (const video of videoResources) {
+                    const videoId = getYoutubeId(video.url || "");
+                    let transcriptText = "";
+
+                    if (videoId) {
+                        try {
+                            const transcriptRes = await fetch(`https://subtitles-youtube.vercel.app/api/transcript?videoId=${videoId}`);
+                            if (transcriptRes.ok) {
+                                const transcriptData = await transcriptRes.json();
+                                if (transcriptData && transcriptData.transcript) {
+                                    transcriptText = transcriptData.transcript.map((t: any) => t.text).join(" ");
+                                    videoResourceMetadata += `📄 نص الفيديو "${video.url}":\n${transcriptText}\n\n`;
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Failed transcript fetch for", videoId);
+                        }
+                    }
+
+                    // Fallback to oEmbed if transcript failed or wasn't available
+                    if (!transcriptText && (video.url?.includes("youtube.com") || video.url?.includes("youtu.be"))) {
+                        try {
+                            const res = await fetch(`https://www.youtube.com/oembed?url=${video.url}&format=json`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                videoResourceMetadata += `🎬 فيديو: "${data.title}" من قناة "${data.author_name}"\nالرابط: ${video.url}\n(يرجى تحليل محتوى هذا الفيديو بناءً على عنوانه)\n`;
+                            }
+                        } catch (e) {
+                            console.warn("Failed fetch meta for", video.url);
+                        }
+                    }
+                }
+            }
+
             // Build request parts
             const parts: any[] = [];
 
@@ -288,10 +334,11 @@ const AIQuestionGeneratorFromResources = ({
             setProgress("جاري توليد الأسئلة والألعاب...");
 
             // Build comprehensive prompt
-            const promptText = buildPrompt(textContent, prompt, pdfParts.length, imageParts.length, generateType);
+            const fullContent = `${textContent}\n\n${videoResourceMetadata}`;
+            const promptText = buildPrompt(fullContent, prompt, pdfParts.length, imageParts.length, generateType);
             parts.push({ text: promptText });
 
-            // Using gemini-2.5-flash as requested by user
+            // Using gemini-2.5-flash as specifically requested by user
             const modelToUse = "gemini-2.5-flash";
             console.log(`Using model: ${modelToUse} (PDFs: ${pdfParts.length}, Images: ${imageParts.length})`);
 
@@ -407,6 +454,7 @@ const AIQuestionGeneratorFromResources = ({
 
         return `أنت مساعد ذكي متخصص في إنشاء محتوى تعليمي تفاعلي باللغة العربية.
 مهمتك: توليد محتوى مستنداً **حصرياً** على الموارد التي قام المعلم باختيارها من القائمة المرفقة أدناه.
+في حال وجود روابط فيديو (يوتيوب)، استخدم العنوان والبيانات المتاحة للبحث في قاعدة بياناتك عن محتوى الفيديو وتحليله بدقة.
 ${fileNote}${contentSection}
 
 طلب المعلم:

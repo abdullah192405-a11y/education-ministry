@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Library, Users, Gamepad2, ChartBar, Cog,
     Bell, LogOut, ChevronRight, GraduationCap, Award, Search,
     Plus, Trophy, History, Clock, Eye, Star, Info, AlertTriangle,
-    CheckCircle, TrendingUp, Zap, Copy, Upload
+    CheckCircle, TrendingUp, Zap, Copy, Upload, Share2, MessageCircle, Twitter, Send
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { generatePin } from "@/data/challengeTypes";
@@ -25,6 +25,13 @@ import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
@@ -59,6 +66,9 @@ const TeacherDashboard = () => {
     const { toast } = useToast();
     const [localChallenges, setLocalChallenges] = useState<any[]>([]);
 
+    // State for sharing modal
+    const [createdChallengeInfo, setCreatedChallengeInfo] = useState<{ pin: string, title: string } | null>(null);
+
     const handleLogout = async () => {
         await supabase.auth.signOut();
         localStorage.removeItem("edu_user");
@@ -68,11 +78,13 @@ const TeacherDashboard = () => {
 
     const isLoading = isLoadingUser || isLoadingProfile;
 
-    // Filter topics for the teacher's subject
-    const topics = gradeDetail?.subjects?.find((s: any) => s.id === profile?.subject_id)?.topics || [];
+    // Filter topics for the teacher's subject and only their own content
+    const topics = (gradeDetail?.subjects?.find((s: any) => s.id === profile?.subject_id)?.topics || [])
+        .filter((topic: any) => !profile?.id || (topic._TeacherTopics && topic._TeacherTopics.some((tt: any) => tt.A === profile.id)));
 
-    // Calculate unique students from the grade (source of truth)
-    const uniqueStudentsCount = gradeStudents?.length || 0;
+    // Calculate unique students who have participated in this teacher's challenges
+    const uniqueStudentsParticipated = new Set((hostedResults || []).map((r: any) => r.user_id || r.userId));
+    const uniqueStudentsCount = uniqueStudentsParticipated.size;
 
     // Derive teacher data from real DB
     const teacherData = {
@@ -86,11 +98,17 @@ const TeacherDashboard = () => {
         stats: {
             totalTopics: profile?.total_topics || topics.length || 0,
             totalStudents: uniqueStudentsCount || profile?.total_students || 0,
-            averageScore: (gradeSubjectProgress || []).length > 0
-                ? Math.round(gradeSubjectProgress!.reduce((acc: number, r: any) => acc + (r.average_score || 0), 0) / gradeSubjectProgress!.length)
-                : hostedResults?.length
+            averageScore: (() => {
+                const relevantProgress = (gradeSubjectProgress || []).filter((r: any) =>
+                    uniqueStudentsParticipated.has(r.student_id) || uniqueStudentsParticipated.has(r.student?.user_id)
+                );
+                if (relevantProgress.length > 0) {
+                    return Math.round(relevantProgress!.reduce((acc: number, r: any) => acc + (r.average_score || 0), 0) / relevantProgress.length);
+                }
+                return hostedResults?.length
                     ? Math.round(hostedResults.reduce((acc: number, r: any) => acc + (r.score || 0), 0) / hostedResults.length)
-                    : Math.round(profile?.average_score || 0),
+                    : Math.round(profile?.average_score || 0);
+            })(),
             totalChallenges: hostedSessions?.length || profile?.total_challenges || 0,
         }
     };
@@ -105,11 +123,14 @@ const TeacherDashboard = () => {
 
     if ((gradeSubjectProgress || []).length > 0) {
         gradeSubjectProgress!.forEach((r: any) => {
-            const score = r.average_score || 0;
-            if (score >= 90) scoreDistribution[0].count++;
-            else if (score >= 70) scoreDistribution[1].count++;
-            else if (score >= 50) scoreDistribution[2].count++;
-            else scoreDistribution[3].count++;
+            // Only include in chart if the student has participated in this teacher's challenges
+            if (uniqueStudentsParticipated.has(r.student_id) || uniqueStudentsParticipated.has(r.student?.user_id)) {
+                const score = r.average_score || 0;
+                if (score >= 90) scoreDistribution[0].count++;
+                else if (score >= 70) scoreDistribution[1].count++;
+                else if (score >= 50) scoreDistribution[2].count++;
+                else scoreDistribution[3].count++;
+            }
         });
     }
 
@@ -222,9 +243,42 @@ const TeacherDashboard = () => {
 
             setLocalChallenges(prev => [newChallenge, ...prev]);
 
+            const joinLink = `${window.location.origin}/join/${pin}`;
+            const shareText = `انضم إلى تحدي "${topic.title}"! رمز الانضمام: ${pin}`;
+
             toast({
                 title: "تم إنشاء التحدي بنجاح",
-                description: `رمز الدخول: ${pin}. يمكنك الآن متابعة المنضمين من تبويب التحديات.`,
+                description: (
+                    <div className="flex flex-col gap-3 mt-1">
+                        <p>رمز الدخول: <span className="font-mono font-bold text-primary">{pin}</span>. يمكنك الآن متابعة المنضمين من تبويب التحديات.</p>
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5 border-primary/20 hover:bg-primary/10 hover:text-primary"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(joinLink);
+                                    toast({ title: "تم النسخ", description: "تم نسخ رابط التحدي بنجاح" });
+                                }}
+                            >
+                                <Copy className="w-3 h-3" />
+                                نسخ الرابط
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`https://wa.me/?text=${encodeURIComponent(shareText + "\\n" + joinLink)}`, '_blank');
+                                }}
+                            >
+                                <Share2 className="w-3 h-3" />
+                                واتساب
+                            </Button>
+                        </div>
+                    </div>
+                ),
             });
 
             // Transition to challenges tab to see the new lobby row
@@ -744,6 +798,7 @@ const TeacherDashboard = () => {
                                         <TeacherTopicsTab
                                             gradeId={teacherData.gradeId}
                                             subjectId={teacherData.subjectId}
+                                            teacherProfileId={profile?.id}
                                             onCreateChallenge={handleCreateChallenge}
                                         />
                                     )}
@@ -770,6 +825,80 @@ const TeacherDashboard = () => {
                     </motion.div >
                 </div >
             </div >
+
+            <Dialog open={!!createdChallengeInfo} onOpenChange={(open) => !open && setCreatedChallengeInfo(null)}>
+                <DialogContent className="sm:max-w-md" dir="rtl">
+                    <DialogHeader>
+                        <div className="mx-auto w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
+                            <Share2 className="w-6 h-6" />
+                        </div>
+                        <DialogTitle className="text-center text-xl">شارك رابط التحدي</DialogTitle>
+                        <DialogDescription className="text-center">
+                            تم إنشاء تحدي <span className="font-bold text-foreground">"{createdChallengeInfo?.title}"</span> بنجاح. شارك رمز الانضمام مع طلابك للبدء.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {createdChallengeInfo && (
+                        <div className="space-y-6 py-4">
+                            <div className="flex flex-col items-center justify-center bg-muted/50 p-6 rounded-2xl border-2 border-dashed">
+                                <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">رمز التحدي</span>
+                                <span className="text-5xl font-mono font-black text-primary tracking-widest">{createdChallengeInfo.pin}</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <Button
+                                    className="h-12 bg-[#25D366] hover:bg-[#25D366]/90 text-white gap-2"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
+                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        window.open(`https://wa.me/?text=${encodeURIComponent(text + "\\n" + link)}`, '_blank');
+                                    }}
+                                >
+                                    <MessageCircle className="w-5 h-5" />
+                                    واتس اب
+                                </Button>
+
+                                <Button
+                                    className="h-12 bg-[#1DA1F2] hover:bg-[#1DA1F2]/90 text-white gap-2"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
+                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
+                                    }}
+                                >
+                                    <Twitter className="w-5 h-5" />
+                                    تويتر / X
+                                </Button>
+
+                                <Button
+                                    className="h-12 bg-[#0088cc] hover:bg-[#0088cc]/90 text-white gap-2"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
+                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
+                                    }}
+                                >
+                                    <Send className="w-5 h-5" />
+                                    تيليجرام
+                                </Button>
+
+                                <Button
+                                    variant="outline"
+                                    className="h-12 border-primary/20 text-primary hover:bg-primary/5 gap-2"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
+                                        navigator.clipboard.writeText(link);
+                                        toast({ title: "تم النسخ", description: "تم نسخ رابط التحدي بنجاح" });
+                                    }}
+                                >
+                                    <Copy className="w-5 h-5" />
+                                    نسخ الرابط
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div >
     );
 };

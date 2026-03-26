@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/use-toast";
 interface TeacherTopicsTabProps {
     gradeId: string;
     subjectId: string;
+    teacherProfileId?: string;
     onCreateChallenge: (topicId: string) => void;
 }
 
@@ -45,7 +46,7 @@ interface ExtendedTopic {
     quizCount?: number;
 }
 
-const TeacherTopicsTab = ({ gradeId, subjectId, onCreateChallenge }: TeacherTopicsTabProps) => {
+const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
     const { toast } = useToast();
 
     // Mutations
@@ -56,7 +57,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, onCreateChallenge }: TeacherTopi
     const saveChallengeQuestionsMutation = useSaveChallengeQuestions();
 
     // Get current subject data from database
-    const { data: subjectData, isLoading: isLoadingSubject } = useSubject(String(subjectId));
+    const { data: subjectData, isLoading: isLoadingSubject } = useSubject(String(subjectId), teacherProfileId);
 
     // State
     const [topics, setTopics] = useState<ExtendedTopic[]>([]);
@@ -156,6 +157,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, onCreateChallenge }: TeacherTopi
                 // Create new topic
                 createTopicMutation.mutate({
                     subject_id: String(subjectId),
+                    teacherId: teacherProfileId,
                     title: topicData.title,
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
