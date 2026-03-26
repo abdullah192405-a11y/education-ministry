@@ -65,16 +65,16 @@ const HeroSection = () => {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Button variant="hero" size="xl" asChild>
-              <Link to="/join" className="group">
+              <Link to="/grades" className="group">
                 <Play className="w-6 h-6" />
-                ابدأ التحدي الآن
+                استكشف المحتوى
                 <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
               </Link>
             </Button>
             <Button variant="outline" size="lg" asChild>
-              <Link to="/grades">
+              <Link to="/join">
                 <Users className="w-5 h-5" />
-                استكشف المحتوى
+                ابدأ التحدي الآن
               </Link>
             </Button>
           </motion.div>
