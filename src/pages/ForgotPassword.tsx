@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Mail, ArrowRight, CheckCircle, AlertCircle, Loader2, Lock, KeyRound } from "lucide-react";
-import { useSignIn } from "@clerk/clerk-react";
+import { useSignIn, useAuth } from "@clerk/clerk-react";
 
 const ForgotPassword = () => {
     const { isLoaded, signIn, setActive } = useSignIn();
+    const { signOut, isSignedIn } = useAuth();
     const navigate = useNavigate();
 
     const [email, setEmail] = useState("");
@@ -27,6 +28,11 @@ const ForgotPassword = () => {
         setIsLoading(true);
 
         try {
+            // Sign out any existing session to avoid "Session already exists" error
+            if (isSignedIn) {
+                await signOut();
+            }
+
             await signIn.create({
                 strategy: "reset_password_email_code",
                 identifier: email,
