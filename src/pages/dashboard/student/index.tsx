@@ -10,7 +10,7 @@ import {
     BookOpen, History, Settings, User, LogOut, Bell,
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
-    BarChart3, Activity, BookMarked
+    BarChart3, Activity, BookMarked, MessageCircle
 } from "lucide-react";
 import {
     useUser,
@@ -520,23 +520,36 @@ const StudentDashboard = () => {
                                                     ))
                                                 ) : mappedRecentTopics.length > 0 ? (
                                                     mappedRecentTopics.slice(0, 3).map((topic) => (
-                                                        <Link
+                                                        <div
                                                             key={topic.id}
-                                                            to={`/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`}
                                                             className="flex items-center justify-between p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
                                                         >
-                                                            <div className="flex-1">
+                                                            <Link
+                                                                to={`/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`}
+                                                                className="flex-1 min-w-0"
+                                                            >
                                                                 <p className="font-medium text-sm line-clamp-1">{topic.topicTitle}</p>
                                                                 <p className="text-xs text-muted-foreground">
                                                                     {topic.subjectIcon} {topic.subjectName}
                                                                 </p>
-                                                            </div>
-                                                            <div className="text-left">
+                                                            </Link>
+                                                            <div className="flex items-center gap-2">
                                                                 <p className={`font-bold ${topic.score >= 90 ? "text-success" : topic.score >= 75 ? "text-warning" : "text-destructive"}`}>
                                                                     {topic.score}%
                                                                 </p>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
+                                                                        const msg = `حققت ${topic.score}% في درس "${topic.topicTitle}" 🎉\n${topic.score >= 90 ? "نتيجة ممتازة! 🏆" : topic.score >= 75 ? "أداء جيد! ⭐" : "أحاول أتحسن! 💪"}`;
+                                                                        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(topicLink + "\n\n" + msg)}`);
+                                                                    }}
+                                                                    className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-500 transition-colors"
+                                                                    title="شارك عبر واتساب"
+                                                                >
+                                                                    <MessageCircle className="w-4 h-4" />
+                                                                </button>
                                                             </div>
-                                                        </Link>
+                                                        </div>
                                                     ))
                                                 ) : (
                                                     <div className="text-center py-6 text-muted-foreground">
@@ -783,9 +796,18 @@ const StudentDashboard = () => {
 
                                                                     <div className="flex items-center justify-between mt-4 pt-4 border-t">
                                                                         <div className="flex gap-2">
-                                                                            <Button variant="ghost" size="sm" className="gap-1">
-                                                                                <Share2 className="w-4 h-4" />
-                                                                                مشاركة
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                className="gap-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                                                                                onClick={() => {
+                                                                                    const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
+                                                                                    const msg = `حققت ${topic.score}% في درس "${topic.topicTitle}" 🎉\n${topic.score >= 90 ? "نتيجة ممتازة! 🏆" : topic.score >= 75 ? "أداء جيد! ⭐" : "أحاول أتحسن! 💪"}\nجرّب التحدي بنفسك!`;
+                                                                                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(topicLink + "\n\n" + msg)}`);
+                                                                                }}
+                                                                            >
+                                                                                <MessageCircle className="w-4 h-4" />
+                                                                                شارك عبر واتساب
                                                                             </Button>
                                                                         </div>
                                                                         <Button variant="outline" size="sm" className="gap-1" asChild>

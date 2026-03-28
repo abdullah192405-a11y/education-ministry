@@ -270,7 +270,7 @@ const TeacherDashboard = () => {
                                 className="h-7 text-xs gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    window.open(`https://wa.me/?text=${encodeURIComponent(shareText + "\\n" + joinLink)}`, '_blank');
+                                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(joinLink + "\n\n" + shareText)}`);
                                 }}
                             >
                                 <Share2 className="w-3 h-3" />
@@ -851,7 +851,7 @@ const TeacherDashboard = () => {
                                     onClick={() => {
                                         const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
                                         const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
-                                        window.open(`https://wa.me/?text=${encodeURIComponent(text + "\\n" + link)}`, '_blank');
+                                        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n\n" + text)}`);
                                     }}
                                 >
                                     <MessageCircle className="w-5 h-5" />

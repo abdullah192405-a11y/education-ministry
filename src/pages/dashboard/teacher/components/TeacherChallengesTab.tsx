@@ -552,7 +552,7 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                     <DropdownMenuItem onClick={() => {
                                                         const link = `${window.location.origin}/join/${challenge.pin}`;
                                                         const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
-                                                        window.open(`https://wa.me/?text=${encodeURIComponent(text + "\\n" + link)}`, '_blank');
+                                                        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n\n" + text)}`);
                                                     }}>
                                                         <MessageCircle className="w-4 h-4 ml-2 text-emerald-500" />
                                                         واتساب
