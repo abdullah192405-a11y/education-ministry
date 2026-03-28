@@ -538,15 +538,34 @@ const StudentDashboard = () => {
                                                                     {topic.score}%
                                                                 </p>
                                                                 <button
-                                                                    onClick={() => {
+                                                                    onClick={async () => {
                                                                         const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
-                                                                        const msg = `حققت ${topic.score}% في درس "${topic.topicTitle}" 🎉\n${topic.score >= 90 ? "نتيجة ممتازة! 🏆" : topic.score >= 75 ? "أداء جيد! ⭐" : "أحاول أتحسن! 💪"}`;
-                                                                        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(topicLink + "\n\n" + msg)}`);
+                                                                        const scoreEmoji = topic.score >= 90 ? "🏆" : topic.score >= 75 ? "⭐" : "💪";
+                                                                        const msg = [
+                                                                            `🎓 *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                            ``,
+                                                                            `📚 الدرس: ${topic.topicTitle}`,
+                                                                            `📖 المادة: ${topic.subjectName}`,
+                                                                            `🎯 النتيجة: ${topic.score}%`,
+                                                                            `💰 إجمالي النقاط: ${student.stats.totalPoints.toLocaleString()} نقطة`,
+                                                                            `✅ دروس مكتملة: ${student.stats.totalTopicsCompleted}`,
+                                                                            student.stats.badges > 0 ? `🏅 شارات: ${student.stats.badges}` : ``,
+                                                                            ``,
+                                                                            `جرّب التحدي بنفسك! ⬇️`,
+                                                                        ].filter(Boolean).join("\n");
+                                                                        if (navigator.share) {
+                                                                            try {
+                                                                                await navigator.share({ title: `نتيجة ${student.name} - ${topic.topicTitle}`, text: msg, url: topicLink });
+                                                                            } catch (e) { /* user cancelled */ }
+                                                                        } else {
+                                                                            await navigator.clipboard.writeText(msg + "\n" + topicLink);
+                                                                            toast({ title: "تم النسخ", description: "تم نسخ النتيجة والرابط بنجاح" });
+                                                                        }
                                                                     }}
                                                                     className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-500 transition-colors"
-                                                                    title="شارك عبر واتساب"
+                                                                    title="شارك النتيجة"
                                                                 >
-                                                                    <MessageCircle className="w-4 h-4" />
+                                                                    <Share2 className="w-4 h-4" />
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -799,15 +818,37 @@ const StudentDashboard = () => {
                                                                             <Button
                                                                                 variant="ghost"
                                                                                 size="sm"
-                                                                                className="gap-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-                                                                                onClick={() => {
+                                                                                className="gap-1.5"
+                                                                                onClick={async () => {
                                                                                     const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
-                                                                                    const msg = `حققت ${topic.score}% في درس "${topic.topicTitle}" 🎉\n${topic.score >= 90 ? "نتيجة ممتازة! 🏆" : topic.score >= 75 ? "أداء جيد! ⭐" : "أحاول أتحسن! 💪"}\nجرّب التحدي بنفسك!`;
-                                                                                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(topicLink + "\n\n" + msg)}`);
+                                                                                    const scoreEmoji = topic.score >= 90 ? "🏆" : topic.score >= 75 ? "⭐" : "💪";
+                                                                                    const msg = [
+                                                                                        `🎓 *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                                        ``,
+                                                                                        `📚 الدرس: ${topic.topicTitle}`,
+                                                                                        `📖 المادة: ${topic.subjectName}`,
+                                                                                        `🎯 النتيجة: ${topic.score}%`,
+                                                                                        `📅 التاريخ: ${topic.date}`,
+                                                                                        topic.completed ? `✅ الحالة: مكتمل` : `⏳ الحالة: غير مكتمل`,
+                                                                                        `💰 إجمالي النقاط: ${student.stats.totalPoints.toLocaleString()} نقطة`,
+                                                                                        `📊 متوسط النتائج: ${Math.round(student.stats.averageScore)}%`,
+                                                                                        `✅ دروس مكتملة: ${student.stats.totalTopicsCompleted}`,
+                                                                                        student.stats.badges > 0 ? `🏅 شارات: ${student.stats.badges}` : ``,
+                                                                                        ``,
+                                                                                        `جرّب التحدي بنفسك! ⬇️`,
+                                                                                    ].filter(Boolean).join("\n");
+                                                                                    if (navigator.share) {
+                                                                                        try {
+                                                                                            await navigator.share({ title: `نتيجة ${student.name} - ${topic.topicTitle}`, text: msg, url: topicLink });
+                                                                                        } catch (e) { /* user cancelled */ }
+                                                                                    } else {
+                                                                                        await navigator.clipboard.writeText(msg + "\n" + topicLink);
+                                                                                        toast({ title: "تم النسخ", description: "تم نسخ النتيجة والرابط بنجاح" });
+                                                                                    }
                                                                                 }}
                                                                             >
-                                                                                <MessageCircle className="w-4 h-4" />
-                                                                                شارك عبر واتساب
+                                                                                <Share2 className="w-4 h-4" />
+                                                                                مشاركة
                                                                             </Button>
                                                                         </div>
                                                                         <Button variant="outline" size="sm" className="gap-1" asChild>
