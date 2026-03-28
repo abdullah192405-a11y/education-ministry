@@ -168,24 +168,24 @@ export const categoryLabels: Record<ChallengeCategory, { name: string; descripti
 
 // Default badges
 export const availableBadges: Badge[] = [
-    { id: "perfect", name: "مثالي", icon: "🏆", description: "أجبت على جميع الأسئلة بشكل صحيح", condition: "100% accuracy" },
-    { id: "speed_demon", name: "البرق", icon: "⚡", description: "أجبت خلال 3 ثواني على جميع الأسئلة", condition: "avg time < 3s" },
-    { id: "streak_master", name: "متسلسل", icon: "🔥", description: "حققت 5 إجابات صحيحة متتالية", condition: "5 streak" },
-    { id: "first_try", name: "المحاولة الأولى", icon: "🌟", description: "أكملت التحدي من أول مرة", condition: "first attempt" },
-    { id: "scholar", name: "العالِم", icon: "📚", description: "حصلت على أكثر من 90%", condition: "score > 90%" },
-    { id: "improver", name: "المتطور", icon: "📈", description: "تحسنت نتيجتك عن المحاولة السابقة", condition: "improved" },
-    { id: "quick_learner", name: "سريع التعلم", icon: "🧠", description: "أكملت التحدي في أقل من دقيقتين", condition: "time < 2min" },
-    { id: "persistent", name: "المثابر", icon: "💪", description: "أعدت المحاولة 3 مرات", condition: "3 attempts" }
+    { id: "perfect", name: "مثالي", icon: "\u{1F3C6}", description: "أجبت على جميع الأسئلة بشكل صحيح", condition: "100% accuracy" },
+    { id: "speed_demon", name: "البرق", icon: "\u{26A1}", description: "أجبت خلال 3 ثواني على جميع الأسئلة", condition: "avg time < 3s" },
+    { id: "streak_master", name: "متسلسل", icon: "\u{1F525}", description: "حققت 5 إجابات صحيحة متتالية", condition: "5 streak" },
+    { id: "first_try", name: "المحاولة الأولى", icon: "\u{1F31F}", description: "أكملت التحدي من أول مرة", condition: "first attempt" },
+    { id: "scholar", name: "العالِم", icon: "\u{1F4DA}", description: "حصلت على أكثر من 90%", condition: "score > 90%" },
+    { id: "improver", name: "المتطور", icon: "\u{1F4C8}", description: "تحسنت نتيجتك عن المحاولة السابقة", condition: "improved" },
+    { id: "quick_learner", name: "سريع التعلم", icon: "\u{1F9E0}", description: "أكملت التحدي في أقل من دقيقتين", condition: "time < 2min" },
+    { id: "persistent", name: "المثابر", icon: "\u{1F4AA}", description: "أعدت المحاولة 3 مرات", condition: "3 attempts" }
 ];
 
 // Level system
 export const getLevelFromScore = (percentage: number): { level: string; color: string; emoji: string } => {
-    if (percentage >= 95) return { level: "أسطورة", color: "#FFD700", emoji: "👑" };
-    if (percentage >= 85) return { level: "خبير", color: "#C0C0C0", emoji: "🥇" };
-    if (percentage >= 75) return { level: "متقدم", color: "#CD7F32", emoji: "🥈" };
-    if (percentage >= 60) return { level: "متوسط", color: "#4CAF50", emoji: "🥉" };
-    if (percentage >= 40) return { level: "مبتدئ", color: "#2196F3", emoji: "⭐" };
-    return { level: "متدرب", color: "#9E9E9E", emoji: "🌱" };
+    if (percentage >= 95) return { level: "أسطورة", color: "#FFD700", emoji: "\u{1F451}" };
+    if (percentage >= 85) return { level: "خبير", color: "#C0C0C0", emoji: "\u{1F947}" };
+    if (percentage >= 75) return { level: "متقدم", color: "#CD7F32", emoji: "\u{1F948}" };
+    if (percentage >= 60) return { level: "متوسط", color: "#4CAF50", emoji: "\u{1F949}" };
+    if (percentage >= 40) return { level: "مبتدئ", color: "#2196F3", emoji: "\u{2B50}" };
+    return { level: "متدرب", color: "#9E9E9E", emoji: "\u{1F331}" };
 };
 
 // Generate random PIN

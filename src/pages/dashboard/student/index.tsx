@@ -10,7 +10,7 @@ import {
     BookOpen, History, Settings, User, LogOut, Bell,
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
-    BarChart3, Activity, BookMarked, MessageCircle
+    BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp
 } from "lucide-react";
 import {
     useUser,
@@ -20,7 +20,8 @@ import {
     useUserBadges,
     useAllBadges,
     useUpdateUser,
-    useGradeDetail
+    useGradeDetail,
+    useRecentChallengeResults
 } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +36,7 @@ const StudentDashboard = () => {
     const [activeTab, setActiveTab] = useState("overview");
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
 
     const { data: user, isLoading: isLoadingUser } = useUser();
 
@@ -88,8 +90,9 @@ const StudentDashboard = () => {
     const { data: topicActivities, isLoading: isLoadingActivities } = useStudentTopicActivities(profile?.id || "", 1000);
     const { data: userBadges, isLoading: isLoadingUserBadges } = useUserBadges(user?.id || "");
     const { data: allBadges, isLoading: isLoadingAllBadges } = useAllBadges();
+    const { data: challengeResults, isLoading: isLoadingChallengeResults } = useRecentChallengeResults(user?.id || "", 100);
 
-    const isLoading = isLoadingUser || isLoadingProfile;
+    const isLoading = isLoadingUser || isLoadingProfile || isLoadingChallengeResults;
 
     // Derive student data from real DB
     const student = {
@@ -161,18 +164,31 @@ const StudentDashboard = () => {
     });
 
     // Map recent topic activities from DB
-    const mappedRecentTopics = (topicActivities || []).map((ta: any) => ({
-        id: ta.id,
-        topicTitle: ta.topic_title || ta.topic?.title || "درس",
-        subjectName: ta.topic?.subject?.name || "مادة",
-        subjectIcon: ta.topic?.subject?.icon || "📚",
-        gradeId: ta.topic?.subject?.grade_id || "",
-        subjectId: ta.topic?.subject_id || "",
-        topicId: ta.topic_id || "",
-        date: ta.date ? new Date(ta.date).toLocaleDateString("ar-SA") : "",
-        score: Math.round(ta.score || 0),
-        completed: ta.completed || false
-    }));
+    const mappedRecentTopics = (topicActivities || []).map((ta: any) => {
+        const cResult = (challengeResults || []).find((cr: any) => cr.session?.topic?.id === ta.topic_id || cr.session?.topic_id === ta.topic_id);
+
+        return {
+            id: ta.id,
+            topicTitle: ta.topic_title || ta.topic?.title || "درس",
+            subjectName: ta.topic?.subject?.name || "مادة",
+            subjectIcon: ta.topic?.subject?.icon || "📚",
+            gradeId: ta.topic?.subject?.grade_id || "",
+            subjectId: ta.topic?.subject_id || "",
+            topicId: ta.topic_id || "",
+            date: ta.date ? new Date(ta.date).toLocaleDateString("ar-SA") : "",
+            score: Math.round(ta.score || 0),
+            completed: ta.completed || false,
+            challengeDetails: cResult ? {
+                correctAnswers: cResult.correct_answers || 0,
+                wrongAnswers: cResult.wrong_answers || 0,
+                timeTaken: cResult.time_taken || 0,
+                accuracy: Math.round(cResult.accuracy || 0),
+                longestStreak: cResult.longest_streak || 0,
+                level: cResult.level || "مبتدئ",
+                totalQuestions: cResult.total_questions || 0
+            } : null
+        };
+    });
 
     // Map badges from DB: combine all badges with earned status
     const mappedBadges = (allBadges || []).map((badge: any) => ({
@@ -540,18 +556,18 @@ const StudentDashboard = () => {
                                                                 <button
                                                                     onClick={async () => {
                                                                         const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
-                                                                        const scoreEmoji = topic.score >= 90 ? "🏆" : topic.score >= 75 ? "⭐" : "💪";
+                                                                        const scoreEmoji = topic.score >= 90 ? "\u{1F3C6}" : topic.score >= 75 ? "\u{2B50}" : "\u{1F4AA}";
                                                                         const msg = [
-                                                                            `🎓 *${student.name}* حقق نتيجة ${scoreEmoji}`,
-                                                                            ``,
-                                                                            `📚 الدرس: ${topic.topicTitle}`,
-                                                                            `📖 المادة: ${topic.subjectName}`,
-                                                                            `🎯 النتيجة: ${topic.score}%`,
-                                                                            `💰 إجمالي النقاط: ${student.stats.totalPoints.toLocaleString()} نقطة`,
-                                                                            `✅ دروس مكتملة: ${student.stats.totalTopicsCompleted}`,
-                                                                            student.stats.badges > 0 ? `🏅 شارات: ${student.stats.badges}` : ``,
-                                                                            ``,
-                                                                            `جرّب التحدي بنفسك! ⬇️`,
+                                                                            `\u{1F393} *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                            `━━━━━━━━━━━━━━`,
+                                                                            `\u{1F4DA} *الدرس:* ${topic.topicTitle}`,
+                                                                            `\u{1F4D6} *المادة:* ${topic.subjectName}`,
+                                                                            `\u{1F3AF} *النتيجة:* ${topic.score}%`,
+                                                                            `\u{1F4B0} *إجمالي النقاط:* ${student.stats.totalPoints.toLocaleString()} نقطة`,
+                                                                            `\u{2705} *دروس مكتملة:* ${student.stats.totalTopicsCompleted}`,
+                                                                            student.stats.badges > 0 ? `\u{1F3C5} *شارات:* ${student.stats.badges}` : ``,
+                                                                            `━━━━━━━━━━━━━━`,
+                                                                            `جرّب التحدي بنفسك! \u{2B07}\u{FE0F}`,
                                                                         ].filter(Boolean).join("\n");
                                                                         if (navigator.share) {
                                                                             try {
@@ -821,21 +837,23 @@ const StudentDashboard = () => {
                                                                                 className="gap-1.5"
                                                                                 onClick={async () => {
                                                                                     const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
-                                                                                    const scoreEmoji = topic.score >= 90 ? "🏆" : topic.score >= 75 ? "⭐" : "💪";
+                                                                                    const scoreEmoji = topic.score >= 90 ? "\u{1F3C6}" : topic.score >= 75 ? "\u{2B50}" : "\u{1F4AA}";
                                                                                     const msg = [
-                                                                                        `🎓 *${student.name}* حقق نتيجة ${scoreEmoji}`,
-                                                                                        ``,
-                                                                                        `📚 الدرس: ${topic.topicTitle}`,
-                                                                                        `📖 المادة: ${topic.subjectName}`,
-                                                                                        `🎯 النتيجة: ${topic.score}%`,
-                                                                                        `📅 التاريخ: ${topic.date}`,
-                                                                                        topic.completed ? `✅ الحالة: مكتمل` : `⏳ الحالة: غير مكتمل`,
-                                                                                        `💰 إجمالي النقاط: ${student.stats.totalPoints.toLocaleString()} نقطة`,
-                                                                                        `📊 متوسط النتائج: ${Math.round(student.stats.averageScore)}%`,
-                                                                                        `✅ دروس مكتملة: ${student.stats.totalTopicsCompleted}`,
-                                                                                        student.stats.badges > 0 ? `🏅 شارات: ${student.stats.badges}` : ``,
-                                                                                        ``,
-                                                                                        `جرّب التحدي بنفسك! ⬇️`,
+                                                                                        `\u{1F393} *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                                        `━━━━━━━━━━━━━━`,
+                                                                                        `\u{1F4DA} *الدرس:* ${topic.topicTitle}`,
+                                                                                        `\u{1F4D6} *المادة:* ${topic.subjectName}`,
+                                                                                        `\u{1F3AF} *النتيجة:* ${topic.score}%`,
+                                                                                        `\u{1F4C5} *التاريخ:* ${topic.date}`,
+                                                                                        topic.completed ? `\u{2705} *الحالة:* مكتمل` : `\u{23F3} *الحالة:* غير مكتمل`,
+                                                                                        `\u{1F4B0} *إجمالي النقاط:* ${student.stats.totalPoints.toLocaleString()} نقطة`,
+                                                                                        `\u{1F4CA} *متوسط النتائج:* ${Math.round(student.stats.averageScore)}%`,
+                                                                                        `\u{2705} *دروس مكتملة:* ${student.stats.totalTopicsCompleted}`,
+                                                                                        topic.challengeDetails ? `\u{1F525} *أعلى سلسلة:* ${topic.challengeDetails.longestStreak}` : ``,
+                                                                                        topic.challengeDetails ? `\u{23F1}\u{FE0F} *الوقت المستغرق:* ${Math.round(topic.challengeDetails.timeTaken)} ثانية` : ``,
+                                                                                        student.stats.badges > 0 ? `\u{1F3C5} *شارات:* ${student.stats.badges}` : ``,
+                                                                                        `━━━━━━━━━━━━━━`,
+                                                                                        `جرّب التحدي بنفسك! \u{2B07}\u{FE0F}`,
                                                                                     ].filter(Boolean).join("\n");
                                                                                     if (navigator.share) {
                                                                                         try {
@@ -850,6 +868,20 @@ const StudentDashboard = () => {
                                                                                 <Share2 className="w-4 h-4" />
                                                                                 مشاركة
                                                                             </Button>
+                                                                            {topic.challengeDetails && (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    className="gap-1.5 text-primary"
+                                                                                    onClick={() => setExpandedTopicId(expandedTopicId === topic.id ? null : topic.id)}
+                                                                                >
+                                                                                    {expandedTopicId === topic.id ? (
+                                                                                        <><ChevronUp className="w-4 h-4" /> إخفاء التفاصيل</>
+                                                                                    ) : (
+                                                                                        <><ChevronDown className="w-4 h-4" /> عرض التفاصيل</>
+                                                                                    )}
+                                                                                </Button>
+                                                                            )}
                                                                         </div>
                                                                         <Button variant="outline" size="sm" className="gap-1" asChild>
                                                                             <Link to={`/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`}>
@@ -858,6 +890,41 @@ const StudentDashboard = () => {
                                                                             </Link>
                                                                         </Button>
                                                                     </div>
+
+                                                                    {/* Expanded Details Section */}
+                                                                    <AnimatePresence>
+                                                                        {expandedTopicId === topic.id && topic.challengeDetails && (
+                                                                            <motion.div
+                                                                                initial={{ opacity: 0, height: 0 }}
+                                                                                animate={{ opacity: 1, height: 'auto' }}
+                                                                                exit={{ opacity: 0, height: 0 }}
+                                                                                className="overflow-hidden mt-4"
+                                                                            >
+                                                                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-4 border-t">
+                                                                                    <div className="bg-success/10 rounded-lg p-3 text-center border border-success/20">
+                                                                                        <CheckCircle className="w-5 h-5 mx-auto mb-1 text-success" />
+                                                                                        <p className="text-xl font-bold text-success">{topic.challengeDetails.correctAnswers}</p>
+                                                                                        <p className="text-xs text-muted-foreground">إجابات صحيحة</p>
+                                                                                    </div>
+                                                                                    <div className="bg-destructive/10 rounded-lg p-3 text-center border border-destructive/20">
+                                                                                        <Target className="w-5 h-5 mx-auto mb-1 text-destructive" />
+                                                                                        <p className="text-xl font-bold text-destructive">{topic.challengeDetails.wrongAnswers}</p>
+                                                                                        <p className="text-xs text-muted-foreground">إجابات خاطئة</p>
+                                                                                    </div>
+                                                                                    <div className="bg-amber-500/10 rounded-lg p-3 text-center border border-amber-500/20">
+                                                                                        <Flame className="w-5 h-5 mx-auto mb-1 text-amber-500" />
+                                                                                        <p className="text-xl font-bold text-amber-500">{topic.challengeDetails.longestStreak}</p>
+                                                                                        <p className="text-xs text-muted-foreground">أعلى سلسلة</p>
+                                                                                    </div>
+                                                                                    <div className="bg-blue-500/10 rounded-lg p-3 text-center border border-blue-500/20">
+                                                                                        <Clock className="w-5 h-5 mx-auto mb-1 text-blue-500" />
+                                                                                        <p className="text-xl font-bold text-blue-500">{Math.round(topic.challengeDetails.timeTaken)}ث</p>
+                                                                                        <p className="text-xs text-muted-foreground">الوقت المستغرق</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </motion.div>
+                                                                        )}
+                                                                    </AnimatePresence>
                                                                 </div>
                                                             </div>
                                                         </CardContent>
