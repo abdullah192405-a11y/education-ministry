@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -54,13 +54,26 @@ const GroupChallenge = () => {
     const playerName = searchParams.get("name") || "لاعب";
 
     const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
-
+    const [phase, setPhase] = useState<GamePhase>("lobby");
     const { data: topic } = useTopic(topicId || "");
     const content = topic;
-
-    const [phase, setPhase] = useState<GamePhase>("lobby");
-    const [questions, setQuestions] = useState<ChallengeQuestion[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
+
+    // Initialize/Sync Questions
+    const questions = useMemo(() => {
+        if (content && effectiveCategory) {
+            let loaded: ChallengeQuestion[] = [];
+            if (content.challengeItems?.length > 0) {
+                if (effectiveCategory === 'ACTIVITIES') loaded = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
+                else if (effectiveCategory === 'GAMES') loaded = content.challengeItems.filter(q => ["matching", "shooting", "wheel_spin", "puzzle"].includes(q.type));
+                else loaded = content.challengeItems;
+            }
+            return loaded;
+        }
+        return [];
+    }, [content, effectiveCategory]);
+
+    const currentQuestion = questions[currentIndex];
     const [timeLeft, setTimeLeft] = useState(0);
     const [countdown, setCountdown] = useState(3);
     const [selectedAnswer, setSelectedAnswer] = useState<number | string | null>(null);
@@ -124,6 +137,9 @@ const GroupChallenge = () => {
     }[]>([]);
     const [showAnalysis, setShowAnalysis] = useState(false);
 
+    // Concurrency guards
+    const isRoundEndingRef = useRef(false);
+
     // Auto-advance timer state for host
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState(0);
     const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -136,10 +152,14 @@ const GroupChallenge = () => {
     // 🧱 STABLE FUNCTIONS DEFINED BEFORE USE EFFECTS 🧱
 
     const handleRoundEnd = useCallback(async () => {
+        // Guard against multiple simultaneous calls
+        if (isRoundEndingRef.current) return;
+        
         // If we are already showing results AND the database status is already RESULT, we can skip.
-        // But if the DB is still 'PLAYING', the Host needs to keep trying to broadcast the end.
         if (showQuestionResult && sessionData?.status === 'RESULT') return;
 
+        isRoundEndingRef.current = true;
+        
         // INSTANT LOCAL FEEDBACK
         setShowQuestionResult(true);
 
@@ -152,7 +172,11 @@ const GroupChallenge = () => {
                     .eq('pin', sessionData.pin);
             } catch (error) {
                 console.error("Failed to sync round end:", error);
+            } finally {
+                isRoundEndingRef.current = false;
             }
+        } else {
+            isRoundEndingRef.current = false;
         }
 
         // Student Local Reveal sound
@@ -160,7 +184,7 @@ const GroupChallenge = () => {
             const myAnswer = playerAnswers[currentPlayer.id];
             play(myAnswer?.isCorrect ? 'correct' : 'wrong');
         }
-    }, [showQuestionResult, isHost, sessionData?.pin, sessionData?.status, currentPlayer, playerAnswers, updateSessionMutation, play]);
+    }, [showQuestionResult, isHost, sessionData?.pin, sessionData?.status, currentPlayer, playerAnswers, play]);
 
     const startQuestion = useCallback((index: number) => {
         setPhase("playing");
@@ -340,31 +364,14 @@ const GroupChallenge = () => {
         }
     }, [countdown, phase, play, startQuestion, currentIndex]);
 
-    // Initialize/Sync Questions
-    useEffect(() => {
-        if (content && effectiveCategory) {
-            let loaded: ChallengeQuestion[] = [];
-            if (content.challengeItems?.length > 0) {
-                if (effectiveCategory === 'ACTIVITIES') loaded = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
-                else if (effectiveCategory === 'GAMES') loaded = content.challengeItems.filter(q => ["matching", "shooting", "wheel_spin", "puzzle"].includes(q.type));
-                else loaded = content.challengeItems;
-            }
-            setQuestions(loaded);
-        }
-    }, [content, effectiveCategory]);
-
-    const currentQuestion = questions[currentIndex];
-
-
-
-    const processAnswer = (isCorrect: boolean, customPoints?: number, providedAnswer?: any) => {
+    const processAnswer = useCallback((isCorrect: boolean, customPoints?: number, providedAnswer?: any) => {
         if (!currentPlayer) return;
 
         // Score Decay: Max points if instant, down to 50% at limit time
         const now = Date.now();
         // The question starts exactly 3 seconds after the 'updated_at' timestamp
         const actualQuestionStartTime = questionStartTime ? questionStartTime + 3000 : now;
-        const timeLimit = currentQuestion.timeLimit || 20;
+        const timeLimit = currentQuestion?.timeLimit || 20;
 
         let timeTakenSeconds = 0;
         let timeRatio = 0.5; // default if timer unknown
@@ -379,13 +386,13 @@ const GroupChallenge = () => {
             timeRatio = Math.max(0, timeLeft / timeLimit);
         }
 
-        const basePoints = customPoints !== undefined ? customPoints : (currentQuestion.points || 100);
+        const basePoints = customPoints !== undefined ? customPoints : (currentQuestion?.points || 100);
         const points = isCorrect ? Math.ceil(basePoints * (0.5 + 0.5 * timeRatio)) : 0;
 
         // Record history for personal analysis (Player only)
         const getAnswerText = (val: any) => {
             if (val === null || val === undefined) return 'لم تتم الإجابة';
-            if (typeof val === 'number' && currentQuestion.options) {
+            if (typeof val === 'number' && currentQuestion?.options) {
                 return currentQuestion.options[val];
             }
             return String(val);
@@ -393,14 +400,16 @@ const GroupChallenge = () => {
 
         const finalAns = providedAnswer !== undefined ? providedAnswer : selectedAnswer;
 
-        setUserHistory(prev => [...prev, {
-            question: currentQuestion.question,
-            selectedAnswer: finalAns !== null ? getAnswerText(finalAns) : (customPoints !== undefined ? (isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة') : 'انتهى الوقت'),
-            correctAnswer: getAnswerText(currentQuestion.correctAnswer),
-            isCorrect,
-            points,
-            timeTaken: Math.round(timeTakenSeconds)
-        }]);
+        if (currentQuestion) {
+            setUserHistory(prev => [...prev, {
+                question: currentQuestion.question,
+                selectedAnswer: finalAns !== null ? getAnswerText(finalAns) : (customPoints !== undefined ? (isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة') : 'انتهى الوقت'),
+                correctAnswer: getAnswerText(currentQuestion.correctAnswer),
+                isCorrect,
+                points,
+                timeTaken: Math.round(timeTakenSeconds)
+            }]);
+        }
 
         // IMPORTANT: Scoring is strictly deferred until handleRoundEnd
         setPlayerAnswers(prev => ({
@@ -415,7 +424,7 @@ const GroupChallenge = () => {
         // Send actual scores to DB but UI will keep them hidden until showQuestionResult is true
         if (!isHost) {
             try {
-                updatePlayerMutation.mutateAsync({
+                updatePlayerMutation.mutate({
                     id: currentPlayer.id,
                     updates: {
                         score: (currentPlayer.score || 0) + points,
@@ -429,7 +438,7 @@ const GroupChallenge = () => {
                 console.error("Failed to sync answer progress", e);
             }
         }
-    };
+    }, [currentPlayer, questionStartTime, currentQuestion, currentIndex, isHost, timeLeft, selectedAnswer, updatePlayerMutation]);
 
     const handleAnswerSelect = (answer: number | string) => {
         if (showQuestionResult || selectedAnswer !== null || isHost || !currentQuestion) return;
@@ -887,7 +896,9 @@ const GroupChallenge = () => {
         };
     };
 
-    const rankedPlayers = [...players].sort((a, b) => b.score - a.score).map((p, i) => ({ ...p, rank: i + 1 }));
+    const rankedPlayers = useMemo(() => {
+        return [...players].sort((a, b) => b.score - a.score).map((p, i) => ({ ...p, rank: i + 1 }));
+    }, [players]);
 
     if (isLoading) {
         return (
@@ -1860,7 +1871,7 @@ const GroupChallenge = () => {
                         return (
                             <motion.div
                                 key={p.id}
-                                layout
+                                layout={phase === "leaderboard" || phase === "final_results"}
                                 className={`flex items-center gap-3 p-3 rounded-2xl bg-card border shadow-sm pr-6 min-w-[160px] transition-all ${showQuestionResult && ans?.isCorrect ? "ring-2 ring-green-500/50 border-green-500/50" : ""
                                     }`}
                             >
