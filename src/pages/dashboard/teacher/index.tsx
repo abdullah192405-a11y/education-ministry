@@ -35,10 +35,12 @@ import {
 
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/clerk-react";
 
 const TeacherDashboard = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { signOut: clerkSignOut } = useAuth();
     const { data: user, isLoading: isLoadingUser } = useUser();
     const createSessionMutation = useCreateChallengeSession();
     const updateSessionMutation = useUpdateChallengeSession();
@@ -70,10 +72,16 @@ const TeacherDashboard = () => {
     const [createdChallengeInfo, setCreatedChallengeInfo] = useState<{ pin: string, title: string } | null>(null);
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("edu_user");
-        queryClient.invalidateQueries({ queryKey: ["current_user"] });
-        navigate("/");
+        try {
+            await supabase.auth.signOut();
+            await clerkSignOut();
+            localStorage.removeItem("edu_user");
+            queryClient.clear(); // Clear all cached data
+            navigate("/");
+        } catch (error) {
+            console.error("Logout error:", error);
+            navigate("/");
+        }
     };
 
     const isLoading = isLoadingUser || isLoadingProfile;

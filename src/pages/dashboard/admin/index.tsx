@@ -16,6 +16,7 @@ import { useUser, useAdminStats, useAllUsers, useGrades, useRecentAuditLogs } fr
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/clerk-react";
 import GradesTab from "./components/GradesTab";
 import TeachersTab from "./components/TeachersTab";
 import StudentsTab from "./components/StudentsTab";
@@ -35,12 +36,19 @@ const auditActionMeta: Record<string, { icon: any; color: string }> = {
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { signOut: clerkSignOut } = useAuth();
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("edu_user");
-        queryClient.invalidateQueries({ queryKey: ["current_user"] });
-        navigate("/");
+        try {
+            await supabase.auth.signOut();
+            await clerkSignOut();
+            localStorage.removeItem("edu_user");
+            queryClient.clear();
+            navigate("/");
+        } catch (error) {
+            console.error("Logout error:", error);
+            navigate("/");
+        }
     };
     const { data: user, isLoading: isLoadingUser } = useUser();
 

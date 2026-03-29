@@ -244,7 +244,7 @@ export const useUser = () => {
     }
 
     return useQuery({
-        queryKey: ["current_user", clerkUserId || "none"],
+        queryKey: ["current_user"],
         queryFn: async () => {
             // 1. Try Clerk session first (Google login users)
             if (isClerkSignedIn && clerkUserId) {
@@ -324,6 +324,7 @@ export const useUser = () => {
             return null;
         },
         staleTime: 0,
+        gcTime: 0,
         retry: false,
     });
 };

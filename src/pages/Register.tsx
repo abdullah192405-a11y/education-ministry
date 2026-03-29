@@ -193,10 +193,13 @@ const Register = () => {
         setIsLoading(true);
 
         try {
-            // Sign out any existing Clerk session first
+            // Sign out any existing sessions and clear cache
             if (isSignedIn) {
                 await signOut();
             }
+            await supabase.auth.signOut();
+            queryClient.clear();
+            localStorage.removeItem("edu_user");
 
             // 1. Create user in Clerk (appears in Clerk dashboard)
             const nameParts = name.trim().split(" ");

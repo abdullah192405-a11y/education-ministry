@@ -27,10 +27,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/clerk-react";
 
 const StudentDashboard = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { signOut: clerkSignOut } = useAuth();
     const { toast } = useToast();
     const updateUserMutation = useUpdateUser();
     const [activeTab, setActiveTab] = useState("overview");
@@ -41,10 +43,16 @@ const StudentDashboard = () => {
     const { data: user, isLoading: isLoadingUser } = useUser();
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("edu_user");
-        queryClient.invalidateQueries({ queryKey: ["current_user"] });
-        navigate("/");
+        try {
+            await supabase.auth.signOut();
+            await clerkSignOut();
+            localStorage.removeItem("edu_user");
+            queryClient.clear();
+            navigate("/");
+        } catch (error) {
+            console.error("Logout error:", error);
+            navigate("/");
+        }
     };
 
     useEffect(() => {

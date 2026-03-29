@@ -74,6 +74,15 @@ const Login = () => {
         setError("");
         setIsLoading(true);
 
+        // Clear existing session and cache to prevent teacher dashboard crossovers
+        try {
+            await supabase.auth.signOut();
+            queryClient.clear();
+            localStorage.removeItem("edu_user");
+        } catch (e) {
+            console.warn("Error clearing previous session:", e);
+        }
+
         try {
             // Attempt Supabase Auth login
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
