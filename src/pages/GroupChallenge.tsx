@@ -63,7 +63,7 @@ const GroupChallenge = () => {
     const questions = useMemo(() => {
         if (content && content.challengeItems?.length > 0) {
             let loaded = content.challengeItems;
-            
+
             // Filter strictly by category type if possible, otherwise permit all questions to avoid empty challenges
             if (effectiveCategory === 'ACTIVITIES') {
                 const filtered = loaded.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions", "short_answer"].includes(q.type));
@@ -72,7 +72,7 @@ const GroupChallenge = () => {
                 const filtered = loaded.filter(q => ["matching", "shooting", "wheel_spin", "puzzle", "memory"].includes(q.type));
                 if (filtered.length > 0) loaded = filtered;
             }
-            
+
             return loaded;
         }
         return [];
@@ -159,12 +159,12 @@ const GroupChallenge = () => {
     const handleRoundEnd = useCallback(async () => {
         // Guard against multiple simultaneous calls
         if (isRoundEndingRef.current) return;
-        
+
         // If we are already showing results AND the database status is already RESULT, we can skip.
         if (showQuestionResult && sessionData?.status === 'RESULT') return;
 
         isRoundEndingRef.current = true;
-        
+
         // INSTANT LOCAL FEEDBACK
         setShowQuestionResult(true);
 
@@ -908,22 +908,22 @@ const GroupChallenge = () => {
     if (isLoading || isLoadingTopic) {
         return (
             <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5 flex flex-col items-center justify-center p-6 text-center">
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className="max-w-md w-full p-10 rounded-[3rem] bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 shadow-2xl relative overflow-hidden"
                 >
                     {/* Animated background pulse */}
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary/10 opacity-30 animate-pulse" />
-                    
+
                     <div className="relative z-10">
                         <div className="relative w-24 h-24 mx-auto mb-8">
-                            <motion.div 
+                            <motion.div
                                 animate={{ rotate: 360 }}
                                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                                 className="absolute inset-0 border-4 border-primary/10 border-t-primary rounded-full"
                             />
-                            <motion.div 
+                            <motion.div
                                 animate={{ scale: [1, 1.1, 1] }}
                                 transition={{ duration: 2, repeat: Infinity }}
                                 className="absolute inset-4 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center shadow-lg"
@@ -931,25 +931,25 @@ const GroupChallenge = () => {
                                 <Gamepad2 className="w-8 h-8 text-white" />
                             </motion.div>
                         </div>
-                        
+
                         <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-3">جاري التحميل</h2>
                         <p className="text-muted-foreground font-medium mb-8">نجهز لك غرفتك التنافسية، لحظات من فضلك...</p>
-                        
+
                         {/* Custom Loading Bar */}
                         <div className="w-full h-2.5 bg-primary/10 rounded-full overflow-hidden border border-primary/5">
-                            <motion.div 
+                            <motion.div
                                 initial={{ width: "0%" }}
                                 animate={{ width: "100%" }}
                                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                 className="h-full bg-gradient-to-r from-primary via-secondary to-primary bg-[length:200%_100%] animate-gradient-x"
                             />
                         </div>
-                        
+
                         <div className="mt-6 flex justify-center gap-2">
-                             {[0, 1, 2].map(i => (
-                                 <motion.div
+                            {[0, 1, 2].map(i => (
+                                <motion.div
                                     key={i}
-                                    animate={{ 
+                                    animate={{
                                         y: [0, -6, 0],
                                         opacity: [0.3, 1, 0.3]
                                     }}
@@ -959,12 +959,12 @@ const GroupChallenge = () => {
                                         delay: i * 0.15
                                     }}
                                     className="w-2 h-2 rounded-full bg-primary"
-                                 />
-                             ))}
+                                />
+                            ))}
                         </div>
                     </div>
                 </motion.div>
-                
+
                 <p className="mt-8 text-xs font-bold text-muted-foreground/50 uppercase tracking-widest animate-pulse">
                     Education Ministry Dashboard • Live Sync
                 </p>
@@ -1606,7 +1606,7 @@ const GroupChallenge = () => {
     const renderPlaying = () => {
         if (!currentQuestion) {
             return (
-                <motion.div 
+                <motion.div
                     key="playing-empty"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1616,21 +1616,21 @@ const GroupChallenge = () => {
                     <div className="bg-destructive/10 text-destructive p-8 rounded-2xl border border-destructive/20 inline-block text-right w-full">
                         <h2 className="text-2xl font-bold mb-4 text-center">خطأ في التحدي</h2>
                         <p className="mb-6 text-center text-lg">لا توجد أسئلة متاحة لعرضها في هذا التحدي من هذا النوع.</p>
-                        
+
                         <div className="bg-white/50 dark:bg-black/50 p-4 rounded-xl text-left font-mono text-xs mb-6 overflow-auto border border-destructive/20" dir="ltr">
-                             <div className="font-bold mb-2">Technical Diagnostic Info:</div>
-                             <div><span className="opacity-70">Topic ID from URL:</span> {topicId || 'UNDEFINED'}</div>
-                             <div><span className="opacity-70">Category from URL:</span> {category || 'UNDEFINED'}</div>
-                             <div><span className="opacity-70">Effective Category:</span> {effectiveCategory}</div>
-                             <div><span className="opacity-70">Content Object present:</span> {content ? '✅ YES' : '❌ NO'}</div>
-                             <div><span className="opacity-70">Expected Host ID:</span> {sessionData?.host_id || 'N/A'}</div>
-                             <div><span className="opacity-70">Raw ChallengeItems length:</span> {content?.challengeItems?.length ?? 'undefined'}</div>
-                             <div><span className="opacity-70">Final Filtered Questions count:</span> {questions.length}</div>
-                             {!content && (
-                                 <div className="mt-2 text-red-600 font-bold">
-                                     CRITICAL: Content is entirely missing! This usually means the useTopic({topicId}) database query failed (e.g. Row Level Security blocked the student, or the ID is invalid).
-                                 </div>
-                             )}
+                            <div className="font-bold mb-2">Technical Diagnostic Info:</div>
+                            <div><span className="opacity-70">Topic ID from URL:</span> {topicId || 'UNDEFINED'}</div>
+                            <div><span className="opacity-70">Category from URL:</span> {category || 'UNDEFINED'}</div>
+                            <div><span className="opacity-70">Effective Category:</span> {effectiveCategory}</div>
+                            <div><span className="opacity-70">Content Object present:</span> {content ? '✅ YES' : '❌ NO'}</div>
+                            <div><span className="opacity-70">Expected Host ID:</span> {sessionData?.host_id || 'N/A'}</div>
+                            <div><span className="opacity-70">Raw ChallengeItems length:</span> {content?.challengeItems?.length ?? 'undefined'}</div>
+                            <div><span className="opacity-70">Final Filtered Questions count:</span> {questions.length}</div>
+                            {!content && (
+                                <div className="mt-2 text-red-600 font-bold">
+                                    CRITICAL: Content is entirely missing! This usually means the useTopic({topicId}) database query failed (e.g. Row Level Security blocked the student, or the ID is invalid).
+                                </div>
+                            )}
                         </div>
 
                         <div className="text-center">
@@ -1743,7 +1743,7 @@ const GroupChallenge = () => {
         };
 
         return (
-            <motion.div 
+            <motion.div
                 key="playing-phase"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2052,10 +2052,10 @@ const GroupChallenge = () => {
     };
 
     const renderLeaderboard = () => (
-        <motion.div 
+        <motion.div
             key="leaderboard-phase"
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }} 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             className="max-w-3xl mx-auto py-10 px-4"
         >
@@ -2153,10 +2153,10 @@ const GroupChallenge = () => {
         const otherPlayers = rankedPlayers.slice(3);
 
         return (
-            <motion.div 
+            <motion.div
                 key="final-results-phase"
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="max-w-6xl mx-auto py-10 px-4 text-center overflow-hidden"
             >
