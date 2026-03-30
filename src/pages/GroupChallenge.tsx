@@ -10,7 +10,7 @@ import {
     ChevronLeft, Trophy, Zap, Clock, Users, Crown,
     CheckCircle2, XCircle, Play, Copy, Share2, Check,
     Sparkles, Medal, Star, ArrowLeft, Volume2, VolumeX,
-    ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity
+    ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity, Gamepad2
 } from "lucide-react";
 import {
     useTopic,
@@ -55,7 +55,7 @@ const GroupChallenge = () => {
 
     const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
     const [phase, setPhase] = useState<GamePhase>("lobby");
-    const { data: topic } = useTopic(topicId || "");
+    const { data: topic, isLoading: isLoadingTopic, error: topicError } = useTopic(topicId || "");
     const content = topic;
     const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -905,23 +905,92 @@ const GroupChallenge = () => {
         return [...players].sort((a, b) => b.score - a.score).map((p, i) => ({ ...p, rank: i + 1 }));
     }, [players]);
 
-    if (isLoading) {
+    if (isLoading || isLoadingTopic) {
         return (
-            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4">
-                <Skeleton className="h-12 w-64 mb-4" />
-                <Skeleton className="h-40 w-full max-w-2xl" />
+            <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5 flex flex-col items-center justify-center p-6 text-center">
+                <motion.div 
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="max-w-md w-full p-10 rounded-[3rem] bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 shadow-2xl relative overflow-hidden"
+                >
+                    {/* Animated background pulse */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary/10 opacity-30 animate-pulse" />
+                    
+                    <div className="relative z-10">
+                        <div className="relative w-24 h-24 mx-auto mb-8">
+                            <motion.div 
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                                className="absolute inset-0 border-4 border-primary/10 border-t-primary rounded-full"
+                            />
+                            <motion.div 
+                                animate={{ scale: [1, 1.1, 1] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                                className="absolute inset-4 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center shadow-lg"
+                            >
+                                <Gamepad2 className="w-8 h-8 text-white" />
+                            </motion.div>
+                        </div>
+                        
+                        <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-3">جاري التحميل</h2>
+                        <p className="text-muted-foreground font-medium mb-8">نجهز لك غرفتك التنافسية، لحظات من فضلك...</p>
+                        
+                        {/* Custom Loading Bar */}
+                        <div className="w-full h-2.5 bg-primary/10 rounded-full overflow-hidden border border-primary/5">
+                            <motion.div 
+                                initial={{ width: "0%" }}
+                                animate={{ width: "100%" }}
+                                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                                className="h-full bg-gradient-to-r from-primary via-secondary to-primary bg-[length:200%_100%] animate-gradient-x"
+                            />
+                        </div>
+                        
+                        <div className="mt-6 flex justify-center gap-2">
+                             {[0, 1, 2].map(i => (
+                                 <motion.div
+                                    key={i}
+                                    animate={{ 
+                                        y: [0, -6, 0],
+                                        opacity: [0.3, 1, 0.3]
+                                    }}
+                                    transition={{
+                                        duration: 0.8,
+                                        repeat: Infinity,
+                                        delay: i * 0.15
+                                    }}
+                                    className="w-2 h-2 rounded-full bg-primary"
+                                 />
+                             ))}
+                        </div>
+                    </div>
+                </motion.div>
+                
+                <p className="mt-8 text-xs font-bold text-muted-foreground/50 uppercase tracking-widest animate-pulse">
+                    Education Ministry Dashboard • Live Sync
+                </p>
+            </div>
+        );
+    }
+
+    if (topicError) {
+        return (
+            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4 text-center">
+                <h1 className="text-3xl font-bold mb-4 text-red-500">حدث خطأ أثناء جلب البيانات</h1>
+                <p className="text-muted-foreground mb-6 max-w-md">{topicError.message}</p>
+                <Button asChild>
+                    <Link to="/join">العودة لشاشة الانضمام</Link>
+                </Button>
             </div>
         );
     }
 
     if (!content) {
         return (
-            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4">
+            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4 text-center">
                 <h1 className="text-3xl font-bold mb-4">المحتوى غير موجود</h1>
+                <p className="text-muted-foreground mb-6 max-w-md">قد يكون الرابط غير صحيح أو أن التحدي غير متوفر حالياً.</p>
                 <Button asChild>
-                    <Link to="/grades">
-                        العودة للصفوف
-                    </Link>
+                    <Link to="/join">العودة لشاشة الانضمام</Link>
                 </Button>
             </div>
         );

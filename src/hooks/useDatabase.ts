@@ -159,26 +159,52 @@ export const useChallengeSession = (pin: string) => {
     return useQuery({
         queryKey: ["challenge_session", pin],
         queryFn: async () => {
+            // Priority 1: Try deep join for full metadata
             const { data, error } = await supabase
                 .from("challenge_sessions")
                 .select(`
-          *,
-          topic:topics (*)
-        `)
+                    *,
+                    topic:topics (
+                        *,
+                        subject:subjects (
+                            *,
+                            grade:grades (*)
+                        )
+                    )
+                `)
                 .eq("pin", pin)
                 .single();
 
             if (error) {
-                console.error("useChallengeSession Error checking pin:", error);
-                // Fallback: try without topic join
-                const { data: noTopicData, error: noTopicError } = await supabase
+                console.warn("useChallengeSession: Fallback triggered due to join error:", error.message);
+                
+                // Priority 2: Fetch only session first to bypass join complexity/RLS issues
+                const { data: sessionOnly, error: sessionError } = await supabase
                     .from("challenge_sessions")
                     .select("*")
                     .eq("pin", pin)
                     .single();
 
-                if (noTopicError) throw noTopicError;
-                return noTopicData;
+                if (sessionError) throw sessionError;
+
+                // Priority 3: Fetch topic separately if session exists
+                if (sessionOnly.topic_id) {
+                    try {
+                        const { data: topicData } = await supabase
+                            .from("topics")
+                            .select("*, subject:subjects(*, grade:grades(*))")
+                            .eq("id", sessionOnly.topic_id)
+                            .single();
+                        
+                        if (topicData) {
+                            return { ...sessionOnly, topic: topicData };
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch topic separately:", e);
+                    }
+                }
+                
+                return sessionOnly;
             }
 
             return data;
