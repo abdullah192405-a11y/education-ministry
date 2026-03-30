@@ -912,7 +912,11 @@ export const useSaveTopicMedia = () => {
     return useMutation({
         mutationFn: async ({ topicId, media }: { topicId: string, media: any[] }) => {
             // Delete existing media for this topic first
-            await supabase.from("topic_media").delete().eq("topic_id", topicId);
+            const { error: deleteError } = await supabase.from("topic_media").delete().eq("topic_id", topicId);
+            if (deleteError) {
+                console.error("Error deleting existing media:", deleteError);
+                throw new Error(`فشل حذف الوسائط القديمة: ${deleteError.message}`);
+            }
 
             if (media.length === 0) return [];
 
@@ -928,11 +932,16 @@ export const useSaveTopicMedia = () => {
                 sort_order: index,
             }));
 
+            console.log("Saving media payload:", JSON.stringify(mediaPayload, null, 2));
+
             const { data, error } = await supabase
                 .from("topic_media")
                 .insert(mediaPayload)
                 .select();
-            if (error) throw error;
+            if (error) {
+                console.error("Error inserting media:", error);
+                throw new Error(`فشل حفظ الوسائط: ${error.message}`);
+            }
             return data;
         },
         onSuccess: (_, variables) => {
