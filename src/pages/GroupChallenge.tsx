@@ -61,13 +61,18 @@ const GroupChallenge = () => {
 
     // Initialize/Sync Questions
     const questions = useMemo(() => {
-        if (content && effectiveCategory) {
-            let loaded: ChallengeQuestion[] = [];
-            if (content.challengeItems?.length > 0) {
-                if (effectiveCategory === 'ACTIVITIES') loaded = content.challengeItems.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(q.type));
-                else if (effectiveCategory === 'GAMES') loaded = content.challengeItems.filter(q => ["matching", "shooting", "wheel_spin", "puzzle"].includes(q.type));
-                else loaded = content.challengeItems;
+        if (content && content.challengeItems?.length > 0) {
+            let loaded = content.challengeItems;
+            
+            // Filter strictly by category type if possible, otherwise permit all questions to avoid empty challenges
+            if (effectiveCategory === 'ACTIVITIES') {
+                const filtered = loaded.filter(q => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions", "short_answer"].includes(q.type));
+                if (filtered.length > 0) loaded = filtered;
+            } else if (effectiveCategory === 'GAMES') {
+                const filtered = loaded.filter(q => ["matching", "shooting", "wheel_spin", "puzzle", "memory"].includes(q.type));
+                if (filtered.length > 0) loaded = filtered;
             }
+            
             return loaded;
         }
         return [];
@@ -1258,8 +1263,10 @@ const GroupChallenge = () => {
         if (!isHost && !isCreator) {
             return (
                 <motion.div
+                    key="lobby-student"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
                     className="max-w-2xl mx-auto text-center px-4"
                 >
                     <Card className="p-8 md:p-12 relative overflow-hidden">
@@ -1369,8 +1376,10 @@ const GroupChallenge = () => {
 
         return (
             <motion.div
+                key="lobby-host"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
                 className="max-w-2xl mx-auto text-center px-4"
             >
                 <Card className="p-8 md:p-12">
@@ -1465,19 +1474,26 @@ const GroupChallenge = () => {
 
                     {/* Start Button */}
                     {isHost || isCreator ? (
-                        <Button
-                            onClick={() => {
-                                play('click');
-                                handleStartGame();
-                            }}
-                            size="lg"
-                            variant="hero"
-                            className="w-full h-14 text-lg gap-2"
-                            disabled={players.length < 1}
-                        >
-                            <Play className="w-5 h-5 ml-2" />
-                            ابدأ التحدي
-                        </Button>
+                        <div className="space-y-4">
+                            {questions.length === 0 && (
+                                <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-bold">
+                                    لا توجد أسئلة (من نوع {effectiveCategory}) في هذا الدرس. يرجى إضافة أسئلة أولاً!
+                                </div>
+                            )}
+                            <Button
+                                onClick={() => {
+                                    play('click');
+                                    handleStartGame();
+                                }}
+                                size="lg"
+                                variant="hero"
+                                className="w-full h-14 text-lg gap-2"
+                                disabled={players.length < 1 || questions.length === 0}
+                            >
+                                <Play className="w-5 h-5 ml-2" />
+                                ابدأ التحدي {questions.length > 0 ? `(${questions.length} أسئلة)` : ""}
+                            </Button>
+                        </div>
                     ) : (
                         <div className="p-4 rounded-xl bg-muted/50 animate-pulse text-center">
                             <span className="font-bold">في انتظار المضيف لبدء اللعبة...</span>
@@ -1491,8 +1507,10 @@ const GroupChallenge = () => {
     // Countdown Phase
     const renderCountdown = () => (
         <motion.div
+            key="countdown-phase"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 bg-background/95 flex items-center justify-center z-50 px-4"
         >
             <motion.div
@@ -1517,7 +1535,25 @@ const GroupChallenge = () => {
     );
 
     const renderPlaying = () => {
-        if (!currentQuestion) return null;
+        if (!currentQuestion) {
+            return (
+                <motion.div 
+                    key="playing-empty"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="max-w-4xl mx-auto px-4 text-center mt-20"
+                >
+                    <div className="bg-destructive/10 text-destructive p-8 rounded-2xl border border-destructive/20 inline-block">
+                        <h2 className="text-2xl font-bold mb-4">خطأ في التحدي</h2>
+                        <p className="mb-6">لا توجد أسئلة متاحة لعرضها في هذا التحدي من هذا النوع.</p>
+                        {isHost && (
+                            <Button variant="default" onClick={() => window.location.href = '/dashboard/teacher'}>العودة للوحة التحكم</Button>
+                        )}
+                    </div>
+                </motion.div>
+            );
+        }
 
         const progress = ((currentIndex + 1) / questions.length) * 100;
         const timeProgress = (timeLeft / currentQuestion.timeLimit) * 100;
@@ -1617,7 +1653,13 @@ const GroupChallenge = () => {
         };
 
         return (
-            <div className="max-w-4xl mx-auto px-4">
+            <motion.div 
+                key="playing-phase"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="max-w-4xl mx-auto px-4"
+            >
                 {isHost && !showQuestionResult && renderHostLiveDashboard()}
 
                 {/* Progress & Header */}
@@ -1915,12 +1957,18 @@ const GroupChallenge = () => {
                         );
                     })}
                 </div>
-            </div>
+            </motion.div>
         );
     };
 
     const renderLeaderboard = () => (
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-3xl mx-auto py-10 px-4">
+        <motion.div 
+            key="leaderboard-phase"
+            initial={{ opacity: 0, scale: 0.95 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="max-w-3xl mx-auto py-10 px-4"
+        >
             <Card className="p-8 md:p-12 overflow-hidden relative shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl">
                 <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-primary via-secondary to-primary" />
 
@@ -2015,7 +2063,13 @@ const GroupChallenge = () => {
         const otherPlayers = rankedPlayers.slice(3);
 
         return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto py-10 px-4 text-center overflow-hidden">
+            <motion.div 
+                key="final-results-phase"
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                className="max-w-6xl mx-auto py-10 px-4 text-center overflow-hidden"
+            >
                 {/* Background Decor */}
                 <div className="fixed inset-0 pointer-events-none z-0">
                     <AnimatePresence>

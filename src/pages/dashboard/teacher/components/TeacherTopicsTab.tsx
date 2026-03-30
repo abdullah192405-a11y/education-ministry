@@ -27,7 +27,7 @@ interface TeacherTopicsTabProps {
     gradeId: string;
     subjectId: string;
     teacherProfileId?: string;
-    onCreateChallenge: (topicId: string) => void;
+    onCreateChallenge: (topicId: string, details?: any) => void;
 }
 
 interface ExtendedTopic {
@@ -427,7 +427,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
                                                 </Button>
                                                 <Button
                                                     className="flex-1 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                                                    onClick={() => onCreateChallenge(topic.id)}
+                                                    onClick={() => onCreateChallenge(topic.id, { title: topic.title, gradeId, subjectId })}
                                                     disabled={topic.status === "draft"}
                                                 >
                                                     <Gamepad2 className="w-4 h-4" />

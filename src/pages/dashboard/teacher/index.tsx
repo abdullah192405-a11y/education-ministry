@@ -211,9 +211,26 @@ const TeacherDashboard = () => {
         }
     };
 
-    const handleCreateChallenge = async (topicId: string) => {
-        const topic = topics.find((t: any) => t.id === topicId);
-        if (!topic) return;
+    const handleCreateChallenge = async (topicId: string | number, details?: { title: string, gradeId?: string, subjectId?: string }) => {
+        let topic = topics.find((t: any) => String(t.id) === String(topicId));
+        
+        if (!topic && details) {
+            topic = {
+                id: topicId,
+                title: details.title,
+                grade_id: details.gradeId || teacherData.gradeId,
+                subject_id: details.subjectId || teacherData.subjectId
+            };
+        }
+
+        if (!topic) {
+            toast({
+                title: "تنبيه",
+                description: "لم يتم العثور على الدرس المطابق. يرجى تحديث الصفحة والمحاولة مرة أخرى.",
+                variant: "destructive"
+            });
+            return;
+        }
 
         if (!teacherData.id) {
             toast({
