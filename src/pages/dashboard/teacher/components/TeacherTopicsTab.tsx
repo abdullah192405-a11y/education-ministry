@@ -295,6 +295,32 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
 
                     {/* Topics List */}
                     <div className="grid grid-cols-1 gap-4">
+                        {isLoadingSubject ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <Card key={i} className="overflow-hidden">
+                                    <CardContent className="p-4 flex flex-col md:flex-row gap-4">
+                                        <Skeleton className="w-full md:w-48 h-32 rounded-lg shrink-0" />
+                                        <div className="flex-1 space-y-3">
+                                            <div>
+                                                <Skeleton className="h-6 w-48 mb-2" />
+                                                <Skeleton className="h-4 w-full" />
+                                                <Skeleton className="h-4 w-3/4 mt-1" />
+                                            </div>
+                                            <div className="flex gap-4 mt-4">
+                                                <Skeleton className="h-4 w-20" />
+                                                <Skeleton className="h-4 w-20" />
+                                                <Skeleton className="h-4 w-20" />
+                                            </div>
+                                            <div className="flex gap-2 mt-4 pt-4 border-t">
+                                                <Skeleton className="h-9 w-32" />
+                                                <Skeleton className="h-9 flex-1" />
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))
+                        ) : (
+                        <>
                         {filteredTopics.map((topic, i) => (
                             <motion.div
                                 key={topic.id}
@@ -433,6 +459,8 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
                                     </Button>
                                 )}
                             </Card>
+                        )}
+                        </>
                         )}
                     </div>
 

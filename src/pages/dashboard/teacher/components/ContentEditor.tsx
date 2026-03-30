@@ -17,7 +17,7 @@ import { useUser } from "@/hooks/useDatabase";
 
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
-    onSave: (content: Partial<EducationalContent> & { challengeItems?: ChallengeQuestion[] }) => void;
+    onSave: (content: Partial<EducationalContent> & { challengeItems?: ChallengeQuestion[] }) => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -40,6 +40,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const { toast } = useToast();
     const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     const handleImageUpload = async (file: File, onComplete: (url: string) => void, setIsUploading: (val: boolean) => void) => {
         if (!file || !user) {
@@ -130,20 +131,25 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         }
     };
 
-    const handleSave = () => {
-        onSave({
-            id: content?.id || Date.now(),
-            title,
-            description,
-            thumbnail,
-            targetAudience,
-            duration,
-            media: mediaList,
-            quiz: [], // Legacy - keeping for compatibility
-            views: content?.views || 0,
-            createdAt: content?.createdAt || new Date().toISOString().split('T')[0],
-            challengeItems // New comprehensive items
-        });
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onSave({
+                id: content?.id || Date.now(),
+                title,
+                description,
+                thumbnail,
+                targetAudience,
+                duration,
+                media: mediaList,
+                quiz: [], // Legacy - keeping for compatibility
+                views: content?.views || 0,
+                createdAt: content?.createdAt || new Date().toISOString().split('T')[0],
+                challengeItems // New comprehensive items
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     // Media handlers
@@ -198,13 +204,17 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                     {content ? "تعديل المحتوى" : "إضافة محتوى جديد"}
                 </h2>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={onCancel}>
+                    <Button variant="outline" onClick={onCancel} disabled={isSaving}>
                         <X className="w-4 h-4 ml-2" />
                         إلغاء
                     </Button>
-                    <Button onClick={handleSave}>
-                        <Save className="w-4 h-4 ml-2" />
-                        حفظ
+                    <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? (
+                            <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                        ) : (
+                            <Save className="w-4 h-4 ml-2" />
+                        )}
+                        {isSaving ? "جاري الحفظ..." : "حفظ"}
                     </Button>
                 </div>
             </div>

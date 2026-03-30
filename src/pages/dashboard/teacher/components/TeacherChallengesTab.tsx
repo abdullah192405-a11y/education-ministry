@@ -350,6 +350,48 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
             </TabsList>
 
             <TabsContent value="active" className="space-y-4">
+                {isLoading ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                        <Card key={i} className="border-r-4 border-r-muted overflow-hidden">
+                            <CardContent className="p-0">
+                                <div className="p-5 pb-4">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <Skeleton className="h-6 w-48 mb-2" />
+                                            <div className="flex items-center gap-2">
+                                                <Skeleton className="h-5 w-24 rounded-full" />
+                                                <Skeleton className="h-4 w-16" />
+                                            </div>
+                                        </div>
+                                        <Skeleton className="w-24 h-20 rounded-xl" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Skeleton className="h-5 w-5 rounded" />
+                                        <Skeleton className="h-4 w-24" />
+                                    </div>
+                                </div>
+                                <div className="bg-muted/20 border-t border-b p-5">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Skeleton className="h-4 w-4 rounded" />
+                                        <Skeleton className="h-4 w-32" />
+                                        <Skeleton className="h-5 w-16 rounded-full" />
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                        {Array.from({ length: 4 }).map((_, j) => (
+                                            <Skeleton key={j} className="h-10 rounded-xl" />
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="p-5 pt-4 flex gap-2">
+                                    <Skeleton className="h-11 flex-1 rounded-md" />
+                                    <Skeleton className="h-11 flex-1 rounded-md" />
+                                    <Skeleton className="h-11 w-11 rounded-md" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))
+                ) : (
+                <>
                 {/* Live update indicator */}
                 {activeChallenges.length > 0 && (
                     <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
@@ -602,6 +644,8 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                         <h3 className="text-xl font-bold mb-2">لا توجد تحديات نشطة</h3>
                         <p className="text-muted-foreground mb-6">قم بإنشاء تحدي جديد من صفحة الدروس لبدء المنافسة</p>
                     </div>
+                )}
+                </>
                 )}
             </TabsContent>
 

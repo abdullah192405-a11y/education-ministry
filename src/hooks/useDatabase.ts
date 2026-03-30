@@ -95,7 +95,7 @@ export const useSubject = (id: string, teacherId?: string) => {
           grade:grades (*),
           topics (
             *,
-            mediaItems:topic_media (*),
+            mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, sort_order),
             quizQuestions:quiz_questions (*),
             challengeItems:challenge_questions (*),
             challengeSessions:challenge_sessions (*)
@@ -134,7 +134,7 @@ export const useTopic = (id: string) => {
                 .select(`
           *,
           subject:subjects (*, grade:grades (*), topics(id)),
-          mediaItems:topic_media (*),
+          mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, pdf_base64, sort_order),
           quizQuestions:quiz_questions (*),
           challengeItems:challenge_questions (*)
         `)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -26,12 +26,39 @@ const TopicView = () => {
     const [hasViewedAllMedia, setHasViewedAllMedia] = useState(false);
 
     // Normalize media data
-    const media = (topic?.mediaItems || []).map((m: any) => ({
-        type: (m.type || "").toLowerCase(),
-        url: m.url,
-        content: m.content,
-        caption: m.caption
-    }));
+    // Use useMemo to avoid reconstructing Blob URLs on every render
+    const media = useMemo(() => {
+        return (topic?.mediaItems || []).map((m: any) => {
+            const type = (m.type || "").toLowerCase();
+            let url = m.url;
+
+            // If it's a PDF and has base64 data but no URL, construct an Object URL from a Blob
+            // This is significantly faster for the browser to render than putting a 5MB base64 string directly in the DOM
+            if (type === 'pdf' && !url && m.pdf_base64) {
+                try {
+                    const byteCharacters = atob(m.pdf_base64);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'application/pdf' });
+                    url = URL.createObjectURL(blob);
+                } catch (e) {
+                    console.error("Error creating PDF blob:", e);
+                    // Fallback to data URL if conversion fails
+                    url = `data:application/pdf;base64,${m.pdf_base64}`;
+                }
+            }
+
+            return {
+                type,
+                url,
+                content: m.content,
+                caption: m.caption
+            };
+        });
+    }, [topic?.mediaItems]);
 
     // Track if all media has been viewed
     useEffect(() => {
@@ -137,26 +164,21 @@ const TopicView = () => {
                     </Card>
                 );
             case "pdf": {
-                // Use Google Docs Viewer for better embedding compatibility
+                // Use object tag with a loading indicator behind it
                 return (
-                    <div className="w-full h-[60vh] min-h-[400px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group bg-gray-100 flex items-center justify-center">
-                        <object
-                            data={currentMedia.url}
-                            type="application/pdf"
-                            className="w-full h-full"
-                        >
-                            <div className="text-center p-6">
-                                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                                <p className="text-lg font-medium mb-2">لا يمكن عرض ملف PDF مباشرة</p>
-                                <Button asChild>
-                                    <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
-                                        تحميل الملف
-                                    </a>
-                                </Button>
-                            </div>
-                        </object>
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            <Button size="sm" variant="secondary" className="pointer-events-auto shadow-md" asChild>
+                    <div className="w-full h-[60vh] min-h-[400px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group">
+                        {/* Loading indicator shown behind the PDF object */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/30 z-0">
+                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
+                            <p className="text-muted-foreground font-medium">جاري تحميل الملف...</p>
+                        </div>
+                        <iframe
+                            src={currentMedia.url}
+                            className="w-full h-full relative z-10 bg-transparent"
+                            title={currentMedia.caption || "عرض ملف PDF"}
+                        />
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                            <Button size="sm" variant="secondary" className="shadow-md" asChild>
                                 <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
                                     <FileText className="w-4 h-4 mr-2" />
                                     تحميل / فتح
