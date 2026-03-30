@@ -1544,12 +1544,33 @@ const GroupChallenge = () => {
                     exit={{ opacity: 0, y: -20 }}
                     className="max-w-4xl mx-auto px-4 text-center mt-20"
                 >
-                    <div className="bg-destructive/10 text-destructive p-8 rounded-2xl border border-destructive/20 inline-block">
-                        <h2 className="text-2xl font-bold mb-4">خطأ في التحدي</h2>
-                        <p className="mb-6">لا توجد أسئلة متاحة لعرضها في هذا التحدي من هذا النوع.</p>
-                        {isHost && (
-                            <Button variant="default" onClick={() => window.location.href = '/dashboard/teacher'}>العودة للوحة التحكم</Button>
-                        )}
+                    <div className="bg-destructive/10 text-destructive p-8 rounded-2xl border border-destructive/20 inline-block text-right w-full">
+                        <h2 className="text-2xl font-bold mb-4 text-center">خطأ في التحدي</h2>
+                        <p className="mb-6 text-center text-lg">لا توجد أسئلة متاحة لعرضها في هذا التحدي من هذا النوع.</p>
+                        
+                        <div className="bg-white/50 dark:bg-black/50 p-4 rounded-xl text-left font-mono text-xs mb-6 overflow-auto border border-destructive/20" dir="ltr">
+                             <div className="font-bold mb-2">Technical Diagnostic Info:</div>
+                             <div><span className="opacity-70">Topic ID from URL:</span> {topicId || 'UNDEFINED'}</div>
+                             <div><span className="opacity-70">Category from URL:</span> {category || 'UNDEFINED'}</div>
+                             <div><span className="opacity-70">Effective Category:</span> {effectiveCategory}</div>
+                             <div><span className="opacity-70">Content Object present:</span> {content ? '✅ YES' : '❌ NO'}</div>
+                             <div><span className="opacity-70">Expected Host ID:</span> {sessionData?.host_id || 'N/A'}</div>
+                             <div><span className="opacity-70">Raw ChallengeItems length:</span> {content?.challengeItems?.length ?? 'undefined'}</div>
+                             <div><span className="opacity-70">Final Filtered Questions count:</span> {questions.length}</div>
+                             {!content && (
+                                 <div className="mt-2 text-red-600 font-bold">
+                                     CRITICAL: Content is entirely missing! This usually means the useTopic({topicId}) database query failed (e.g. Row Level Security blocked the student, or the ID is invalid).
+                                 </div>
+                             )}
+                        </div>
+
+                        <div className="text-center">
+                            {isHost ? (
+                                <Button variant="default" onClick={() => window.location.href = '/dashboard/teacher'}>العودة للوحة التحكم</Button>
+                            ) : (
+                                <Button variant="outline" className="border-destructive/30 hover:bg-destructive/10" onClick={() => window.location.href = '/join'}>مغادرة الجلسة</Button>
+                            )}
+                        </div>
                     </div>
                 </motion.div>
             );
