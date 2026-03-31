@@ -96,11 +96,34 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [showAddMedia, setShowAddMedia] = useState(false);
 
     // Handle PDF file upload - stores as base64 for later AI analysis
+    // Handle PDF file upload - stores in Supabase Storage and optionally base64 for AI analysis
     const handlePdfUpload = async (file: File) => {
+        if (!file || !user) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+
         setIsProcessingPdf(true);
 
         try {
-            // Convert file to base64 for storage
+            // 1. Upload to Supabase Storage (Same as images)
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/content/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('teacher-content')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = supabase.storage
+                .from('teacher-content')
+                .getPublicUrl(filePath);
+
+            const publicUrl = publicData.publicUrl;
+
+            // 2. Also keep base64 for AI analysis if needed
             const arrayBuffer = await file.arrayBuffer();
             const base64 = btoa(
                 new Uint8Array(arrayBuffer).reduce(
@@ -111,19 +134,20 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
             setNewMedia({
                 ...newMedia,
+                url: publicUrl,
                 fileName: file.name,
-                pdfBase64: base64,  // Store base64 for AI analysis
+                pdfBase64: base64,  // Keep for AI analysis
             });
 
             toast({
                 title: "تم رفع الملف بنجاح! ✓",
-                description: `سيتم تحليل الملف بواسطة الذكاء الاصطناعي عند توليد الأسئلة`,
+                description: `تم حفظ الملف في الخادم وسيتم استخدامه في الدرس`,
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error processing PDF:", error);
             toast({
                 title: "خطأ في رفع الملف",
-                description: "حدث خطأ أثناء رفع ملف PDF",
+                description: error.message || "حدث خطأ أثناء رفع ملف PDF. الرجاء التأكد من وجود bucket باسم teacher-content.",
                 variant: "destructive",
             });
         } finally {

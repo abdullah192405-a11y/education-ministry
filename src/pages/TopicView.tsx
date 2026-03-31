@@ -55,10 +55,10 @@ const TopicView = () => {
                 type,
                 url,
                 content: m.content,
-                caption: m.caption
+                caption: m.caption || m.file_name || m.type
             };
         });
-    }, [topic?.mediaItems]);
+    }, [topic?.mediaItems, topicId]);
 
     // Track if all media has been viewed
     useEffect(() => {
@@ -164,24 +164,45 @@ const TopicView = () => {
                     </Card>
                 );
             case "pdf": {
-                // Use object tag with a loading indicator behind it
-                return (
-                    <div className="w-full h-[60vh] min-h-[400px] rounded-2xl overflow-hidden border bg-background shadow-sm relative group">
-                        {/* Loading indicator shown behind the PDF object */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/30 z-0">
-                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                            <p className="text-muted-foreground font-medium">جاري تحميل الملف...</p>
+                if (!currentMedia.url) {
+                    return (
+                        <div className="w-full h-[400px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
+                            <FileText className="w-16 h-16 text-muted-foreground/30 mb-4" />
+                            <h3 className="text-lg font-bold mb-2">ملف PDF غير متوفر</h3>
+                            <p className="text-muted-foreground max-w-sm">
+                                يبدو أن محتوى الملف لم يتم رفعه بشكل صحيح. يرجى التواصل مع المعلم لتحديث الدرس.
+                            </p>
                         </div>
-                        <iframe
-                            src={currentMedia.url}
+                    );
+                }
+
+                return (
+                    <div className="w-full h-[65vh] min-h-[450px] rounded-2xl overflow-hidden border bg-background shadow-lg relative group transition-all duration-300">
+                        {/* Loading indicator behind the PDF */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/10 z-0">
+                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
+                            <p className="text-muted-foreground font-medium text-sm md:text-base">جاري تحميل ملف PDF...</p>
+                        </div>
+
+                        {/* PDF Viewer - using object for better compatibility, falls back to iframe */}
+                        <object
+                            data={currentMedia.url}
+                            type="application/pdf"
                             className="w-full h-full relative z-10 bg-transparent"
-                            title={currentMedia.caption || "عرض ملف PDF"}
-                        />
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                            <Button size="sm" variant="secondary" className="shadow-md" asChild>
+                        >
+                            <iframe
+                                src={currentMedia.url}
+                                className="w-full h-full border-none"
+                                title={currentMedia.caption || "عرض ملف PDF"}
+                            />
+                        </object>
+
+                        {/* Enhanced controls on hover */}
+                        <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-xl backdrop-blur-sm">
+                            <Button size="sm" variant="secondary" className="shadow-md font-bold" asChild>
                                 <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
-                                    <FileText className="w-4 h-4 mr-2" />
-                                    تحميل / فتح
+                                    <FileText className="w-4 h-4 ml-2" />
+                                    فتح في نافذة جديدة
                                 </a>
                             </Button>
                         </div>
