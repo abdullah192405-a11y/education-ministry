@@ -687,7 +687,7 @@ ${availableTypes}
                                     className="gap-2"
                                 >
                                     <FileText className="w-4 h-4" />
-                                    أسئلة فقط
+                                    أسئلة تفاعلية
                                 </Button>
                                 <Button
                                     type="button"
@@ -698,7 +698,7 @@ ${availableTypes}
                                     className="gap-2"
                                 >
                                     <Zap className="w-4 h-4" />
-                                    ألعاب فقط
+                                    أسئلة تلعيبية
                                 </Button>
                                 <Button
                                     type="button"
