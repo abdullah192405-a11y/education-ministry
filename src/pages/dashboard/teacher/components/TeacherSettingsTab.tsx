@@ -4,32 +4,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, Bell, User, Lock, Globe, Loader2 } from "lucide-react";
+import { Save, Bell, User, Lock, Globe, Loader2, Info } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useUser, useTeacherProfile, useUpdateUser, useUpdateTeacherProfile, useGrades } from "@/hooks/useDatabase";
+import { useUser, useUpdateUser } from "@/hooks/useDatabase";
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 
 const TeacherSettingsTab = () => {
     const { data: user } = useUser();
-    const { data: profile } = useTeacherProfile(user?.id || "");
-    const { data: grades } = useGrades();
     const { mutate: updateUser, isPending: isUpdatingUser } = useUpdateUser();
-    const { mutate: updateProfile, isPending: isUpdatingProfile } = useUpdateTeacherProfile();
     const { toast } = useToast();
 
     const [name, setName] = useState("");
     const [avatar, setAvatar] = useState("");
-    const [gradeId, setGradeId] = useState("");
-    const [subjectId, setSubjectId] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,13 +27,6 @@ const TeacherSettingsTab = () => {
             setAvatar(user.avatar || "");
         }
     }, [user]);
-
-    useEffect(() => {
-        if (profile) {
-            setGradeId(profile.grade_id || "");
-            setSubjectId(profile.subject_id || "");
-        }
-    }, [profile]);
 
     const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -96,35 +77,14 @@ const TeacherSettingsTab = () => {
     const handleSaveChanges = () => {
         if (!user) return;
 
-        // 1. Update User (Name, Avatar)
         updateUser({
             userId: user.id,
             updates: { name, avatar }
         }, {
             onSuccess: () => {
-                // 2. Update Teacher Profile (Grade, Subject)
-                updateProfile({
-                    userId: user.id,
-                    updates: {
-                        grade_id: gradeId || null,
-                        subject_id: subjectId || null,
-                        updated_at: new Date().toISOString()
-                    }
-                }, {
-                    onSuccess: () => {
-                        toast({
-                            title: "تم حفظ التغييرات",
-                            description: "تم تحديث معلوماتك الشخصية والمهنية بنجاح",
-                        });
-                    },
-                    onError: (err) => {
-                        console.error("Profile update error:", err);
-                        toast({
-                            title: "خطأ في تحديث الملف المهني",
-                            description: "فشل تحديث معلومات المادة والصف",
-                            variant: "destructive"
-                        });
-                    }
+                toast({
+                    title: "تم حفظ التغييرات",
+                    description: "تم تحديث معلوماتك الشخصية بنجاح",
                 });
             },
             onError: (err) => {
@@ -138,56 +98,7 @@ const TeacherSettingsTab = () => {
         });
     };
 
-    const handleGradeChange = (val: string) => {
-        setGradeId(val);
-        setSubjectId("");
-
-        if (user) {
-            updateProfile({
-                userId: user.id,
-                updates: {
-                    grade_id: val || null,
-                    subject_id: null,
-                    updated_at: new Date().toISOString()
-                }
-            }, {
-                onSuccess: () => {
-                    toast({
-                        title: "تم الحفظ",
-                        description: "تم حفظ الصف بنجاح",
-                        variant: "default"
-                    });
-                }
-            });
-        }
-    };
-
-    const handleSubjectChange = (val: string) => {
-        setSubjectId(val);
-
-        if (user) {
-            updateProfile({
-                userId: user.id,
-                updates: {
-                    grade_id: gradeId || null,
-                    subject_id: val || null,
-                    updated_at: new Date().toISOString()
-                }
-            }, {
-                onSuccess: () => {
-                    toast({
-                        title: "تم الحفظ",
-                        description: "تم حفظ المادة بنجاح",
-                        variant: "default"
-                    });
-                }
-            });
-        }
-    };
-
-    const isUpdating = isUpdatingUser || isUpdatingProfile;
-    const selectedGrade = grades?.find(g => g.id === gradeId);
-    const availableSubjects = selectedGrade?.subjects || [];
+    const isUpdating = isUpdatingUser;
 
     return (
         <Tabs defaultValue="profile" className="w-full" dir="rtl">
@@ -215,8 +126,8 @@ const TeacherSettingsTab = () => {
             <TabsContent value="profile" className="space-y-6" dir="rtl">
                 <Card>
                     <CardHeader>
-                        <CardTitle>المعلومات الشخصية والمهنية</CardTitle>
-                        <CardDescription>قم بتحديث معلوماتك الشخصية، تخصصك، وصورتك الرمزية</CardDescription>
+                        <CardTitle>المعلومات الشخصية</CardTitle>
+                        <CardDescription>قم بتحديث اسمك وصورتك الرمزية</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-center gap-6">
@@ -246,37 +157,13 @@ const TeacherSettingsTab = () => {
                                 <Label>البريد الإلكتروني</Label>
                                 <Input value={user?.email || ""} disabled className="bg-muted" />
                             </div>
+                        </div>
 
-                            <div className="space-y-2">
-                                <Label>الصف الدراسي</Label>
-                                <Select value={gradeId} onValueChange={handleGradeChange}>
-                                    <SelectTrigger className="bg-white">
-                                        <SelectValue placeholder="اختر الصف" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {grades?.map((grade) => (
-                                            <SelectItem key={grade.id} value={grade.id}>
-                                                {grade.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>المادة الدراسية</Label>
-                                <Select value={subjectId} onValueChange={handleSubjectChange} disabled={!gradeId}>
-                                    <SelectTrigger className={gradeId ? "bg-white" : "bg-gray-100"}>
-                                        <SelectValue placeholder={gradeId ? "اختر المادة" : "اختر الصف أولاً"} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {availableSubjects.map((subject: any) => (
-                                            <SelectItem key={subject.id} value={subject.id}>
-                                                {subject.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                            <div className="text-sm text-blue-800">
+                                <p className="font-medium mb-1">الصف والمادة الدراسية</p>
+                                <p>يتم اختيار الصف والمادة الدراسية مباشرةً عند إنشاء الدرس في تبويب "الدروس"، مما يتيح لك تدريس أكثر من صف ومادة.</p>
                             </div>
                         </div>
                     </CardContent>

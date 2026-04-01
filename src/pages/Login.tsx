@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import {
     User, Lock, Eye, EyeOff, LogIn, Sparkles,
     Shield, GraduationCap, BookOpen, ChevronLeft,
-    Mail, CheckCircle, AlertCircle
+    Mail, CheckCircle, AlertCircle,
+    ChevronRight
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
@@ -209,7 +210,7 @@ const Login = () => {
                             <span className="text-xl font-bold">Lab4</span>
                         </Link>
                         <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                            <ChevronLeft className="w-4 h-4" />
+                            <ChevronRight className="w-4 h-4" />
                             العودة للرئيسية
                         </Link>
                     </div>

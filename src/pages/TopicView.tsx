@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -11,7 +11,7 @@ import {
     Trophy, BookOpen, Gamepad2, Users, Zap,
     FileText, Image as ImageIcon, AlignLeft, Video
 } from "lucide-react";
-import { useTopic } from "@/hooks/useDatabase";
+import { useTopic, useUpdateTopic } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 
@@ -24,6 +24,18 @@ const TopicView = () => {
 
     const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
     const [hasViewedAllMedia, setHasViewedAllMedia] = useState(false);
+    const hasIncrementedView = useRef(false);
+    const updateTopicMutation = useUpdateTopic();
+
+    useEffect(() => {
+        if (topic && !hasIncrementedView.current) {
+            hasIncrementedView.current = true;
+            updateTopicMutation.mutate({
+                id: topic.id,
+                updates: { views: (topic.views || 0) + 1 }
+            });
+        }
+    }, [topic]);
 
     // Normalize media data
     // Use useMemo to avoid reconstructing Blob URLs on every render
@@ -257,7 +269,7 @@ const TopicView = () => {
                             </span>
                             <span className="flex items-center gap-1 text-muted-foreground text-sm">
                                 <Eye className="w-4 h-4" />
-                                {(topic.views || 0).toLocaleString("ar-SA")} مشاهدة
+                                {((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString("ar-SA")} مشاهدة
                             </span>
                             {topic.duration && (
                                 <span className="flex items-center gap-1 text-muted-foreground text-sm">

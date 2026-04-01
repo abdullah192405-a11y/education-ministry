@@ -4,7 +4,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, ArrowRight, GraduationCap } from "lucide-react";
+import { BookOpen, Users, ArrowRight, GraduationCap, ArrowLeft } from "lucide-react";
 import { useGradeDetail } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
@@ -161,7 +161,7 @@ const GradeDetail = () => {
                                                     </div>
                                                     <Button variant="ghost" size="sm" className="gap-2 group-hover:gap-3 transition-all">
                                                         استكشف
-                                                        <ArrowRight className="w-4 h-4" />
+                                                        <ArrowLeft className="w-4 h-4" />
                                                     </Button>
                                                 </div>
                                             </CardContent>

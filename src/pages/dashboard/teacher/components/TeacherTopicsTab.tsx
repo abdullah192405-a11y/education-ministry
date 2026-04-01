@@ -5,7 +5,7 @@ import {
     Eye, Gamepad2, MoreVertical, Edit,
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
-    FileText, CheckCircle, XCircle, Save, X
+    FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,14 +18,21 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSubject, useCreateTopic, useUpdateTopic, useDeleteTopic, useSaveTopicMedia, useSaveChallengeQuestions } from "@/hooks/useDatabase";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { useSubject, useGrades, useCreateTopic, useUpdateTopic, useDeleteTopic, useSaveTopicMedia, useSaveChallengeQuestions } from "@/hooks/useDatabase";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import ContentEditor from "./ContentEditor";
 import { useToast } from "@/components/ui/use-toast";
 
 interface TeacherTopicsTabProps {
-    gradeId: string;
-    subjectId: string;
+    gradeId?: string;
+    subjectId?: string;
     teacherProfileId?: string;
     onCreateChallenge: (topicId: string, details?: any) => void;
 }
@@ -46,8 +53,41 @@ interface ExtendedTopic {
     quizCount?: number;
 }
 
-const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
+const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
     const { toast } = useToast();
+
+    // Get all grades
+    const { data: grades } = useGrades();
+
+    // Selected grade state - defaults to prop or empty
+    const [selectedGradeId, setSelectedGradeId] = useState<string>(propGradeId || "");
+
+    // Auto-select first grade when grades load and none is selected
+    useEffect(() => {
+        if (!selectedGradeId && grades && grades.length > 0) {
+            setSelectedGradeId(grades[0].id);
+        }
+    }, [grades, selectedGradeId]);
+
+    // Get available subjects for the selected grade
+    const currentGrade = grades?.find((g: any) => g.id === selectedGradeId);
+    const availableSubjects = currentGrade?.subjects || [];
+
+    // Selected subject state - defaults to prop or first available subject
+    const [selectedSubjectId, setSelectedSubjectId] = useState<string>(propSubjectId || "");
+
+    // Auto-select first subject when grade changes or subjects load
+    useEffect(() => {
+        if (availableSubjects.length > 0) {
+            // If the currently selected subject is not in the new grade's subjects, reset it
+            const isValidSubject = availableSubjects.some((s: any) => s.id === selectedSubjectId);
+            if (!isValidSubject) {
+                setSelectedSubjectId(availableSubjects[0].id);
+            }
+        } else {
+            setSelectedSubjectId("");
+        }
+    }, [selectedGradeId, availableSubjects]);
 
     // Mutations
     const createTopicMutation = useCreateTopic();
@@ -57,7 +97,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
     const saveChallengeQuestionsMutation = useSaveChallengeQuestions();
 
     // Get current subject data from database
-    const { data: subjectData, isLoading: isLoadingSubject } = useSubject(String(subjectId), teacherProfileId);
+    const { data: subjectData, isLoading: isLoadingSubject } = useSubject(String(selectedSubjectId), teacherProfileId);
 
     // State
     const [topics, setTopics] = useState<ExtendedTopic[]>([]);
@@ -72,7 +112,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
             const mapped = subjectData.topics.map((topic: any) => ({
                 ...topic,
                 thumbnail: topic.thumbnail || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop",
-                views: topic.views || 0,
+                views: (topic.views || 0) + (topic.activities?.length || 0),
                 createdAt: topic.created_at || topic.createdAt || "",
                 status: "published" as const,
                 mediaCount: topic.mediaItems?.length || topic.media?.length || 0,
@@ -143,7 +183,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
             } else {
                 // Create new topic - use mutateAsync for proper error handling
                 const newTopic = await createTopicMutation.mutateAsync({
-                    subject_id: String(subjectId),
+                    subject_id: String(selectedSubjectId),
                     teacherId: teacherProfileId,
                     title: topicData.title,
                     description: topicData.description,
@@ -215,8 +255,64 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
         });
     };
 
+    const selectedSubjectName = availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
+
     return (
         <div className="space-y-6">
+            {/* Grade & Subject Selector */}
+            <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+                <CardContent className="p-4">
+                    <div className="flex flex-col gap-4">
+                        {/* Grade picker */}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                            <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-[120px]">
+                                <GraduationCap className="w-5 h-5" />
+                                <span>الصف الدراسي:</span>
+                            </div>
+                            <Select value={selectedGradeId} onValueChange={(val) => { setSelectedGradeId(val); setSelectedSubjectId(""); }}>
+                                <SelectTrigger className="w-full sm:w-64 bg-white">
+                                    <SelectValue placeholder="اختر الصف" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {grades?.map((grade: any) => (
+                                        <SelectItem key={grade.id} value={grade.id}>
+                                            {grade.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Subject picker */}
+                        {selectedGradeId && (
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-[120px]">
+                                    <BookMarked className="w-5 h-5" />
+                                    <span>المادة الدراسية:</span>
+                                </div>
+                                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId}>
+                                    <SelectTrigger className="w-full sm:w-64 bg-white">
+                                        <SelectValue placeholder="اختر المادة" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableSubjects.map((subject: any) => (
+                                            <SelectItem key={subject.id} value={subject.id}>
+                                                {subject.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {selectedSubjectName && (
+                                    <Badge variant="secondary" className="text-xs">
+                                        {currentGrade?.name} - {selectedSubjectName}
+                                    </Badge>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Editor View */}
             {isEditorOpen ? (
                 <ContentEditor
@@ -251,7 +347,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <Button className="gap-2" onClick={handleCreateTopic}>
+                        <Button className="gap-2" onClick={handleCreateTopic} disabled={!selectedSubjectId}>
                             <Plus className="w-4 h-4" />
                             درس جديد
                         </Button>
@@ -348,7 +444,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
                                                 {topic.status === "published" ? "✓ منشور" : "مسودة"}
                                             </button>
                                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topic.id}`}>
+                                                <Link to={`/grade/${selectedGradeId}/subject/${selectedSubjectId}/topic/${topic.id}`}>
                                                     <Button size="sm" variant="secondary" className="gap-2">
                                                         <Eye className="w-4 h-4" />
                                                         معاينة
@@ -427,7 +523,7 @@ const TeacherTopicsTab = ({ gradeId, subjectId, teacherProfileId, onCreateChalle
                                                 </Button>
                                                 <Button
                                                     className="flex-1 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                                                    onClick={() => onCreateChallenge(topic.id, { title: topic.title, gradeId, subjectId })}
+                                                    onClick={() => onCreateChallenge(topic.id, { title: topic.title, gradeId: selectedGradeId, subjectId: selectedSubjectId })}
                                                     disabled={topic.status === "draft"}
                                                 >
                                                     <Gamepad2 className="w-4 h-4" />

@@ -5,7 +5,7 @@ import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Eye, Clock, ArrowRight, PlayCircle } from "lucide-react";
+import { BookOpen, Eye, Clock, ArrowRight, PlayCircle, ArrowLeft, User } from "lucide-react";
 import { useSubject } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
@@ -146,7 +146,7 @@ const SubjectView = () => {
                                                                     {topic.description}
                                                                 </p>
                                                             </div>
-                                                            <div className="mr-4">
+                                                            <div className="mr-4 flex flex-col gap-2 items-end">
                                                                 <Badge
                                                                     className="text-xs"
                                                                     style={{
@@ -156,6 +156,12 @@ const SubjectView = () => {
                                                                 >
                                                                     {subject.icon} {subject.name}
                                                                 </Badge>
+                                                                {topic._TeacherTopics?.[0]?.teacher_profiles?.user?.name && (
+                                                                    <Badge variant="outline" className="text-xs gap-1 border-primary/20 bg-primary/5 text-primary">
+                                                                        <User className="w-3 h-3" />
+                                                                        {topic._TeacherTopics[0].teacher_profiles.user.name}
+                                                                    </Badge>
+                                                                )}
                                                             </div>
                                                         </div>
 
@@ -163,7 +169,7 @@ const SubjectView = () => {
                                                         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-4">
                                                             <div className="flex items-center gap-1">
                                                                 <Eye className="w-4 h-4" />
-                                                                <span>{(topic.views || 0).toLocaleString("ar-SA")} مشاهدة</span>
+                                                                <span>{((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString("ar-SA")} مشاهدة</span>
                                                             </div>
                                                             {topic.duration && (
                                                                 <div className="flex items-center gap-1">
@@ -177,7 +183,7 @@ const SubjectView = () => {
                                                             </div>
                                                             <div className="flex items-center gap-1">
                                                                 <span>❓</span>
-                                                                <span>{topic.quizQuestions?.length || 0} سؤال</span>
+                                                                <span>{((topic.quizQuestions?.length || 0) + (topic.challengeItems?.length || 0)).toLocaleString("ar-SA")} سؤال</span>
                                                             </div>
                                                         </div>
 
@@ -188,7 +194,7 @@ const SubjectView = () => {
                                                             </span>
                                                             <Button className="gap-2 group-hover:gap-3 transition-all">
                                                                 شاهد المحتوى
-                                                                <ArrowRight className="w-4 h-4" />
+                                                                <ArrowLeft className="w-4 h-4" />
                                                             </Button>
                                                         </div>
                                                     </div>

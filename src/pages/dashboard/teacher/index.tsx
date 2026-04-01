@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { generatePin } from "@/data/challengeTypes";
-import { useUser, useTeacherProfile, useGradeDetail, useActiveChallengesByHost, useHostedChallengeResults, useHostedSessions, useRecentChallengeResults, useStudentsInGrade, useGradeSubjectProgress, useCreateChallengeSession, useUpdateChallengeSession, useDeleteChallengeSession } from "@/hooks/useDatabase";
+import { useUser, useTeacherProfile, useActiveChallengesByHost, useHostedChallengeResults, useHostedSessions, useRecentChallengeResults, useCreateChallengeSession, useUpdateChallengeSession, useDeleteChallengeSession, useTeacherAllTopics } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import TeacherTopicsTab from "./components/TeacherTopicsTab";
 import TeacherChallengesTab from "./components/TeacherChallengesTab";
@@ -24,7 +25,7 @@ import TeacherStudentsTab from "./components/TeacherStudentsTab";
 import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 import {
     Dialog,
     DialogContent,
@@ -57,12 +58,9 @@ const TeacherDashboard = () => {
         }
     }, [user, navigate]);
     const { data: profile, isLoading: isLoadingProfile } = useTeacherProfile(user?.id || "");
-    const { data: gradeDetail, isLoading: isLoadingGrade } = useGradeDetail(profile?.grade?.slug || "");
     const { data: dbActiveChallenges } = useActiveChallengesByHost(user?.id || "");
     const { data: hostedResults } = useHostedChallengeResults(user?.id || "", 50);
     const { data: hostedSessions } = useHostedSessions(user?.id || "");
-    const { data: gradeStudents } = useStudentsInGrade(profile?.grade_id || "");
-    const { data: gradeSubjectProgress } = useGradeSubjectProgress(profile?.grade_id || "", profile?.subject_id || "");
 
     const [activeTab, setActiveTab] = useState("overview");
     const { toast } = useToast();
@@ -84,11 +82,12 @@ const TeacherDashboard = () => {
         }
     };
 
+    const { data: allTopics, isLoading: isLoadingTopics } = useTeacherAllTopics(profile?.id || "");
+
     const isLoading = isLoadingUser || isLoadingProfile;
 
-    // Filter topics for the teacher's subject and only their own content
-    const topics = (gradeDetail?.subjects?.find((s: any) => s.id === profile?.subject_id)?.topics || [])
-        .filter((topic: any) => !profile?.id || (topic._TeacherTopics && topic._TeacherTopics.some((tt: any) => tt.A === profile.id)));
+    // Filter topics for this teacher's content
+    const topics = allTopics || [];
 
     // Calculate unique students who have participated in this teacher's challenges
     const uniqueStudentsParticipated = new Set((hostedResults || []).map((r: any) => r.user_id || r.userId));
@@ -100,19 +99,11 @@ const TeacherDashboard = () => {
         name: user?.name || "معلم",
         email: user?.email || "",
         avatar: user?.avatar || "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher",
-        gradeId: profile?.grade_id || "",
-        subjectId: profile?.subject_id || "",
         verified: user?.verified || false,
         stats: {
             totalTopics: profile?.total_topics || topics.length || 0,
             totalStudents: uniqueStudentsCount || profile?.total_students || 0,
             averageScore: (() => {
-                const relevantProgress = (gradeSubjectProgress || []).filter((r: any) =>
-                    uniqueStudentsParticipated.has(r.student_id) || uniqueStudentsParticipated.has(r.student?.user_id)
-                );
-                if (relevantProgress.length > 0) {
-                    return Math.round(relevantProgress!.reduce((acc: number, r: any) => acc + (r.average_score || 0), 0) / relevantProgress.length);
-                }
                 return hostedResults?.length
                     ? Math.round(hostedResults.reduce((acc: number, r: any) => acc + (r.score || 0), 0) / hostedResults.length)
                     : Math.round(profile?.average_score || 0);
@@ -121,7 +112,7 @@ const TeacherDashboard = () => {
         }
     };
 
-    // Build score distribution for overview
+    // Build score distribution for overview (from hosted results directly)
     const scoreDistribution = [
         { name: "90-100%", count: 0, color: "#10b981" },
         { name: "70-89%", count: 0, color: "#3b82f6" },
@@ -129,21 +120,17 @@ const TeacherDashboard = () => {
         { name: "أقل من 50%", count: 0, color: "#ef4444" },
     ];
 
-    if ((gradeSubjectProgress || []).length > 0) {
-        gradeSubjectProgress!.forEach((r: any) => {
-            // Only include in chart if the student has participated in this teacher's challenges
-            if (uniqueStudentsParticipated.has(r.student_id) || uniqueStudentsParticipated.has(r.student?.user_id)) {
-                const score = r.average_score || 0;
-                if (score >= 90) scoreDistribution[0].count++;
-                else if (score >= 70) scoreDistribution[1].count++;
-                else if (score >= 50) scoreDistribution[2].count++;
-                else scoreDistribution[3].count++;
-            }
+    if ((hostedResults || []).length > 0) {
+        hostedResults!.forEach((r: any) => {
+            const score = r.score || 0;
+            if (score >= 90) scoreDistribution[0].count++;
+            else if (score >= 70) scoreDistribution[1].count++;
+            else if (score >= 50) scoreDistribution[2].count++;
+            else scoreDistribution[3].count++;
         });
     }
 
-    const currentGrade = profile?.grade;
-    const currentSubject = profile?.subject;
+
 
     // Merge DB active challenges with locally-created ones, ensuring no duplicates by PIN
     const activeChallenges = [
@@ -151,8 +138,8 @@ const TeacherDashboard = () => {
         ...(dbActiveChallenges || []).map((c: any) => ({
             id: c.id,
             topicId: c.topic_id,
-            gradeId: c.topic?.subject?.grade_id || c.topic?.grade_id || teacherData.gradeId,
-            subjectId: c.topic?.subject_id || teacherData.subjectId,
+            gradeId: c.topic?.subject?.grade_id || c.topic?.grade_id || "",
+            subjectId: c.topic?.subject_id || "",
             pin: c.pin,
             topicTitle: c.topic?.title || "تحدي",
             mode: c.mode?.toLowerCase() || "group",
@@ -182,7 +169,11 @@ const TeacherDashboard = () => {
                 pin: pin,
                 updates: { status: "PLAYING" }
             });
-            navigate(`/grade/${teacherData.gradeId}/subject/${teacherData.subjectId}/topic/${topicId}/challenge/group/ACTIVITIES/${pin}?host=true`);
+            // Get gradeId/subjectId from the challenge data
+            const challenge = activeChallenges.find(c => c.pin === pin);
+            const gId = challenge?.gradeId || "0";
+            const sId = challenge?.subjectId || "0";
+            navigate(`/grade/${gId}/subject/${sId}/topic/${topicId}/challenge/group/ACTIVITIES/${pin}?host=true`);
         } catch (error) {
             console.error("Failed to start session:", error);
             toast({
@@ -218,8 +209,8 @@ const TeacherDashboard = () => {
             topic = {
                 id: topicId,
                 title: details.title,
-                grade_id: details.gradeId || teacherData.gradeId,
-                subject_id: details.subjectId || teacherData.subjectId
+                grade_id: details.gradeId || "",
+                subject_id: details.subjectId || ""
             };
         }
 
@@ -245,8 +236,8 @@ const TeacherDashboard = () => {
         const newChallenge = {
             id: Date.now(),
             topicId: topic.id,
-            gradeId: topic.grade_id || teacherData.gradeId,
-            subjectId: topic.subject_id || teacherData.subjectId,
+            gradeId: topic.grade_id || details?.gradeId || "",
+            subjectId: topic.subject_id || details?.subjectId || "",
             pin: pin,
             topicTitle: topic.title,
             mode: "group" as const,
@@ -348,7 +339,7 @@ const TeacherDashboard = () => {
                                     <Skeleton className="w-8 h-8 rounded-lg" />
                                 ) : (
                                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xl">
-                                        {currentSubject?.icon || "📚"}
+                                        📚
                                     </div>
                                 )}
                                 <div className="hidden md:block">
@@ -359,8 +350,8 @@ const TeacherDashboard = () => {
                                         </>
                                     ) : (
                                         <>
-                                            <span className="font-medium text-sm">{currentSubject?.name || ""}</span>
-                                            <p className="text-xs text-muted-foreground">{currentGrade?.name || ""}</p>
+                                            <span className="font-medium text-sm">لوحة المعلم</span>
+                                            <p className="text-xs text-muted-foreground">{teacherData.name}</p>
                                         </>
                                     )}
                                 </div>
@@ -387,7 +378,7 @@ const TeacherDashboard = () => {
                                     ) : (
                                         <>
                                             <p className="font-medium text-sm">{teacherData.name}</p>
-                                            <p className="text-xs text-muted-foreground">{currentSubject?.name || user?.details || "Teacher"}</p>
+                                            <p className="text-xs text-muted-foreground">{user?.details || "معلم"}</p>
                                         </>
                                     )}
                                 </div>
@@ -477,18 +468,6 @@ const TeacherDashboard = () => {
                         transition={{ delay: 0.1 }}
                         className="lg:col-span-4 space-y-6"
                     >
-                        {!profile?.subject_id && (
-                            <Alert variant="destructive" className="bg-amber-50 border-amber-200 text-amber-900">
-                                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                <AlertTitle className="font-bold">المعلومات ناقصة</AlertTitle>
-                                <AlertDescription className="text-sm">
-                                    لم يتم تحديد المادة أو الصف الدراسي الخاص بك بعد. يرجى التوجه إلى الإعدادات لتحديث بياناتك المهنية.
-                                    <Button variant="link" size="sm" className="text-amber-700 font-bold p-0 mr-2" onClick={() => setActiveTab("settings")}>
-                                        إذهب للإعدادات
-                                    </Button>
-                                </AlertDescription>
-                            </Alert>
-                        )}
 
                         <AnimatePresence mode="wait">
                             {/* Overview Tab */}
@@ -508,19 +487,13 @@ const TeacherDashboard = () => {
                                                     مرحباً، {teacherData.name.split(" ").pop() || teacherData.name}! 👋
                                                 </h1>
                                                 <p className="text-white/80 mb-4">
-                                                    {currentSubject?.name && currentGrade?.name
-                                                        ? `إدارة دروس ${currentSubject.name} - ${currentGrade.name}`
-                                                        : "مرحباً بك في لوحة التحكم"}
+                                                    مرحباً بك في لوحة التحكم
                                                 </p>
                                                 <div className="flex gap-3">
-                                                    {teacherData.gradeId && teacherData.subjectId && (
-                                                        <Button variant="secondary" size="sm" asChild className="gap-2">
-                                                            <Link to={`/grade/${teacherData.gradeId}/subject/${teacherData.subjectId}`}>
-                                                                <Eye className="w-4 h-4" />
-                                                                عرض المادة
-                                                            </Link>
-                                                        </Button>
-                                                    )}
+                                                    <Button variant="secondary" size="sm" className="gap-2" onClick={() => setActiveTab("topics")}>
+                                                        <Library className="w-4 h-4" />
+                                                        إدارة الدروس
+                                                    </Button>
                                                 </div>
                                             </div>
                                             <div className="absolute left-0 top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
@@ -761,7 +734,7 @@ const TeacherDashboard = () => {
                                         </Card>
                                     </div>
 
-                                    {/* My Topics */}
+                                    {/* My Topics - prompt to go to topics tab */}
                                     <Card>
                                         <CardHeader className="flex flex-row items-center justify-between py-4">
                                             <CardTitle className="text-lg flex items-center gap-2">
@@ -773,37 +746,50 @@ const TeacherDashboard = () => {
                                             </Button>
                                         </CardHeader>
                                         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {isLoadingGrade ? (
-                                                Array.from({ length: 2 }).map((_, i) => (
+                                            {isLoadingTopics ? (
+                                                Array.from({ length: 4 }).map((_, i) => (
                                                     <Skeleton key={i} className="h-40 rounded-xl" />
                                                 ))
                                             ) : topics.length > 0 ? (
-                                                topics.map((topic: any) => (
-                                                    <div key={topic.id} className="p-4 rounded-xl border hover:border-primary/50 transition-all">
-                                                        <h3 className="font-bold mb-2">{topic.title}</h3>
-                                                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{topic.description}</p>
-                                                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                                                            <span><Eye className="w-3 h-3 inline ml-1" />{topic.views || 0} مشاهدة</span>
-                                                            <span>{topic.mediaItems?.length || 0} عنصر</span>
+                                                topics.slice(0, 4).map((topic: any) => {
+                                                    const gId = topic.subject?.grade?.id || topic.grade_id || "0";
+                                                    const sId = topic.subject_id || "0";
+                                                    return (
+                                                        <div key={topic.id} className="p-4 rounded-xl border hover:border-primary/50 transition-all flex flex-col h-full">
+                                                            <div className="flex-1">
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <h3 className="font-bold">{topic.title}</h3>
+                                                                    <Badge variant="outline" className="text-[10px] truncate max-w-[100px]">{topic.subject?.name || "مادة"}</Badge>
+                                                                </div>
+                                                                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{topic.description}</p>
+                                                            </div>
+                                                            <div className="flex items-center justify-between text-xs text-muted-foreground mb-3 pt-2 border-t">
+                                                                <span><Eye className="w-3 h-3 inline ml-1" />{topic.views || 0} مشاهدة</span>
+                                                                <span>{topic.mediaItems?.length || 0} عنصر</span>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <Button size="sm" variant="outline" className="flex-1 text-xs" asChild>
+                                                                    <Link to={`/grade/${gId}/subject/${sId}/topic/${topic.id}`}>
+                                                                        <Eye className="w-3 h-3 ml-1" />
+                                                                        عرض
+                                                                    </Link>
+                                                                </Button>
+                                                                <Button size="sm" className="flex-1 text-xs" onClick={() => handleCreateChallenge(topic.id, { title: topic.title, gradeId: gId, subjectId: sId })}>
+                                                                    <Gamepad2 className="w-3 h-3 ml-1" />
+                                                                    تحدي
+                                                                </Button>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button size="sm" variant="outline" className="flex-1 text-xs" asChild>
-                                                                <Link to={`/grade/${teacherData.gradeId}/subject/${teacherData.subjectId}/topic/${topic.id}`}>
-                                                                    <Eye className="w-3 h-3 ml-1" />
-                                                                    عرض
-                                                                </Link>
-                                                            </Button>
-                                                            <Button size="sm" className="flex-1 text-xs" onClick={() => handleCreateChallenge(topic.id)}>
-                                                                <Gamepad2 className="w-3 h-3 ml-1" />
-                                                                تحدي
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                ))
+                                                    )
+                                                })
                                             ) : (
-                                                <div className="col-span-2 text-center py-8 text-muted-foreground">
-                                                    <Library className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">لا توجد دروس بعد</p>
+                                                <div className="col-span-1 md:col-span-2 text-center py-8">
+                                                    <Library className="w-12 h-12 mx-auto mb-3 text-primary/30" />
+                                                    <p className="text-muted-foreground text-sm mb-4">لا توجد دروس حالياً، اذهب إلى تبويب "الدروس" لإنشاء درس جديد</p>
+                                                    <Button onClick={() => setActiveTab("topics")} className="gap-2">
+                                                        <Plus className="w-4 h-4" />
+                                                        إنشاء درس جديد
+                                                    </Button>
                                                 </div>
                                             )}
                                         </CardContent>
@@ -821,16 +807,12 @@ const TeacherDashboard = () => {
                                 >
                                     {activeTab === "topics" && (
                                         <TeacherTopicsTab
-                                            gradeId={teacherData.gradeId}
-                                            subjectId={teacherData.subjectId}
                                             teacherProfileId={profile?.id}
                                             onCreateChallenge={handleCreateChallenge}
                                         />
                                     )}
                                     {activeTab === "challenges" && (
                                         <TeacherChallengesTab
-                                            gradeId={teacherData.gradeId}
-                                            subjectId={teacherData.subjectId}
                                             activeChallenges={activeChallenges}
                                             onStartChallenge={handleStartSession}
                                             onDeleteChallenge={handleCancelChallenge}

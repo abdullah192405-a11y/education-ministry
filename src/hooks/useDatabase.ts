@@ -98,8 +98,11 @@ export const useSubject = (id: string, teacherId?: string) => {
             mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, sort_order),
             quizQuestions:quiz_questions (*),
             challengeItems:challenge_questions (*),
-            challengeSessions:challenge_sessions (*)
-            ${teacherId ? ", _TeacherTopics!inner(A)" : ""}
+            challengeSessions:challenge_sessions (*),
+            activities:student_topic_activities (id),
+            ${teacherId 
+              ? "_TeacherTopics!inner(A, teacher_profiles(id, user:users(id, name, avatar)))" 
+              : "_TeacherTopics(teacher_profiles(id, user:users(id, name, avatar)))"}
           )
         `);
 
@@ -136,7 +139,8 @@ export const useTopic = (id: string) => {
           subject:subjects (*, grade:grades (*), topics(id)),
           mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, pdf_base64, sort_order),
           quizQuestions:quiz_questions (*),
-          challengeItems:challenge_questions (*)
+          challengeItems:challenge_questions (*),
+          activities:student_topic_activities (id)
         `)
                 .eq("id", id)
                 .single();
@@ -752,6 +756,30 @@ export const useUpdateUser = () => {
             queryClient.invalidateQueries({ queryKey: ["current_user"] });
             queryClient.invalidateQueries({ queryKey: ["user", variables.userId] });
         }
+    });
+};
+
+export const useTeacherAllTopics = (teacherProfileId: string) => {
+    return useQuery({
+        queryKey: ["teacher_topics_all", teacherProfileId],
+        queryFn: async () => {
+            if (!teacherProfileId) return [];
+
+            const { data, error } = await supabase
+                .from("topics")
+                .select(`
+                    *,
+                    subject:subjects (*, grade:grades (*)),
+                    _TeacherTopics!inner(A),
+                    mediaItems:topic_media(id)
+                `)
+                .eq("_TeacherTopics.A", teacherProfileId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            return data;
+        },
+        enabled: !!teacherProfileId
     });
 };
 
