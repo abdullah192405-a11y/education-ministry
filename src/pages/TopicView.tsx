@@ -14,6 +14,8 @@ import {
 import { useTopic, useUpdateTopic } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
+import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
+
 
 const TopicView = () => {
     const { topicId } = useParams();
@@ -36,6 +38,13 @@ const TopicView = () => {
             });
         }
     }, [topic]);
+
+    const [isPlaying, setIsPlaying] = useState(false);
+
+    useEffect(() => {
+        setIsPlaying(false);
+    }, [currentMediaIndex]);
+
 
     // Normalize media data
     // Use useMemo to avoid reconstructing Blob URLs on every render
@@ -132,10 +141,44 @@ const TopicView = () => {
         if (!currentMedia) return null;
         switch (currentMedia.type) {
             case "video":
+                const embedUrl = getYouTubeEmbedUrl(currentMedia.url);
+                const isYouTube = currentMedia.url?.includes("youtube") || currentMedia.url?.includes("youtu.be");
+
+                if (isYouTube && !isPlaying) {
+                    const thumbnailUrl = getYouTubeThumbnail(currentMedia.url);
+                    return (
+                        <div
+                            className="relative aspect-video rounded-2xl overflow-hidden bg-black group cursor-pointer"
+                            onClick={() => setIsPlaying(true)}
+                        >
+                            <img
+                                src={thumbnailUrl || ""}
+                                alt={currentMedia.caption}
+                                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+                                onError={(e) => {
+                                    // Fallback to high quality if maxres isn't available
+                                    const target = e.target as HTMLImageElement;
+                                    if (target.src.includes('maxresdefault')) {
+                                        target.src = target.src.replace('maxresdefault', 'hqdefault');
+                                    }
+                                }}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-20 h-20 bg-primary/90 text-white rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                                    <Play className="w-10 h-10 fill-current" />
+                                </div>
+                            </div>
+                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                                <p className="text-white text-lg font-bold">{currentMedia.caption || "عرض الفيديو"}</p>
+                            </div>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
                         <iframe
-                            src={currentMedia.url}
+                            src={embedUrl}
                             title={currentMedia.caption}
                             className="w-full h-full"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -143,6 +186,7 @@ const TopicView = () => {
                         />
                     </div>
                 );
+
             case "image":
                 return (
                     <div className="relative rounded-2xl overflow-hidden">

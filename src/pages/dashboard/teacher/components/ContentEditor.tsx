@@ -14,6 +14,8 @@ import QuestionGameEditor from "./QuestionGameEditor";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/hooks/useDatabase";
+import { getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
+
 
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
@@ -420,11 +422,32 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 )}
                                             </div>
                                         ) : newMedia.type === "video" ? (
-                                            <Input
-                                                value={newMedia.url || ""}
-                                                onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                placeholder="رابط الفيديو (YouTube embed)"
-                                            />
+                                            <div className="space-y-2">
+                                                <Input
+                                                    value={newMedia.url || ""}
+                                                    onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
+                                                    placeholder="رابط فيديو يوتيوب (يتم التحويل تلقائياً)"
+                                                />
+                                                {newMedia.url && getYouTubeId(newMedia.url) && (
+                                                    <div className="relative aspect-video w-40 rounded-lg overflow-hidden border">
+                                                        <img
+                                                            src={getYouTubeThumbnail(newMedia.url) || ""}
+                                                            alt="Preview"
+                                                            className="w-full h-full object-cover"
+                                                            onError={(e) => {
+                                                                const target = e.target as HTMLImageElement;
+                                                                if (target.src.includes('maxresdefault')) {
+                                                                    target.src = target.src.replace('maxresdefault', 'hqdefault');
+                                                                }
+                                                            }}
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                                            <Play className="w-6 h-6 text-white fill-current" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
                                         ) : newMedia.type === "image" ? (
                                             <div className="flex gap-2">
                                                 <Input
