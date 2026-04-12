@@ -12,6 +12,7 @@ import {
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 
 interface AIQuestionGeneratorProps {
     onGenerate: (questions: ChallengeQuestion[]) => void;
@@ -95,7 +96,21 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                     };
                     extractedText = "تم توفير صورة للتحليل. يرجى تحليل محتواها العلمي بدقة.";
                 } else if (file.type === "application/pdf") {
+                    setProgress("جاري تحليل ملف PDF...");
+                    // Try text extraction first
                     extractedText = await extractPdfText(file);
+
+                    // Printed / scanned PDFs have no text layer — send page images for vision (Gemini reads them)
+                    if (pdfNeedsVisualPageImages(extractedText)) {
+                        setProgress("جاري تحويل صفحات PDF إلى صور للتحليل البصري...");
+                        const pdfImages = await extractPdfAsImages(file, 10, 2);
+                        if (pdfImages.length === 0) {
+                            throw new Error(
+                                "تعذّر تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً أو جرّب ملف PDF آخر."
+                            );
+                        }
+                        (window as any)._pendingPdfImages = pdfImages;
+                    }
                 }
             } else if (inputType === "video" && videoUrl) {
                 setProgress("جاري استخراج محتوى الفيديو...");
@@ -157,7 +172,30 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 parts.push(imagePart);
             }
 
-            parts.push({ text: buildPrompt(extractedText, prompt) });
+            // Add PDF images if any were generated
+            let hadPdfPageImages = false;
+            if ((window as any)._pendingPdfImages) {
+                hadPdfPageImages = (window as any)._pendingPdfImages.length > 0;
+                (window as any)._pendingPdfImages.forEach((img: string) => {
+                    parts.push({
+                        inline_data: {
+                            mime_type: "image/jpeg",
+                            data: img
+                        }
+                    });
+                });
+                delete (window as any)._pendingPdfImages;
+            }
+
+            const sourceContextForPrompt =
+                inputType === "file" &&
+                file?.type === "application/pdf" &&
+                hadPdfPageImages &&
+                !extractedText.trim()
+                    ? "لا يوجد نص مستخرج من هذا PDF (ملف مطبوع أو ممسوح ضوئياً). صور الصفحات في نفس الطلب تحتوي المحتوى — اقرأها وحللها بدقة."
+                    : extractedText;
+
+            parts.push({ text: buildPrompt(sourceContextForPrompt, prompt) });
 
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
@@ -224,96 +262,17 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
         }
     };
 
-    const extractPdfText = async (file: File): Promise<string> => {
-        try {
-            console.log("Starting PDF extraction for:", file.name);
-
-            // Try to use pdfjs-dist
-            try {
-                const pdfjsLib = await import('pdfjs-dist');
-                console.log("pdfjs-dist loaded successfully");
-
-                // Use the actual library version instead of hardcoded version
-                const pdfjsVersion = pdfjsLib.version || '4.0.379';
-                console.log("pdfjs version:", pdfjsVersion);
-
-                // Set worker with matching version
-                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.mjs`;
-
-                console.log("Worker path set:", pdfjsLib.GlobalWorkerOptions.workerSrc);
-
-                // Read file
-                const arrayBuffer = await file.arrayBuffer();
-                console.log("File read as ArrayBuffer, size:", arrayBuffer.byteLength);
-
-                // Load PDF
-                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-                const pdf = await loadingTask.promise;
-                console.log("PDF loaded, pages:", pdf.numPages);
-
-                let fullText = '';
-
-                // Extract text from each page
-                for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 50); pageNum++) {
-                    try {
-                        const page = await pdf.getPage(pageNum);
-                        const textContent = await page.getTextContent();
-                        const pageText = textContent.items
-                            .map((item: any) => item.str || '')
-                            .filter(Boolean)
-                            .join(' ');
-
-                        if (pageText.trim()) {
-                            fullText += pageText + '\n\n';
-                        }
-
-                        console.log(`Page ${pageNum} extracted, length:`, pageText.length);
-                    } catch (pageError) {
-                        console.warn(`Error on page ${pageNum}:`, pageError);
-                        // Continue with next page
-                    }
-                }
-
-                if (!fullText.trim()) {
-                    throw new Error("لم يتم استخراج أي نص من PDF");
-                }
-
-                // Limit text length
-                if (fullText.length > 30000) {
-                    fullText = fullText.substring(0, 30000) + '\n\n[... تم اقتصاص المحتوى الزائد]';
-                }
-
-                console.log("Total extracted text length:", fullText.length);
-                return fullText;
-
-            } catch (pdfjsError) {
-                console.error("pdfjs-dist error:", pdfjsError);
-
-                // Fallback: Use simple file reading
-                console.log("Falling back to simple text extraction");
-                return await fallbackExtractText(file);
-            }
-
-        } catch (error) {
-            console.error("PDF extraction failed completely:", error);
-            throw new Error("فشل في قراءة ملف PDF. جرب ملف آخر أو استخدم نص مباشر في التعليمات.");
-        }
-    };
-
-    // Fallback method: Just read file name and let user provide context
-    const fallbackExtractText = async (file: File): Promise<string> => {
-        return `\n[ملف: ${file.name}]\n\nملاحظة: تعذر قراءة محتوى الملف برمجياً. سيعتمد الذكاء الاصطناعي على التحليل البصري أو التعليمات المقدمة فقط.\n`;
-    };
-
     const buildPrompt = (fileContent: string, userPrompt: string): string => {
         return `أنت مساعد ذكي متخصص في إنشاء أسئلة تعليمية وألعاب تفاعلية باللغة العربية.
 مهمتك الأساسية هي توليد محتوى مستنداً **حصرياً** على المصدر المقدم (صورة، PDF، أو رابط فيديو).
 
-المحتوى التعليمي من المصدر:
+المحتوى التعليمي من المصدر (نصوص و/أو صور لصفحات):
 ${fileContent}
 
 طلب المعلم:
 ${userPrompt}
+
+تنبيه هام: قم بتحليل **كامل** المحتوى المقدم (سواء كان نصاً مستخرجاً أو صوراً للصفحات). إذا كانت هناك صور لصفحات PDF، قم بإجراء تحليل بصري (OCR) دقيق لها. لا تتجاهل أي تفاصيل.
 
 يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على المعلومات المتوفرة في المصدر المقدم، مع الالتزام بالتنسيق التالي بدقة. 
 **في حال كان المصدر رابط فيديو (يوتيوب):**

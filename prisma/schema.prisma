@@ -43,6 +43,8 @@ model User {
   verified  Boolean   @default(false)
   details   String? // e.g., "الصف الأول الابتدائي" or "مادة اللغة العربية"
   isActive  Boolean   @default(true) @map("is_active")
+  /// MD5 hex digest of password (legacy; matches public.login_user)
+  passwordHash String? @map("password_hash")
   lastLogin DateTime? @map("last_login")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -57,6 +59,8 @@ model User {
   earnedBadges     UserBadge[]
   auditLogs        AuditLog[]
   notifications    Notification[]
+  hostedExams      Exam[]      @relation("HostedExams")
+  examResults      ExamResult[]
 
 
 
@@ -143,6 +147,7 @@ model Grade {
   studentProfiles StudentProfile[]
   teacherProfiles TeacherProfile[]
   enrollments     StudentEnrollment[]
+  exams           Exam[]
 
   @@map("grades")
 }
@@ -192,6 +197,7 @@ model Topic {
   challengeSessions ChallengeSession[]
   topicActivities   StudentTopicActivity[]
   teachers          TeacherProfile[]       @relation("TeacherTopics")
+  exams             Exam[]
 
   @@map("topics")
 }
@@ -303,6 +309,7 @@ enum QuestionType {
 model ChallengeQuestion {
   id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   topicId          String?      @map("topic_id") @db.Uuid
+  examId           String?      @map("exam_id") @db.Uuid
 
   type             QuestionType
   typeTitle        String?      @map("type_title")
@@ -323,6 +330,7 @@ model ChallengeQuestion {
 
   // Relations
   topic            Topic?            @relation("TopicChallengeQuestions", fields: [topicId], references: [id], onDelete: Cascade)
+  exam             Exam?             @relation("ExamQuestions", fields: [examId], references: [id], onDelete: Cascade)
   sessionQuestions SessionQuestion[]
   answers          ChallengeAnswer[]
 
@@ -636,4 +644,76 @@ model Announcement {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("announcements")
+}
+
+// ============================================================================
+// 10. EXAMS & ASSESSMENTS
+// ============================================================================
+
+enum ExamCategory {
+  WEEKLY
+  MONTHLY
+  MID_SEMESTER
+  FINAL_SEMESTER
+}
+
+enum ExamStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  ENDED
+}
+
+model Exam {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  description      String?
+  gradeId          String?      @map("grade_id") @db.Uuid
+  topicId          String?      @map("topic_id") @db.Uuid
+  hostId           String       @map("host_id") @db.Uuid
+  pin              String       @unique
+  category         ExamCategory @default(WEEKLY)
+  status           ExamStatus   @default(DRAFT)
+  startTime        DateTime     @map("start_time")
+  endTime          DateTime     @map("end_time")
+  durationMinutes  Int?         @default(60) @map("duration_minutes")
+  maxAttempts      Int?         @default(1) @map("max_attempts")
+  shuffleQuestions Boolean?     @default(false) @map("shuffle_questions")
+  showResults      Boolean?     @default(true) @map("show_results")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  grade     Grade?              @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  topic     Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  host      User                @relation("HostedExams", fields: [hostId], references: [id], onDelete: Cascade)
+  results   ExamResult[]
+  questions ChallengeQuestion[] @relation("ExamQuestions")
+
+  @@map("exams")
+}
+
+model ExamResult {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId           String   @map("exam_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  studentName      String?  @map("student_name")
+  totalQuestions   Int      @default(0) @map("total_questions")
+  correctAnswers   Int      @default(0) @map("correct_answers")
+  wrongAnswers     Int      @default(0) @map("wrong_answers")
+  score            Int      @default(0)
+  maxScore         Int      @default(0) @map("max_score")
+  percentage       Float    @default(0)
+  timeTaken        Float    @default(0) @map("time_taken")
+  questionResults  Json?    @map("question_results")
+  startedAt        DateTime? @default(now()) @map("started_at")
+  submittedAt      DateTime? @default(now()) @map("submitted_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // Relations
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, userId])
+  @@map("exam_results")
 }

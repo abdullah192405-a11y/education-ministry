@@ -982,7 +982,6 @@ export const useSaveTopicMedia = () => {
                 content: m.content || null,
                 caption: m.caption || null,
                 file_name: m.fileName || null,
-                pdf_base64: m.pdfBase64 || null,
                 sort_order: index,
             }));
 

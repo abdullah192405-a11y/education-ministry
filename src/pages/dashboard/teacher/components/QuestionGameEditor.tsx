@@ -23,6 +23,7 @@ interface QuestionGameEditorProps {
     onSave: (items: ChallengeQuestion[]) => void;
     onCancel: () => void;
     media?: ContentMedia[]; // Optional media for AI generation from resources
+    isExamMode?: boolean; // If true, hides games, restricts question types to 3 allowed, and hides time limits
 }
 
 // Activity and Game type configurations
@@ -97,7 +98,7 @@ const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestio
     }
 };
 
-const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGameEditorProps) => {
+const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = false }: QuestionGameEditorProps) => {
     const [questionItems, setQuestionItems] = useState<ChallengeQuestion[]>(items);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<ItemCategory | null>(null);
@@ -161,6 +162,10 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
         const game = gameTypes.find(g => g.type === type);
         return game?.icon || HelpCircle;
     };
+
+    const allowedActivityTypes = isExamMode 
+        ? activityTypes.filter(t => ["multiple_choice", "true_false", "order_questions"].includes(t.type)) 
+        : activityTypes;
 
     // Check if type is a game
     const isGameType = (type: ActivityType | GameType): boolean => {
@@ -253,12 +258,15 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
 
             {/* Add New Button */}
             <Button
-                onClick={() => setShowAddDialog(true)}
+                onClick={() => {
+                    setShowAddDialog(true);
+                    if (isExamMode) setSelectedCategory("activity");
+                }}
                 variant="outline"
                 className="w-full border-dashed border-2 h-16 text-lg gap-2"
             >
                 <Plus className="w-5 h-5" />
-                إضافة سؤال أو لعبة جديدة
+                {isExamMode ? "إضافة سؤال جديد" : "إضافة سؤال أو لعبة جديدة"}
             </Button>
 
             {/* Add Dialog */}
@@ -313,17 +321,19 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
                                 ) : (
                                     // Step 2: Choose specific type
                                     <div className="space-y-4">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelectedCategory(null)}
-                                            className="mb-2"
-                                        >
-                                            ← رجوع
-                                        </Button>
+                                        {!isExamMode && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setSelectedCategory(null)}
+                                                className="mb-2"
+                                            >
+                                                ← رجوع
+                                            </Button>
+                                        )}
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {(selectedCategory === "activity" ? activityTypes : gameTypes).map((item) => (
+                                            {(selectedCategory === "activity" ? allowedActivityTypes : gameTypes).map((item) => (
                                                 <motion.button
                                                     key={item.type}
                                                     whileHover={{ scale: 1.02 }}
@@ -418,10 +428,12 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
                                                     }`}>
                                                     {getTypeLabel(item.type)}
                                                 </span>
-                                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                                    <Clock className="w-3 h-3" />
-                                                    {item.timeLimit}ث
-                                                </span>
+                                                {!isExamMode && (
+                                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        {item.timeLimit}ث
+                                                    </span>
+                                                )}
                                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                                     <Star className="w-3 h-3" />
                                                     {item.points} نقطة
@@ -465,20 +477,22 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [] }: QuestionGam
                                                                 placeholder="أدخل نص السؤال أو العنوان"
                                                             />
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <div>
-                                                                <label className="text-sm font-medium mb-2 block flex items-center gap-1">
-                                                                    <Clock className="w-3 h-3" />
-                                                                    الوقت (ثانية)
-                                                                </label>
-                                                                <Input
-                                                                    type="number"
-                                                                    value={item.timeLimit}
-                                                                    onChange={(e) => updateItem(index, { timeLimit: parseInt(e.target.value) || 20 })}
-                                                                    min={5}
-                                                                    max={120}
-                                                                />
-                                                            </div>
+                                                        <div className={`grid ${isExamMode ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
+                                                            {!isExamMode && (
+                                                                <div>
+                                                                    <label className="text-sm font-medium mb-2 block flex items-center gap-1">
+                                                                        <Clock className="w-3 h-3" />
+                                                                        الوقت (ثانية)
+                                                                    </label>
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={item.timeLimit}
+                                                                        onChange={(e) => updateItem(index, { timeLimit: parseInt(e.target.value) || 20 })}
+                                                                        min={5}
+                                                                        max={120}
+                                                                    />
+                                                                </div>
+                                                            )}
                                                             <div>
                                                                 <label className="text-sm font-medium mb-2 block flex items-center gap-1">
                                                                     <Star className="w-3 h-3" />

@@ -17,11 +17,13 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import ExamPage from "./pages/ExamPage";
 
 // Dashboard Pages
 import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect } from "./pages/dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
+import WhatsAppButton from "./components/layout/WhatsAppButton";
 
 const queryClient = new QueryClient();
 
@@ -92,10 +94,14 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/sso-callback" element={<ClerkSSOCallback />} />
 
+          {/* Exam Route - accessible by link only */}
+          <Route path="/exam/:pin" element={<ExamPage />} />
+
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
+      <WhatsAppButton />
     </TooltipProvider>
   </QueryClientProvider>
 );

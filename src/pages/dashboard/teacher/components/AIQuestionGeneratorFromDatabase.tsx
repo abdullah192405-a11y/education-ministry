@@ -13,7 +13,12 @@ import {
 } from "lucide-react";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
-import { extractPdfFromSupabase, getTeacherPdfs } from "@/lib/pdfExtractor";
+import {
+    extractPdfFromSupabase,
+    extractPdfFromSupabaseAsImages,
+    getTeacherPdfs,
+    pdfNeedsVisualPageImages,
+} from "@/lib/pdfExtractor";
 import { supabase } from "@/lib/supabase";
 
 interface AIQuestionGeneratorFromDatabaseProps {
@@ -111,68 +116,96 @@ const AIQuestionGeneratorFromDatabase = ({
 
             // Extract content from all selected PDFs
             const pdfContents: string[] = [];
+            const pdfImages: string[] = [];
+            
             for (const pdfName of selectedPdfs) {
                 try {
+                    setProgress(`جاري جلب وتحليل ملف: ${pdfName}...`);
                     const content = await extractPdfFromSupabase(teacherId, pdfName);
-                    pdfContents.push(content);
-                    setExtractedContentPreview(prev => new Map(prev).set(pdfName, content.substring(0, 500)));
+                    
+                    if (content.trim().length > 100) {
+                        pdfContents.push(content);
+                        setExtractedContentPreview(prev => new Map(prev).set(pdfName, content.substring(0, 500)));
+                    }
+                    
+                    if (pdfNeedsVisualPageImages(content)) {
+                        setProgress(`جاري تحويل ${pdfName} لصور للتحليل البصري...`);
+                        const images = await extractPdfFromSupabaseAsImages(teacherId, pdfName, 10, 2);
+                        pdfImages.push(...images);
+                    }
                 } catch (error) {
                     console.error(`Error extracting ${pdfName}:`, error);
                 }
             }
 
-            if (pdfContents.length === 0) {
+            if (pdfContents.length === 0 && pdfImages.length === 0) {
                 throw new Error("فشل استخراج محتوى أي ملف PDF");
             }
 
-            const combinedContent = pdfContents.join("\n\n---\n\n");
+            const combinedText = pdfContents.join("\n\n---\n\n");
 
             setProcessingPhase("analyzing");
             setProgress("جاري تحليل محتوى PDF...");
 
-            // Prepare Gemini API request
+            setProcessingPhase("generating");
+            setProgress("جاري تحليل المحتوى وتوليد الأسئلة...");
+
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
             if (!apiKey) {
                 throw new Error("لم يتم تكوين مفتاح Gemini API");
             }
 
-            setProcessingPhase("generating");
-            setProgress("جاري توليد الأسئلة والألعاب من محتوى PDF...");
+            const parts: any[] = [];
+            
+            // Add images if any
+            pdfImages.forEach(img => {
+                parts.push({
+                    inline_data: {
+                        mime_type: "image/jpeg",
+                        data: img
+                    }
+                });
+            });
 
-            const questionPrompt = `
-أنت معلم ذو خبرة. استخدم المحتوى التالي من ملفات PDF لتوليد أسئلة وألعاب تعليمية عالية الجودة.
+            const finalPrompt = `أنت مساعد ذكي متخصص في إنشاء أسئلة تعليمية وألعاب تفاعلية.
+يجب عليك تحليل **كامل** المصادر المقدمة (سواء كانت نصوصاً مستخرجة أو صوراً لصفحات PDF).
+قم بإجراء تحليل بصري (OCR) دقيق للصور المرفقة.
 
-المحتوى المستخرج من PDF:
-${combinedContent}
+المحتوى النصي المستخرج:
+${combinedText}
 
-تعليمات المستخدم:
+طلب المعلم:
 ${prompt}
 
 متطلبات التوليد:
-${generateType === "questions" || generateType === "both" ? "- توليد أسئلة اختيار من متعدد بناءً على محتوى PDF" : ""}
-${generateType === "games" || generateType === "both" ? "- توليد ألعاب تعليمية تفاعلية مثل (ترتيب، تطابق، سحب وإفلات)" : ""}
-- تأكد من أن الأسئلة والألعاب تركز على المحتوى المستخرج من PDF
-- استخدم لغة عربية واضحة وسهلة الفهم
-- توفير تفسيرات للإجابات الصحيحة
+${generateType !== "games" ? "- توليد أسئلة تعليمية (اختيار متعدد، صح وخطأ، إلخ)" : ""}
+${generateType !== "questions" ? "- توليد ألعاب تعليمية تفاعلية (مطابقة، ترتيب، إلخ)" : ""}
+- التزم تماماً بمحتوى الملفات المرفقة ولا تخرج عنها.
+- العودة بتنسيق JSON array من العناصر التعليمية.
 
-العودة بتنسيق JSON محدد للغاية.
+مثال للتنسيق:
+[
+  {
+    "type": "multiple_choice",
+    "question": "سؤال...",
+    "options": ["خيار 1", "خيار 2"],
+    "correctAnswer": 0
+  }
+]
 `;
+            parts.push({ text: finalPrompt });
 
-            const modelName = "gemini-2.5-flash"; // Reverted to 2.5-flash as specifically requested
+            const modelName = "gemini-2.5-flash"; 
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{
-                            parts: [{ text: questionPrompt }]
-                        }],
+                        contents: [{ parts }],
                         generationConfig: {
                             temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 4096
+                            maxOutputTokens: 8192
                         }
                     })
                 }
@@ -190,59 +223,7 @@ ${generateType === "games" || generateType === "both" ? "- توليد ألعاب
                 throw new Error("لم يتم الحصول على نتيجة من AI");
             }
 
-            // Parse JSON from response
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-                throw new Error("فشل استخراج JSON من النتيجة");
-            }
-
-            const parsedResponse = JSON.parse(jsonMatch[0]);
-            const questions: ChallengeQuestion[] = [];
-
-            // Process questions if requested
-            if ((generateType === "questions" || generateType === "both") && parsedResponse.questions) {
-                questions.push(...(parsedResponse.questions || []).map((q: any, index: number) => ({
-                    id: `q-${Date.now()}-${index}`,
-                    topicId: "",
-                    type: q.type || "multiple_choice",
-                    typeTitle: q.typeTitle || "اختيار من متعدد",
-                    question: q.question,
-                    options: q.options || [],
-                    correctAnswer: q.correctAnswer,
-                    explanation: q.explanation,
-                    points: q.points || 100,
-                    timeLimit: q.timeLimit || 30,
-                    imageUrl: q.imageUrl,
-                    orderItems: q.orderItems,
-                    wheelSegments: q.wheelSegments,
-                    pairs: q.pairs,
-                    source: "pdf_extracted"
-                })));
-            }
-
-            // Process games if requested
-            if ((generateType === "games" || generateType === "both") && parsedResponse.games) {
-                questions.push(...(parsedResponse.games || []).map((g: any, index: number) => ({
-                    id: `game-${Date.now()}-${index}`,
-                    topicId: "",
-                    type: g.type || "matching",
-                    typeTitle: g.typeTitle || "ألعاب تفاعلية",
-                    question: g.question,
-                    options: g.options || [],
-                    correctAnswer: g.correctAnswer,
-                    explanation: g.explanation,
-                    points: g.points || 150,
-                    timeLimit: g.timeLimit || 60,
-                    pairs: g.pairs,
-                    orderItems: g.orderItems,
-                    wheelSegments: g.wheelSegments,
-                    source: "pdf_extracted"
-                })));
-            }
-
-            if (questions.length === 0) {
-                throw new Error("لم يتم توليد أي أسئلة أو ألعاب");
-            }
+            const questions: ChallengeQuestion[] = parseGeneratedQuestions(responseText);
 
             setProcessingPhase("idle");
             toast({
@@ -261,6 +242,36 @@ ${generateType === "games" || generateType === "both" ? "- توليد ألعاب
             });
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const parseGeneratedQuestions = (text: string): ChallengeQuestion[] => {
+        try {
+            let jsonText = text.trim();
+            if (jsonText.includes("```")) {
+                const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                if (match) jsonText = match[1];
+            }
+            
+            // If it's still containing text outside array/object, try to find the structure
+            if (!jsonText.startsWith("[") && !jsonText.startsWith("{")) {
+                const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
+                const objectMatch = jsonText.match(/\{[\s\S]*\}/);
+                if (arrayMatch) jsonText = arrayMatch[0];
+                else if (objectMatch) jsonText = objectMatch[0];
+            }
+
+            const parsed = JSON.parse(jsonText);
+            const items = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.games || []);
+            
+            return items.map((item: any, index: number) => ({
+                ...item,
+                id: item.id || `db-${Date.now()}-${index}`,
+                source: "pdf_extracted"
+            }));
+        } catch (error) {
+            console.error("Error parsing questions:", error);
+            throw new Error("فشل في تحليل الأسئلة المولدة من AI");
         }
     };
 

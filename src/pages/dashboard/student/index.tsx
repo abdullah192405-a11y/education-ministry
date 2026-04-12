@@ -5,12 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
     Trophy, Star, Target, Clock, Brain, Flame, Medal,
     BookOpen, History, Settings, User, LogOut, Bell,
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
-    BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp
+    BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp,
+    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight
 } from "lucide-react";
 import {
     useUser,
@@ -28,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
+import { useStudentExams, examCategoryLabels } from "@/hooks/useExams";
 
 const StudentDashboard = () => {
     const navigate = useNavigate();
@@ -99,6 +102,9 @@ const StudentDashboard = () => {
     const { data: userBadges, isLoading: isLoadingUserBadges } = useUserBadges(user?.id || "");
     const { data: allBadges, isLoading: isLoadingAllBadges } = useAllBadges();
     const { data: challengeResults, isLoading: isLoadingChallengeResults } = useRecentChallengeResults(user?.id || "", 100);
+    const { data: exams, isLoading: isLoadingExams } = useStudentExams(profile?.grade_id || "", user?.id || "");
+
+    const pendingExamsCount = (exams || []).filter(e => !e.hasSubmitted).length;
 
     const isLoading = isLoadingUser || isLoadingProfile || isLoadingChallengeResults;
 
@@ -331,6 +337,7 @@ const StudentDashboard = () => {
                                 <nav className="space-y-2">
                                     {[
                                         { id: "overview", icon: BarChart3, label: "نظرة عامة" },
+                                        { id: "exams", icon: ClipboardList, label: "الاختبارات", count: pendingExamsCount },
                                         { id: "subjects", icon: BookOpen, label: "المواد الدراسية" },
                                         { id: "history", icon: History, label: "سجل الدروس" },
                                         { id: "badges", icon: Award, label: "الشارات" },
@@ -339,13 +346,20 @@ const StudentDashboard = () => {
                                         <button
                                             key={item.id}
                                             onClick={() => setActiveTab(item.id)}
-                                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === item.id
-                                                ? "bg-primary text-primary-foreground"
+                                            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === item.id
+                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                                                 : "hover:bg-muted"
                                                 }`}
                                         >
-                                            <item.icon className="w-5 h-5" />
-                                            <span>{item.label}</span>
+                                            <div className="flex items-center gap-3">
+                                                <item.icon className="w-5 h-5" />
+                                                <span>{item.label}</span>
+                                            </div>
+                                            {(item as any).count > 0 && (
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === item.id ? "bg-white text-primary" : "bg-primary text-white"}`}>
+                                                    {(item as any).count}
+                                                </span>
+                                            )}
                                         </button>
                                     ))}
                                 </nav>
@@ -685,6 +699,129 @@ const StudentDashboard = () => {
                                             )}
                                         </CardContent>
                                     </Card>
+                                </motion.div>
+                            )}
+
+                            {/* Exams Tab */}
+                            {activeTab === "exams" && (
+                                <motion.div
+                                    key="exams"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    className="space-y-6"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-2xl font-bold flex items-center gap-2">
+                                            <ClipboardList className="w-6 h-6 text-primary" />
+                                            الاختبارات المدرسية
+                                        </h2>
+                                    </div>
+
+                                    {isLoadingExams ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Skeleton className="h-48 rounded-2xl" />
+                                            <Skeleton className="h-48 rounded-2xl" />
+                                        </div>
+                                    ) : (exams || []).length > 0 ? (
+                                        <div className="space-y-8" dir="rtl">
+                                            {/* Pending Exams */}
+                                            <section className="space-y-4">
+                                                <h3 className="text-lg font-bold flex items-center gap-2 text-primary">
+                                                    <Target className="w-5 h-5" />
+                                                    اختبارات بانتظارك
+                                                </h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {(exams || []).filter(e => !e.hasSubmitted).length > 0 ? (
+                                                        (exams || []).filter(e => !e.hasSubmitted).map(exam => {
+                                                            const cat = examCategoryLabels[exam.category] || { label: exam.category, icon: "📝", color: "bg-primary" };
+                                                            return (
+                                                                <Card key={exam.id} className="overflow-hidden border-2 hover:border-primary/20 transition-all group flex flex-col h-full">
+                                                                    <div className={`h-1.5 ${cat.color}`} />
+                                                                    <CardContent className="p-5 flex flex-col h-full">
+                                                                        <div className="flex justify-between items-start mb-4">
+                                                                            <Badge variant="outline" className="gap-1.5 border-none bg-muted/50 text-[10px] px-2">
+                                                                                <span>{cat.icon}</span>
+                                                                                {cat.label}
+                                                                            </Badge>
+                                                                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold">
+                                                                                <Clock className="w-3.5 h-3.5" />
+                                                                                {exam.duration_minutes} دقيقة
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex-1">
+                                                                            <h4 className="font-black text-lg mb-1 group-hover:text-primary transition-colors leading-tight">{exam.title}</h4>
+                                                                            <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+                                                                                <BookOpen className="w-3.5 h-3.5" />
+                                                                                {exam.topic?.title || "اختبار عام"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between pt-4 border-t border-dashed mt-auto">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <img src={exam.host?.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${exam.host_id}`} alt="" className="w-7 h-7 rounded-full border bg-muted" />
+                                                                                <span className="text-[10px] font-black text-muted-foreground line-clamp-1">{exam.host?.name || "المعلم"}</span>
+                                                                            </div>
+                                                                            <Button size="sm" className="gap-2 rounded-xl text-xs px-4" asChild>
+                                                                                <Link to={`/exam/${exam.pin}`}>
+                                                                                    بدء الآن
+                                                                                    <ArrowRight className="w-4 h-4" />
+                                                                                </Link>
+                                                                            </Button>
+                                                                        </div>
+                                                                    </CardContent>
+                                                                </Card>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <div className="col-span-full py-12 text-center bg-muted/10 rounded-3xl border-2 border-dashed border-muted">
+                                                            <CheckCircle className="w-12 h-12 mx-auto mb-3 text-emerald-500 opacity-20" />
+                                                            <p className="text-muted-foreground font-bold">لا توجد اختبارات جديدة حالياً.. أحسنت!</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </section>
+
+                                            {/* Completed Exams */}
+                                            {(exams || []).filter(e => e.hasSubmitted).length > 0 && (
+                                                <section className="space-y-4">
+                                                    <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground">
+                                                        <History className="w-5 h-5" />
+                                                        الاختبارات المنتهية
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                        {(exams || []).filter(e => e.hasSubmitted).map(exam => {
+                                                            const res = exam.studentResult;
+                                                            return (
+                                                                <Card key={exam.id} className="group hover:border-primary/20 transition-all overflow-hidden">
+                                                                    <div className={`h-1 ${res.percentage >= 50 ? "bg-emerald-500" : "bg-red-500"}`} />
+                                                                    <CardContent className="p-4">
+                                                                        <div className="flex items-start justify-between mb-2">
+                                                                            <h4 className="font-bold text-sm line-clamp-1 flex-1">{exam.title}</h4>
+                                                                            <div className={`text-sm font-black mr-2 ${res.percentage >= 50 ? "text-emerald-600" : "text-red-600"}`}>
+                                                                                {Math.round(res.percentage)}%
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                                                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(res.submitted_at).toLocaleDateString("ar-SA")}</span>
+                                                                            <Link to={`/exam/${exam.pin}`} className="text-primary hover:underline font-bold">التفاصيل</Link>
+                                                                        </div>
+                                                                    </CardContent>
+                                                                </Card>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </section>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <Card className="p-20 text-center border-none shadow-none bg-muted/5 rounded-[3rem]">
+                                            <div className="w-24 h-24 bg-muted/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                                <ClipboardList className="w-12 h-12 text-muted-foreground opacity-30" />
+                                            </div>
+                                            <h3 className="text-2xl font-black mb-3">لا يوجد اختبارات بعد</h3>
+                                            <p className="text-muted-foreground max-w-sm mx-auto font-medium">سيظهر هنا الاختبارات التي ينشئها معلموك لصفك الدراسي ({currentGrade?.name || "صفك الحالي"}).</p>
+                                        </Card>
+                                    )}
                                 </motion.div>
                             )}
 

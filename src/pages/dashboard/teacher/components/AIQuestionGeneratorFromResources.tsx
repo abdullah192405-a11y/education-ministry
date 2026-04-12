@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
-import { extractPdfText } from "@/lib/pdfExtractor";
+import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { supabase } from "@/lib/supabase";
 
 interface AIQuestionGeneratorFromResourcesProps {
@@ -279,12 +279,12 @@ const AIQuestionGeneratorFromResources = ({
             // Build request parts
             const parts: any[] = [];
 
-            // Extract text from PDFs locally (Gemini 2.5 Flash doesn't support File API)
+            // Extract text from PDFs locally (Gemini 1.5 Flash doesn't support File API)
             if (pdfParts.length > 0) {
-                setProgress("جاري استخراج النص من ملفات PDF...");
-
                 for (const pdf of pdfParts) {
                     try {
+                        setProgress(`جاري تحليل ملف PDF: ${pdf.fileName}...`);
+                        
                         // Convert base64 to ArrayBuffer
                         const binaryStr = atob(pdf.base64);
                         const bytes = new Uint8Array(binaryStr.length);
@@ -292,29 +292,44 @@ const AIQuestionGeneratorFromResources = ({
                             bytes[i] = binaryStr.charCodeAt(i);
                         }
 
-                        // Use the centralized extraction utility
-                        const extractedText = await extractPdfText(new Blob([bytes], { type: 'application/pdf' }));
+                        const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
 
-                        if (extractedText.trim()) {
-                            // Add extracted text as text content
+                        // Attempt 1: Text Extraction
+                        const extractedText = await extractPdfText(pdfBlob);
+                        
+                        // If we have meaningful text, add it
+                        if (extractedText.trim().length > 100) {
                             parts.push({
-                                text: `📄 محتوى ملف PDF "${pdf.fileName}":\n${extractedText}`
+                                text: `📄 محتوى نصي من ملف PDF "${pdf.fileName}":\n${extractedText}`
                             });
                             console.log(`Extracted ${extractedText.length} chars from: ${pdf.fileName}`);
-                        } else {
-                            console.warn(`No text extracted from: ${pdf.fileName}`);
-                            toast({
-                                title: "تحذير",
-                                description: `لم يتم استخراج نص من ملف ${pdf.fileName}. قد يكون الملف يحتوي على صور فقط.`,
-                                variant: "destructive",
+                        } 
+                        
+                        // Printed / scanned PDFs: render pages so the vision model can read them
+                        if (pdfNeedsVisualPageImages(extractedText)) {
+                            setProgress(`جاري تحويل صفحات PDF "${pdf.fileName}" لصور للتحليل البصري...`);
+                            const images = await extractPdfAsImages(pdfBlob, 15, 2);
+                            if (images.length === 0) {
+                                throw new Error(
+                                    `تعذّر تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
+                                );
+                            }
+                            images.forEach((img) => {
+                                parts.push({
+                                    inline_data: {
+                                        mime_type: "image/jpeg",
+                                        data: img
+                                    }
+                                });
                             });
+                            console.log(`Converted ${images.length} pages of ${pdf.fileName} to images`);
                         }
                     } catch (extractError) {
                         console.error("Error extracting PDF:", extractError);
                         toast({
-                            title: "خطأ في استخراج PDF",
-                            description: `فشل استخراج النص من ${pdf.fileName}`,
-                            variant: "destructive",
+                            title: "تنبيه في تحليل PDF",
+                            description: `فشل استخراج النص من ${pdf.fileName}، سيتم المحاولة بالتحليل البصري...`,
+                            variant: "default",
                         });
                     }
                 }
@@ -406,8 +421,9 @@ const AIQuestionGeneratorFromResources = ({
 
     const buildPrompt = (textContent: string, userPrompt: string, pdfCount: number = 0, imageCount: number = 0, genType: "questions" | "games" | "both" = "both"): string => {
         const fileNote = (pdfCount > 0 || imageCount > 0)
-            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF` : ''}${pdfCount > 0 && imageCount > 0 ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}. 
-يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الملفات (الصور و/أو الـ PDF). لا تستخدم أي معلومات خارجية أو معرفة عامة غير موجودة في المرفقات.`
+            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF متكامل` : ''}${pdfCount > 0 && imageCount > 0 ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}. 
+يجب عليك تحليل **كامل الصفحات** المرفقة (سواء كانت نصوصاً مستخرجة أو صوراً للصفحات). قم بإجراء OCR ذاتي للصور إذا لزم الأمر.
+يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الملفات. لا تتجاهل أي صفحة ولا تستخدم أي معلومات خارجية.`
             : '';
 
         const contentSection = textContent.trim()

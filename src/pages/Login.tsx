@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignIn, useAuth } from "@clerk/clerk-react";
+import md5 from "js-md5";
 
 // Map role from DB to dashboard path
 const getDashboardPath = (role: string) => {
@@ -32,6 +33,37 @@ const GoogleIcon = () => (
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
     </svg>
 );
+
+/** PostgREST often returns SETOF / RPC rows as a one-element array. */
+function unwrapRpcUserRow(data: unknown): Record<string, unknown> | null {
+    if (data == null) return null;
+    if (Array.isArray(data)) {
+        const first = data[0];
+        return first && typeof first === "object" ? (first as Record<string, unknown>) : null;
+    }
+    if (typeof data === "object") return data as Record<string, unknown>;
+    return null;
+}
+
+function isTruthyPgBool(v: unknown): boolean {
+    return v === true || v === 1 || v === "t" || v === "true" || v === "T";
+}
+
+function isFalsyPgBool(v: unknown): boolean {
+    return v === false || v === 0 || v === "f" || v === "false" || v === "F";
+}
+
+function rpcLoginSucceeded(row: Record<string, unknown> | null): row is Record<string, unknown> & {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+} {
+    if (!row || row.id == null || String(row.id).length === 0) return false;
+    if (!isTruthyPgBool(row.success)) return false;
+    if (isFalsyPgBool(row.is_active)) return false;
+    return typeof row.email === "string" && typeof row.name === "string" && typeof row.role === "string";
+}
 
 const Login = () => {
     const navigate = useNavigate();
@@ -75,6 +107,8 @@ const Login = () => {
         setError("");
         setIsLoading(true);
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         // Clear existing session and cache to prevent teacher dashboard crossovers
         try {
             await supabase.auth.signOut();
@@ -87,48 +121,64 @@ const Login = () => {
         try {
             // Attempt Supabase Auth login
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email,
+                email: normalizedEmail,
                 password,
             });
 
             if (authError) {
-                console.log("[Login] Auth failed, trying fallback via RPC...", authError.message);
+                console.log("[Login] Auth failed, trying DB fallbacks...", authError.message);
 
-                // Fallback: Use RPC function with SECURITY DEFINER
-                // This function validates both email and password
-                const { data: loginResult, error: dbError } = await supabase
-                    .rpc("login_user", { p_email: email, p_password: password })
-                    .maybeSingle() as { data: any; error: any };
+                const { data: rawRpc, error: rpcError } = await supabase.rpc("login_user", {
+                    p_email: normalizedEmail,
+                    p_password: password,
+                });
 
-                console.log("[Login] RPC login result:", { loginResult, dbError });
+                const rpcRow = unwrapRpcUserRow(rawRpc);
+                console.log("[Login] RPC login_user:", { rawRpc, rpcRow, rpcError });
 
-                if (dbError) {
-                    console.log("[Login] RPC error:", dbError);
-                    setError("البريد الإلكتروني أو كلمة المرور غير صحيحة");
-                    setIsLoading(false);
-                    return;
-                }
-
-                if (loginResult && loginResult.success && loginResult.is_active) {
-                    // User exists, password matches, and is active
-                    console.log("[Login] User found and authenticated, logging in...", loginResult.email);
-
+                if (!rpcError && rpcLoginSucceeded(rpcRow)) {
+                    console.log("[Login] Authenticated via login_user RPC", rpcRow.email);
                     localStorage.setItem("edu_user", JSON.stringify({
-                        id: loginResult.id,
-                        name: loginResult.name,
-                        email: loginResult.email,
-                        role: loginResult.role,
+                        id: rpcRow.id,
+                        name: rpcRow.name,
+                        email: rpcRow.email,
+                        role: rpcRow.role,
                     }));
-                    queryClient.setQueryData(["current_user"], loginResult);
-                    setLoginSuccess(loginResult.name);
-                    const dashboardPath = getDashboardPath(loginResult.role);
-                    setTimeout(() => navigate(dashboardPath), 1000);
+                    queryClient.setQueryData(["current_user"], rpcRow);
+                    setLoginSuccess(rpcRow.name);
+                    setTimeout(() => navigate(getDashboardPath(rpcRow.role)), 1000);
                     return;
                 }
 
-                console.log("[Login] Login failed:", loginResult?.message || "Unknown error");
+                // Fallback when RPC is missing, errors, or returns an unexpected shape:
+                // read users row and verify MD5(password) client-side (needs RLS to allow SELECT).
+                const { data: u, error: userSelErr } = await supabase
+                    .from("users")
+                    .select("id, email, name, role, verified, is_active, password_hash")
+                    .ilike("email", normalizedEmail)
+                    .maybeSingle();
+
+                console.log("[Login] Direct users lookup:", { u, userSelErr });
+
+                if (!userSelErr && u && u.is_active !== false && u.password_hash) {
+                    const got = String(md5(password)).toLowerCase();
+                    const want = String(u.password_hash).toLowerCase();
+                    if (got === want) {
+                        console.log("[Login] Authenticated via users.password_hash");
+                        localStorage.setItem("edu_user", JSON.stringify({
+                            id: u.id,
+                            name: u.name,
+                            email: u.email,
+                            role: u.role,
+                        }));
+                        queryClient.setQueryData(["current_user"], u);
+                        setLoginSuccess(u.name);
+                        setTimeout(() => navigate(getDashboardPath(u.role)), 1000);
+                        return;
+                    }
+                }
+
                 setError("البريد الإلكتروني أو كلمة المرور غير صحيحة");
-                setIsLoading(false);
                 return;
             }
 
@@ -149,7 +199,7 @@ const Login = () => {
                 const { data: userByEmail, error: emailError } = await supabase
                     .from("users")
                     .select("*")
-                    .eq("email", email)
+                    .eq("email", normalizedEmail)
                     .maybeSingle();
 
                 if (userByEmail) {
@@ -195,6 +245,7 @@ const Login = () => {
 
         } catch (err: any) {
             setError(err.message || "حدث خطأ أثناء تسجيل الدخول");
+        } finally {
             setIsLoading(false);
         }
     };

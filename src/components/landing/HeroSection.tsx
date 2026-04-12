@@ -54,7 +54,7 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
           >
-            بذكاء اصطناعي مبتكر.. نحول محتواك التعليمي إلى مغامرة تفاعلية وتحديات مشوقة.
+            بذكاء اصطناعي مبتكر.. حول محتواك إلى مغامرة تفاعلية وتحديات مشوقة.
           </motion.p>
 
           {/* CTA Buttons */}

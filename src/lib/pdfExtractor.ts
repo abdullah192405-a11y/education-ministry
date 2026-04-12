@@ -1,5 +1,102 @@
 // Utility for extracting content from PDFs stored in Supabase Storage
 import { supabase } from "@/lib/supabase";
+// Bundled worker avoids CDN version skew and works offline — critical for rendering scanned pages
+import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.js?url";
+
+/**
+ * Whether the PDF text layer looks like a scan / image-only PDF (no real text),
+ * or too short to rely on for question generation. Printed PDFs often yield empty
+ * or metadata-only strings; some files yield long garbage with few real letters.
+ */
+export function pdfNeedsVisualPageImages(extractedText: string): boolean {
+    const t = extractedText.trim();
+    if (t.length === 0) return true;
+    const letters = (t.match(/\p{L}/gu) ?? []).length;
+    const density = letters / t.length;
+    if (letters < 100) return true;
+    if (density < 0.12) return true;
+    if (t.length < 420) return true;
+    return false;
+}
+
+let pdfWorkerConfigured = false;
+
+async function getPdfJs() {
+    const pdfjsLib = await import("pdfjs-dist");
+    if (!pdfWorkerConfigured) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+        pdfWorkerConfigured = true;
+    }
+    return pdfjsLib;
+}
+
+/** Copy buffer so the worker thread does not detach the caller's underlying ArrayBuffer. */
+async function readPdfArrayBuffer(source: File | Blob | string): Promise<ArrayBuffer> {
+    if (source instanceof File || source instanceof Blob) {
+        return source.arrayBuffer();
+    }
+    if (typeof source === "string") {
+        const response = await fetch(source);
+        if (!response.ok) throw new Error("Failed to fetch PDF");
+        return response.arrayBuffer();
+    }
+    throw new Error("Invalid source for PDF");
+}
+
+/**
+ * Extract pages of a PDF as base64 images
+ * Useful for scanned PDFs or when text extraction isn't enough
+ */
+export const extractPdfAsImages = async (
+    source: File | Blob | string,
+    maxPages: number = 20,
+    scale: number = 2
+): Promise<string[]> => {
+    try {
+        console.log("Starting PDF image extraction...");
+        const pdfjsLib = await getPdfJs();
+
+        const raw = await readPdfArrayBuffer(source);
+        const data = new Uint8Array(raw);
+
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const totalPages = Math.min(pdf.numPages, maxPages);
+        const images: string[] = [];
+
+        console.log(`Rendering ${totalPages} pages to images...`);
+
+        for (let i = 1; i <= totalPages; i++) {
+            try {
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale });
+
+                const canvas = document.createElement("canvas");
+                const context = canvas.getContext("2d", { alpha: false });
+                if (!context) continue;
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({
+                    canvasContext: context,
+                    viewport,
+                }).promise;
+
+                // Convert to base64 jpeg to save space
+                const base64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
+                images.push(base64);
+                console.log(`Page ${i} rendered`);
+            } catch (pageError) {
+                console.warn(`Error rendering page ${i}:`, pageError);
+            }
+        }
+
+        return images;
+    } catch (error: any) {
+        console.error("Error extracting PDF images:", error);
+        throw new Error(error.message || "فشل تحويل PDF إلى صور");
+    }
+};
 
 /**
  * Extract text content from a PDF file
@@ -8,35 +105,13 @@ import { supabase } from "@/lib/supabase";
 export const extractPdfText = async (source: File | Blob | string): Promise<string> => {
     try {
         console.log("Starting PDF extraction...");
-        // Dynamic import of PDF.js
-        const pdfjsLib = await import('pdfjs-dist');
+        const pdfjsLib = await getPdfJs();
 
-        let arrayBuffer: ArrayBuffer;
+        const arrayBuffer = await readPdfArrayBuffer(source);
+        console.log("ArrayBuffer loaded, size:", arrayBuffer.byteLength);
+        const data = new Uint8Array(arrayBuffer);
 
-        if (source instanceof File || source instanceof Blob) {
-            // Handle File or Blob object
-            arrayBuffer = await source.arrayBuffer();
-            console.log("ArrayBuffer loaded from file/blob, size:", arrayBuffer.byteLength);
-        } else if (typeof source === 'string') {
-            // Handle URL (from Supabase Storage or elsewhere)
-            console.log("Fetching PDF from URL:", source);
-            const response = await fetch(source);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch PDF from URL: ${response.statusText}`);
-            }
-            arrayBuffer = await response.arrayBuffer();
-            console.log("ArrayBuffer loaded from URL, size:", arrayBuffer.byteLength);
-        } else {
-            throw new Error("Invalid source type for PDF extraction");
-        }
-
-        // Set up PDF.js worker with matching version
-        const pdfjsVersion = pdfjsLib.version || '3.11.174';
-        // Use https scripts for latest versions
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.js`;
-        console.log("Using PDF.js version:", pdfjsVersion, "Worker:", pdfjsLib.GlobalWorkerOptions.workerSrc);
-
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
         console.log("PDF loaded successfully, pages:", pdf.numPages);
 
         let fullText = "";
@@ -59,10 +134,7 @@ export const extractPdfText = async (source: File | Blob | string): Promise<stri
             }
         }
 
-        if (!fullText.trim()) {
-            throw new Error("لم يتم استخراج أي نص من ملف PDF. قد يكون الملف مُشفراً أو يحتوي على صور فقط.");
-        }
-
+        // IMPORTANT: We don't throw if empty anymore, because we might use visual analysis
         console.log("Total extracted text length:", fullText.length);
         return fullText;
     } catch (error: any) {
@@ -142,6 +214,32 @@ export const getTeacherPdfs = async (teacherId: string): Promise<Array<{
 };
 
 /**
+ * Fetch PDF from Supabase Storage and extract its pages as images
+ */
+export const extractPdfFromSupabaseAsImages = async (
+    teacherId: string,
+    fileName: string,
+    maxPages: number = 20,
+    scale: number = 2
+): Promise<string[]> => {
+    try {
+        console.log(`Extracting PDF as images from Supabase: ${teacherId}/content/${fileName}`);
+
+        const { data: blob, error } = await supabase.storage
+            .from("teacher-content")
+            .download(`${teacherId}/content/${fileName}`);
+
+        if (error) throw new Error(`فشل تحميل الملف: ${error.message}`);
+        if (!blob) throw new Error("الملف فارغ");
+
+        return await extractPdfAsImages(blob, maxPages, scale);
+    } catch (error: any) {
+        console.error("Error extracting PDF images from Supabase:", error);
+        throw new Error(error.message || "فشل تحويل PDF من التخزين إلى صور");
+    }
+};
+
+/**
  * Extract text from multiple PDFs
  */
 export const extractMultiplePdfs = async (
@@ -160,4 +258,5 @@ export const extractMultiplePdfs = async (
 
     return results;
 };
+
 
