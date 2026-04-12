@@ -19,7 +19,8 @@ import {
     getTeacherPdfs,
     pdfNeedsVisualPageImages,
 } from "@/lib/pdfExtractor";
-import { supabase } from "@/lib/supabase";
+import { generateGeminiContent } from "@/lib/geminiClient";
+import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 
 interface AIQuestionGeneratorFromDatabaseProps {
     teacherId: string;
@@ -195,35 +196,36 @@ ${generateType !== "questions" ? "- توليد ألعاب تعليمية تفا�
 `;
             parts.push({ text: finalPrompt });
 
-            const modelName = "gemini-2.5-flash"; 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ parts }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            maxOutputTokens: 8192
-                        }
-                    })
-                }
-            );
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error?.message || "فشل توليد الأسئلة");
-            }
-
-            const data = await response.json();
+            const data = (await generateGeminiContent(apiKey, {
+                contents: [{ parts }],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 8192,
+                    responseMimeType: "application/json",
+                },
+            }, {
+                onRetry: ({ attempt, delayMs, model, reason }) => {
+                    const sec = Math.max(1, Math.round(delayMs / 1000));
+                    setProgress(
+                        `ازدحام مؤقت على الخادم — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
+                    );
+                    console.warn("[Gemini retry]", { attempt, model, reason });
+                },
+            })) as {
+                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            };
             const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (!responseText) {
                 throw new Error("لم يتم الحصول على نتيجة من AI");
             }
 
-            const questions: ChallengeQuestion[] = parseGeneratedQuestions(responseText);
+            const items = parseAiGeneratedChallengeItems(responseText);
+            const questions: ChallengeQuestion[] = items.map((item: any, index: number) => ({
+                ...item,
+                id: item.id || `db-${Date.now()}-${index}`,
+                source: "pdf_extracted",
+            }));
 
             setProcessingPhase("idle");
             toast({
@@ -242,36 +244,6 @@ ${generateType !== "questions" ? "- توليد ألعاب تعليمية تفا�
             });
         } finally {
             setIsProcessing(false);
-        }
-    };
-
-    const parseGeneratedQuestions = (text: string): ChallengeQuestion[] => {
-        try {
-            let jsonText = text.trim();
-            if (jsonText.includes("```")) {
-                const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-                if (match) jsonText = match[1];
-            }
-            
-            // If it's still containing text outside array/object, try to find the structure
-            if (!jsonText.startsWith("[") && !jsonText.startsWith("{")) {
-                const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
-                const objectMatch = jsonText.match(/\{[\s\S]*\}/);
-                if (arrayMatch) jsonText = arrayMatch[0];
-                else if (objectMatch) jsonText = objectMatch[0];
-            }
-
-            const parsed = JSON.parse(jsonText);
-            const items = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.games || []);
-            
-            return items.map((item: any, index: number) => ({
-                ...item,
-                id: item.id || `db-${Date.now()}-${index}`,
-                source: "pdf_extracted"
-            }));
-        } catch (error) {
-            console.error("Error parsing questions:", error);
-            throw new Error("فشل في تحليل الأسئلة المولدة من AI");
         }
     };
 

@@ -15,7 +15,8 @@ import {
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
-import { supabase } from "@/lib/supabase";
+import { generateGeminiContent } from "@/lib/geminiClient";
+import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 
 interface AIQuestionGeneratorFromResourcesProps {
     media: ContentMedia[];
@@ -353,44 +354,40 @@ const AIQuestionGeneratorFromResources = ({
             const promptText = buildPrompt(fullContent, prompt, pdfParts.length, imageParts.length, generateType);
             parts.push({ text: promptText });
 
-            // Using gemini-2.5-flash as specifically requested by user
-            const modelToUse = "gemini-2.5-flash";
-            console.log(`Using model: ${modelToUse} (PDFs: ${pdfParts.length}, Images: ${imageParts.length})`);
+            console.log(`Gemini generateContent (PDFs: ${pdfParts.length}, Images: ${imageParts.length})`);
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        contents: [{ parts }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 8192,
-                        }
-                    }),
-                }
-            );
+            const data = (await generateGeminiContent(apiKey, {
+                contents: [{ parts }],
+                generationConfig: {
+                    temperature: 0.7,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 8192,
+                    responseMimeType: "application/json",
+                },
+            }, {
+                onRetry: ({ attempt, delayMs, model, reason }) => {
+                    const sec = Math.max(1, Math.round(delayMs / 1000));
+                    setProgress(
+                        `ازدحام مؤقت على الخادم — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
+                    );
+                    console.warn("[Gemini retry]", { attempt, model, reason });
+                },
+            })) as {
+                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            };
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error("API Error Response:", errorData);
-                const errorMessage = errorData?.error?.message || response.statusText || "خطأ غير معروف";
-                throw new Error(`خطأ في API: ${errorMessage}`);
-            }
-
-            const data = await response.json();
-            const generatedText = data.candidates[0]?.content?.parts[0]?.text;
+            const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (!generatedText) {
                 throw new Error("لم يتم توليد أي محتوى");
             }
 
-            const questions = parseGeneratedQuestions(generatedText);
+            const items = parseAiGeneratedChallengeItems(generatedText);
+            const questions = items.map((item: any, index: number) => ({
+                ...item,
+                id: item.id || Date.now() + index,
+            })) as ChallengeQuestion[];
 
             if (questions.length === 0) {
                 throw new Error("لم يتم توليد أي أسئلة صالحة");
@@ -415,6 +412,7 @@ const AIQuestionGeneratorFromResources = ({
             });
             setProgress("");
             setProcessingPhase("idle");
+        } finally {
             setIsProcessing(false);
         }
     };
@@ -545,26 +543,6 @@ ${availableTypes}
 - اجعل النقاط مناسبة للصعوبة (50-200 نقطة)
 - الوقت المحدد يتراوح بين 15-60 ثانية
 - تأكد من صحة JSON وعدم وجود أخطاء في التنسيق`;
-    };
-
-    const parseGeneratedQuestions = (text: string): ChallengeQuestion[] => {
-        try {
-            let jsonText = text.trim();
-            if (jsonText.startsWith("```json")) {
-                jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?$/g, "");
-            } else if (jsonText.startsWith("```")) {
-                jsonText = jsonText.replace(/```\n?/g, "");
-            }
-
-            const parsed = JSON.parse(jsonText);
-            return parsed.map((item: any, index: number) => ({
-                ...item,
-                id: item.id || Date.now() + index
-            }));
-        } catch (error) {
-            console.error("Error parsing questions:", error);
-            throw new Error("فشل في تحليل الأسئلة المولدة");
-        }
     };
 
     const selectedResourcesCount = selectedMedia.length;
