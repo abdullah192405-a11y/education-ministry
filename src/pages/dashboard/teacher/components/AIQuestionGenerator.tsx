@@ -100,7 +100,12 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 } else if (file.type === "application/pdf") {
                     setProgress("جاري تحليل ملف PDF...");
                     // Try text extraction first
-                    extractedText = await extractPdfText(file);
+                    try {
+                        extractedText = await extractPdfText(file);
+                    } catch (textExtractionError) {
+                        console.warn("Text extraction failed, will attempt visual analysis:", textExtractionError);
+                        extractedText = ""; // Empty text will trigger visual analysis below
+                    }
 
                     // Printed / scanned PDFs have no text layer — send page images for vision (Gemini reads them)
                     if (pdfNeedsVisualPageImages(extractedText)) {
@@ -108,7 +113,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                         const pdfImages = await extractPdfAsImages(file, 10, 2);
                         if (pdfImages.length === 0) {
                             throw new Error(
-                                "تعذّر تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً أو جرّب ملف PDF آخر."
+                                "تعذّر استخراج النص أو تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً."
                             );
                         }
                         (window as any)._pendingPdfImages = pdfImages;

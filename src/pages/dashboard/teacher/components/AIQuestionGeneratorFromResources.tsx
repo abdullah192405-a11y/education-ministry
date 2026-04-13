@@ -296,7 +296,12 @@ const AIQuestionGeneratorFromResources = ({
                         const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
 
                         // Attempt 1: Text Extraction
-                        const extractedText = await extractPdfText(pdfBlob);
+                        let extractedText = "";
+                        try {
+                            extractedText = await extractPdfText(pdfBlob);
+                        } catch (textErr) {
+                            console.warn(`Text extraction failed for ${pdf.fileName}, falling back to visual analysis:`, textErr);
+                        }
                         
                         // If we have meaningful text, add it
                         if (extractedText.trim().length > 100) {
@@ -312,7 +317,7 @@ const AIQuestionGeneratorFromResources = ({
                             const images = await extractPdfAsImages(pdfBlob, 15, 2);
                             if (images.length === 0) {
                                 throw new Error(
-                                    `تعذّر تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
+                                    `تعذّر استخراج النص أو تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
                                 );
                             }
                             images.forEach((img) => {

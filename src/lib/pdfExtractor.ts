@@ -24,8 +24,18 @@ let pdfWorkerConfigured = false;
 async function getPdfJs() {
     const pdfjsLib = await import("pdfjs-dist");
     if (!pdfWorkerConfigured) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
-        pdfWorkerConfigured = true;
+        try {
+            // Try local worker first
+            pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+            pdfWorkerConfigured = true;
+            console.log("PDF.js worker configured with local source");
+        } catch (e) {
+            console.warn("Failed to set local PDF worker, falling back to CDN", e);
+            // Fallback to CDN matching the library version
+            const version = pdfjsLib.version || "3.11.174";
+            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.js`;
+            pdfWorkerConfigured = true;
+        }
     }
     return pdfjsLib;
 }
