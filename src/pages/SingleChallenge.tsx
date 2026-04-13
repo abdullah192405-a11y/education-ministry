@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
     ChevronLeft, Trophy, Zap, Clock, Star, Target,
     CheckCircle2, XCircle, RotateCcw, Home, Share2,
@@ -1129,20 +1130,18 @@ const SingleChallenge = () => {
     const renderQA = () => {
         return (
             <div className="space-y-4 max-w-lg mx-auto">
-                <Input
-                    type="text"
+                <Textarea
                     placeholder="اكتب إجابتك هنا..."
                     value={userAnswer}
                     onChange={(e) => setUserAnswer(e.target.value)}
                     disabled={showResult}
-                    className="text-center text-lg h-14"
-                    onKeyDown={(e) => e.key === "Enter" && handleQASubmit()}
+                    className="text-lg p-6 min-h-[140px] text-right resize-none border-2 focus:border-primary transition-all rounded-2xl"
                 />
                 {!showResult && (
                     <Button
                         onClick={handleQASubmit}
                         size="lg"
-                        className="w-full"
+                        className="w-full h-14 text-lg shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-[0.98] transition-all"
                         disabled={!userAnswer.trim()}
                     >
                         إرسال الإجابة
@@ -1150,12 +1149,21 @@ const SingleChallenge = () => {
                 )}
 
                 {showResult && (
-                    <div className="mt-4 p-4 bg-muted/50 rounded-lg text-center">
-                        <div className="text-sm text-muted-foreground mb-1">إجابتك:</div>
-                        <div className="text-lg font-bold mb-3">{userAnswer}</div>
-                        <div className="text-sm text-muted-foreground mb-1">الإجابة النموذجية:</div>
-                        <div className="text-lg font-bold text-green-600">{currentQuestion.correctAnswer as string}</div>
-                    </div>
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 space-y-4"
+                    >
+                        <div className="p-5 rounded-2xl bg-muted/30 border border-border">
+                            <div className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">إجابتك:</div>
+                            <div className="text-lg font-black">{userAnswer}</div>
+                        </div>
+                        
+                        <div className="p-6 rounded-2xl bg-emerald-50 border-2 border-emerald-200 shadow-sm">
+                            <div className="text-xs font-bold text-emerald-600 mb-2 uppercase tracking-wider">الإجابة النموذجية:</div>
+                            <div className="text-xl font-black text-emerald-700">{currentQuestion.correctAnswer as string}</div>
+                        </div>
+                    </motion.div>
                 )}
             </div>
         );

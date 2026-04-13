@@ -28,6 +28,8 @@ import {
     useChallengeSession,
     useSaveAnswers
 } from "@/hooks/useDatabase";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     getRandomAvatar,
@@ -130,6 +132,7 @@ const GroupChallenge = () => {
     const [wheelPoints, setWheelPoints] = useState(0);
     const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
     const [revealStep, setRevealStep] = useState(0);
+    const [userAnswer, setUserAnswer] = useState("");
 
     // Results & Analysis State
     const [userHistory, setUserHistory] = useState<{
@@ -215,6 +218,8 @@ const GroupChallenge = () => {
             setMatchedPairs([]);
             setSelectedLeft(null);
         }
+
+        setUserAnswer("");
     }, [questions]);
 
     const handleStartGame = useCallback(async () => {
@@ -1326,6 +1331,50 @@ const GroupChallenge = () => {
         );
     };
 
+    // Render Q&A (Open Answer)
+    const renderQA = () => {
+        const isAnswered = selectedAnswer !== null;
+
+        return (
+            <div className="space-y-4 max-w-lg mx-auto">
+                <Textarea
+                    placeholder="اكتب إجابتك هنا..."
+                    value={userAnswer}
+                    onChange={(e) => setUserAnswer(e.target.value)}
+                    disabled={showQuestionResult || isAnswered || isHost}
+                    className="text-lg p-4 min-h-[120px] text-right resize-none border-2 focus:border-primary"
+                />
+                {!showQuestionResult && !isAnswered && !isHost && (
+                    <Button
+                        onClick={() => {
+                            if (!userAnswer.trim()) return;
+                            const isCorrect = userAnswer.trim().toLowerCase() === String(currentQuestion.correctAnswer || "").trim().toLowerCase();
+                            setSelectedAnswer(userAnswer);
+                            processAnswer(isCorrect, undefined, userAnswer);
+                        }}
+                        className="w-full h-14 text-lg shadow-lg"
+                        disabled={!userAnswer.trim()}
+                    >
+                        إرسال الإجابة
+                    </Button>
+                )}
+                
+                {showQuestionResult && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="p-6 rounded-2xl bg-primary/5 border-2 border-primary/20"
+                    >
+                        <p className="text-sm font-bold text-primary mb-2">الإجابة المتوقعة:</p>
+                        <p className="text-lg font-black text-slate-800 dark:text-white">
+                            {currentQuestion.correctAnswer as string}
+                        </p>
+                    </motion.div>
+                )}
+            </div>
+        );
+    };
+
     // Lobby Phase
     const renderLobby = () => {
         // If not a host/creator, show the student's "You're in!" waiting screen
@@ -1812,8 +1861,8 @@ const GroupChallenge = () => {
                         {currentQuestion.question}
                     </h3>
 
-                    {/* Multiple Choice / True-False / Puzzle / Shooting / QA */}
-                    {["multiple_choice", "true_false", "puzzle", "shooting", "qa"].includes(currentQuestion.type) && currentQuestion.options && (
+                    {/* Multiple Choice / True-False / Puzzle / Shooting */}
+                    {["multiple_choice", "true_false", "puzzle", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {currentQuestion.options.map((option, index) => {
                                 const isSelected = selectedAnswer === index;
@@ -1878,6 +1927,7 @@ const GroupChallenge = () => {
                     {currentQuestion.type === "order_questions" && renderOrderQuestions()}
                     {currentQuestion.type === "matching" && renderMatching()}
                     {currentQuestion.type === "wheel_spin" && renderWheel()}
+                    {currentQuestion.type === "qa" && renderQA()}
 
                     {/* Result Feedback */}
                     <AnimatePresence>

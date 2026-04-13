@@ -280,7 +280,7 @@ const AIQuestionGeneratorFromResources = ({
             // Build request parts
             const parts: any[] = [];
 
-            // Extract text from PDFs locally (Gemini 1.5 Flash doesn't support File API)
+            // Extract text from PDFs locally (latest Gemini models support visual analysis of page images if text extraction is insufficient)
             if (pdfParts.length > 0) {
                 for (const pdf of pdfParts) {
                     try {

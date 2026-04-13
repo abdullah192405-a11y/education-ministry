@@ -16,7 +16,7 @@ export type GeminiRetryInfo = {
     reason: string;
 };
 
-const DEFAULT_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+const DEFAULT_MODEL_CHAIN = ["gemini-2.5-flash"];
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
