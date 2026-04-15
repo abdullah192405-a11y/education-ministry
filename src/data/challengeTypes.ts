@@ -155,7 +155,7 @@ export const categoryLabels: Record<ChallengeCategory, { name: string; descripti
         icon: "💡"
     },
     games: {
-        name: "الألعاب التعليمية",
+        name: "الأنشطة التلعيبية",
         description: "تعلّم من خلال اللعب",
         icon: "🎮"
     },

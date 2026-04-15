@@ -57,14 +57,14 @@ const GradesSection = () => {
                 >
                     <div>
                         <h2 className="text-3xl md:text-5xl font-black mb-4">
-                            الصفوف <span className="text-primary">الدراسية</span>
+                            القنوات <span className="text-primary">الإثرائية</span>
                         </h2>
                         <p className="text-muted-foreground text-lg max-w-xl">
-                            اختر صفك الدراسي واستكشف المواد التعليمية المتنوعة
+                            اختر محتواك الإثرائي واستكشف المواد التعليمية المتنوعة
                         </p>
                     </div>
                     <Button variant="outline" asChild>
-                        <Link to="/grades">عرض جميع الصفوف</Link>
+                        <Link to="/grades">عرض القنوات الإثرائية</Link>
                     </Button>
                 </motion.div>
 

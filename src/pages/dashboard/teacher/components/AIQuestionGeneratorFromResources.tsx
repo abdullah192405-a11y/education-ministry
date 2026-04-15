@@ -285,7 +285,7 @@ const AIQuestionGeneratorFromResources = ({
                 for (const pdf of pdfParts) {
                     try {
                         setProgress(`جاري تحليل ملف PDF: ${pdf.fileName}...`);
-                        
+
                         // Convert base64 to ArrayBuffer
                         const binaryStr = atob(pdf.base64);
                         const bytes = new Uint8Array(binaryStr.length);
@@ -296,28 +296,23 @@ const AIQuestionGeneratorFromResources = ({
                         const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
 
                         // Attempt 1: Text Extraction
-                        let extractedText = "";
-                        try {
-                            extractedText = await extractPdfText(pdfBlob);
-                        } catch (textErr) {
-                            console.warn(`Text extraction failed for ${pdf.fileName}, falling back to visual analysis:`, textErr);
-                        }
-                        
+                        const extractedText = await extractPdfText(pdfBlob);
+
                         // If we have meaningful text, add it
                         if (extractedText.trim().length > 100) {
                             parts.push({
                                 text: `📄 محتوى نصي من ملف PDF "${pdf.fileName}":\n${extractedText}`
                             });
                             console.log(`Extracted ${extractedText.length} chars from: ${pdf.fileName}`);
-                        } 
-                        
+                        }
+
                         // Printed / scanned PDFs: render pages so the vision model can read them
                         if (pdfNeedsVisualPageImages(extractedText)) {
                             setProgress(`جاري تحويل صفحات PDF "${pdf.fileName}" لصور للتحليل البصري...`);
                             const images = await extractPdfAsImages(pdfBlob, 15, 2);
                             if (images.length === 0) {
                                 throw new Error(
-                                    `تعذّر استخراج النص أو تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
+                                    `تعذّر تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
                                 );
                             }
                             images.forEach((img) => {

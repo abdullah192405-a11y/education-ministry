@@ -118,39 +118,29 @@ const AIQuestionGeneratorFromDatabase = ({
             // Extract content from all selected PDFs
             const pdfContents: string[] = [];
             const pdfImages: string[] = [];
-            
+
             for (const pdfName of selectedPdfs) {
                 try {
                     setProgress(`جاري جلب وتحليل ملف: ${pdfName}...`);
-                    let content = "";
-                    try {
-                        content = await extractPdfFromSupabase(teacherId, pdfName);
-                    } catch (textExtractionError) {
-                        console.warn(`Text extraction failed for ${pdfName}, falling back to visual analysis:`, textExtractionError);
-                        content = ""; 
-                    }
-                    
+                    const content = await extractPdfFromSupabase(teacherId, pdfName);
+
                     if (content.trim().length > 100) {
                         pdfContents.push(content);
                         setExtractedContentPreview(prev => new Map(prev).set(pdfName, content.substring(0, 500)));
                     }
-                    
+
                     if (pdfNeedsVisualPageImages(content)) {
                         setProgress(`جاري تحويل ${pdfName} لصور للتحليل البصري...`);
-                        try {
-                            const images = await extractPdfFromSupabaseAsImages(teacherId, pdfName, 10, 2);
-                            pdfImages.push(...images);
-                        } catch (visualError) {
-                            console.error(`Visual analysis failed for ${pdfName}:`, visualError);
-                        }
+                        const images = await extractPdfFromSupabaseAsImages(teacherId, pdfName, 10, 2);
+                        pdfImages.push(...images);
                     }
                 } catch (error) {
-                    console.error(`Error processing ${pdfName}:`, error);
+                    console.error(`Error extracting ${pdfName}:`, error);
                 }
             }
 
             if (pdfContents.length === 0 && pdfImages.length === 0) {
-                throw new Error("تعذّر استخراج النص أو الصور من ملفات PDF المختارة. تأكد من أن الملفات صالحة.");
+                throw new Error("فشل استخراج محتوى أي ملف PDF");
             }
 
             const combinedText = pdfContents.join("\n\n---\n\n");
@@ -167,7 +157,7 @@ const AIQuestionGeneratorFromDatabase = ({
             }
 
             const parts: any[] = [];
-            
+
             // Add images if any
             pdfImages.forEach(img => {
                 parts.push({

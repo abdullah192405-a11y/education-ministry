@@ -100,12 +100,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 } else if (file.type === "application/pdf") {
                     setProgress("جاري تحليل ملف PDF...");
                     // Try text extraction first
-                    try {
-                        extractedText = await extractPdfText(file);
-                    } catch (textExtractionError) {
-                        console.warn("Text extraction failed, will attempt visual analysis:", textExtractionError);
-                        extractedText = ""; // Empty text will trigger visual analysis below
-                    }
+                    extractedText = await extractPdfText(file);
 
                     // Printed / scanned PDFs have no text layer — send page images for vision (Gemini reads them)
                     if (pdfNeedsVisualPageImages(extractedText)) {
@@ -113,7 +108,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                         const pdfImages = await extractPdfAsImages(file, 10, 2);
                         if (pdfImages.length === 0) {
                             throw new Error(
-                                "تعذّر استخراج النص أو تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً."
+                                "تعذّر تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً أو جرّب ملف PDF آخر."
                             );
                         }
                         (window as any)._pendingPdfImages = pdfImages;
@@ -194,9 +189,9 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
 
             const sourceContextForPrompt =
                 inputType === "file" &&
-                file?.type === "application/pdf" &&
-                hadPdfPageImages &&
-                !extractedText.trim()
+                    file?.type === "application/pdf" &&
+                    hadPdfPageImages &&
+                    !extractedText.trim()
                     ? "لا يوجد نص مستخرج من هذا PDF (ملف مطبوع أو ممسوح ضوئياً). صور الصفحات في نفس الطلب تحتوي المحتوى — اقرأها وحللها بدقة."
                     : extractedText;
 
