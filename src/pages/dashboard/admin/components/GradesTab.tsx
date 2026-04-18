@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
     BookOpen, GraduationCap, Plus,
-    Search, Filter, MoreVertical, Edit, Trash, Upload
+    Search, Filter, MoreVertical, Edit, Trash, Upload,
+    School, Sparkles, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +53,9 @@ const getClassTypeLabel = (classType: unknown) => {
     return CLASS_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
 };
 
+const isGradeHidden = (grade: { is_hidden?: boolean | null; isHidden?: boolean | null }) =>
+    Boolean(grade.is_hidden ?? grade.isHidden);
+
 const GradesTab = () => {
     const { toast } = useToast();
     const { data: user } = useUser();
@@ -80,6 +84,18 @@ const GradesTab = () => {
         grade.name.includes(searchTerm) ||
         getLevelLabel(grade.level).includes(searchTerm)
     );
+
+    const teachingGrades = filteredGrades.filter((grade: any) => {
+        if (isGradeHidden(grade)) return false;
+        return normalizeGradeClassType(grade.class_type ?? grade.classType) === "تعليمي";
+    });
+
+    const enrichmentGrades = filteredGrades.filter((grade: any) => {
+        if (isGradeHidden(grade)) return false;
+        return normalizeGradeClassType(grade.class_type ?? grade.classType) === "اثرائي";
+    });
+
+    const hiddenGrades = filteredGrades.filter((grade: any) => isGradeHidden(grade));
 
     const handleOpenDialog = (grade?: any) => {
         if (grade) {
@@ -187,6 +203,93 @@ const GradesTab = () => {
         }
     };
 
+    const renderGradeCard = (grade: any, borderClassName: string) => (
+        <Card
+            key={grade.id}
+            className={`group hover:shadow-lg transition-all duration-300 overflow-hidden border-t-4 ${borderClassName}`}
+        >
+            <div className="h-32 overflow-hidden relative">
+                <img
+                    src={grade.cover_image || grade.coverImage}
+                    alt={grade.name}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+                <div className="absolute bottom-4 right-4 flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-background shadow-sm flex items-center justify-center">
+                        <GraduationCap className="w-8 h-8 text-primary" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg leading-none mb-1">{grade.name}</h3>
+                        <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="secondary" className="text-xs">
+                                {getLevelLabel(grade.level)}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs border-primary/30">
+                                {getClassTypeLabel(grade.class_type ?? grade.classType)}
+                            </Badge>
+                            {isGradeHidden(grade) ? (
+                                <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                    مخفي
+                                </Badge>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <CardContent className="p-4 pt-6">
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-center">
+                        <BookOpen className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                        <p className="text-lg font-bold">{grade.subjects?.length || 0}</p>
+                        <p className="text-xs text-muted-foreground">مواد دراسية</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-center">
+                        <GraduationCap className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                        <p className="text-lg font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">طالب مسجل</p>
+                    </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-4 h-10">
+                    {grade.description}
+                </p>
+
+                <div className="flex items-center gap-2">
+                    <Button className="flex-1" variant="outline" asChild>
+                        <Link to={`/grade/${grade.slug}`}>
+                            عرض التفاصيل
+                        </Link>
+                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                                <MoreVertical className="w-4 h-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                                onClick={() => handleOpenDialog(grade)}
+                                className="gap-2"
+                            >
+                                <Edit className="w-4 h-4" />
+                                تعديل
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={() => handleDelete(grade.id)}
+                                className="gap-2 text-destructive"
+                            >
+                                <Trash className="w-4 h-4" />
+                                حذف
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </CardContent>
+        </Card>
+    );
+
     return (
         <div className="space-y-6">
             {/* Header Actions */}
@@ -215,98 +318,96 @@ const GradesTab = () => {
                 </div>
             </div>
 
-            {/* Grades Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {isLoading ? (
-                    Array.from({ length: 6 }).map((_, i) => (
+            {/* Grades by section */}
+            {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.from({ length: 6 }).map((_, i) => (
                         <Skeleton key={i} className="h-[280px] w-full rounded-xl" />
-                    ))
-                ) : filteredGrades.length === 0 ? (
-                    <div className="col-span-full text-center py-12">
-                        <GraduationCap className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                        <p className="text-muted-foreground text-lg">لم يتم العثور على صفوف دراسية</p>
-                    </div>
-                ) : (
-                    filteredGrades.map((grade: any) => (
-                        <Card key={grade.id} className="group hover:shadow-lg transition-all duration-300 overflow-hidden border-t-4 border-t-blue-500">
-                            <div className="h-32 overflow-hidden relative">
-                                <img
-                                    src={grade.cover_image || grade.coverImage}
-                                    alt={grade.name}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
-                                <div className="absolute bottom-4 right-4 flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-xl bg-background shadow-sm flex items-center justify-center">
-                                        <GraduationCap className="w-8 h-8 text-primary" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg leading-none mb-1">{grade.name}</h3>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            <Badge variant="secondary" className="text-xs">
-                                                {getLevelLabel(grade.level)}
-                                            </Badge>
-                                            <Badge variant="outline" className="text-xs border-primary/30">
-                                                {getClassTypeLabel(grade.class_type ?? grade.classType)}
-                                            </Badge>
-                                        </div>
-                                    </div>
+                    ))}
+                </div>
+            ) : filteredGrades.length === 0 ? (
+                <div className="text-center py-12 rounded-xl border border-dashed bg-muted/20">
+                    <GraduationCap className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+                    <p className="text-muted-foreground text-lg">لم يتم العثور على صفوف دراسية</p>
+                </div>
+            ) : (
+                <div className="space-y-12">
+                    <section className="space-y-4">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                    <School className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold tracking-tight">الصفوف التعليمية</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        الصفوف المعروضة للجمهور من نوع «تعليمي» ({teachingGrades.length})
+                                    </p>
                                 </div>
                             </div>
+                        </div>
+                        {teachingGrades.length === 0 ? (
+                            <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
+                                لا توجد صفوف تعليمية ضمن نتائج البحث.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {teachingGrades.map((g: any) => renderGradeCard(g, "border-t-blue-500"))}
+                            </div>
+                        )}
+                    </section>
 
-                            <CardContent className="p-4 pt-6">
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-center">
-                                        <BookOpen className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-                                        <p className="text-lg font-bold">{grade.subjects?.length || 0}</p>
-                                        <p className="text-xs text-muted-foreground">مواد دراسية</p>
-                                    </div>
-                                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-center">
-                                        <GraduationCap className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
-                                        <p className="text-lg font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString()}</p>
-                                        <p className="text-xs text-muted-foreground">طالب مسجل</p>
-                                    </div>
+                    <section className="space-y-4">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                    <Sparkles className="h-5 w-5" />
                                 </div>
-
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-4 h-10">
-                                    {grade.description}
-                                </p>
-
-                                <div className="flex items-center gap-2">
-                                    <Button className="flex-1" variant="outline" asChild>
-                                        <Link to={`/grade/${grade.slug}`}>
-                                            عرض التفاصيل
-                                        </Link>
-                                    </Button>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon">
-                                                <MoreVertical className="w-4 h-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem
-                                                onClick={() => handleOpenDialog(grade)}
-                                                className="gap-2"
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                                تعديل
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                                onClick={() => handleDelete(grade.id)}
-                                                className="gap-2 text-destructive"
-                                            >
-                                                <Trash className="w-4 h-4" />
-                                                حذف
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                <div>
+                                    <h2 className="text-lg font-semibold tracking-tight">القنوات الاثرائية</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        الصفوف المعروضة للجمهور من نوع «إثرائي» ({enrichmentGrades.length})
+                                    </p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    ))
-                )}
-            </div>
+                            </div>
+                        </div>
+                        {enrichmentGrades.length === 0 ? (
+                            <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
+                                لا توجد قنوات اثرائية ضمن نتائج البحث.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {enrichmentGrades.map((g: any) => renderGradeCard(g, "border-t-violet-500"))}
+                            </div>
+                        )}
+                    </section>
+
+                    <section className="space-y-4">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                    <EyeOff className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold tracking-tight">المحتوى المخفي عن الجمهور</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        الصفوف التي لن تظهر في القوائم العامة ({hiddenGrades.length})
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {hiddenGrades.length === 0 ? (
+                            <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
+                                لا يوجد محتوى مخفي ضمن نتائج البحث.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {hiddenGrades.map((g: any) => renderGradeCard(g, "border-t-amber-500"))}
+                            </div>
+                        )}
+                    </section>
+                </div>
+            )}
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
