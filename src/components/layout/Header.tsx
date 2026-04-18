@@ -3,12 +3,20 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import AnnouncementBar from "./AnnouncementBar";
-import { useUser } from "@/hooks/useDatabase";
+import { useUser, useVisitorGradeClassMode } from "@/hooks/useDatabase";
 import { LayoutDashboard, LogIn, User, Menu, X, Trophy } from "lucide-react";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useUser();
+  const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+
+  const gradesNavLabel =
+    visitorGradeMode === "teaching_only"
+      ? "الصفوف التعليمية"
+      : visitorGradeMode === "enrichment_only"
+        ? "القنوات الإثرائية"
+        : "الصفوف الدراسية";
 
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
@@ -22,7 +30,7 @@ const Header = () => {
 
   const navItems = [
     { label: "الرئيسية", href: "/" },
-    { label: "الصفوف الدراسية", href: "/grades" },
+    { label: gradesNavLabel, href: "/grades" },
   ];
 
   if (user) {

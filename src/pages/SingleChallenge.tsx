@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
     useTopic,
+    useContentVisibilityFocus,
     useUser,
     useStudentProfile,
     useCreateChallengeSession,
@@ -26,7 +27,9 @@ import {
     useStudentSubjectProgress,
     useStudentTopicActivities,
     useAwardBadges,
-    useSaveAnswers
+    useSaveAnswers,
+    useChallengeSession,
+    useUpdatePlayerSession
 } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -40,16 +43,32 @@ import {
 import { useSound } from "@/hooks/useSound";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
+import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 
 type GameState = "intro" | "playing" | "results";
 
 const SingleChallenge = () => {
-    const { category, gradeId, subjectId, topicId } = useParams();
+    const { category, gradeId, subjectId, topicId, pin } = useParams();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const joinDisplayName = searchParams.get("name");
+    const scheduledFromJoinUrl = searchParams.get("scheduled") === "1";
+    const playerSessionIdFromJoin = searchParams.get("ps")?.trim() || "";
 
     const { toast } = useToast();
     const { data: topic, isLoading } = useTopic(topicId || "");
     const content = topic;
+    const { focus } = useContentVisibilityFocus();
+
+    const pinLooksLikeSession = typeof pin === "string" && /^\d{6}$/.test(pin);
+    const { data: sessionForVisibility, isLoading: sessionForVisibilityLoading } = useChallengeSession(
+        pinLooksLikeSession ? (pin || "") : ""
+    );
+
+    const isScheduledLikeSession =
+        scheduledFromJoinUrl ||
+        (pinLooksLikeSession && sessionHasScheduledFields(sessionForVisibility));
 
     // Current user & student profile for saving results
     const { data: currentUser } = useUser();
@@ -64,6 +83,7 @@ const SingleChallenge = () => {
     const { data: subjectProgress } = useStudentSubjectProgress(studentProfile?.id || "");
     const awardBadgesMutation = useAwardBadges();
     const saveAnswersMutation = useSaveAnswers();
+    const updatePlayerSessionMutation = useUpdatePlayerSession();
     const [resultsSaved, setResultsSaved] = useState(false);
 
     const [gameState, setGameState] = useState<GameState>("intro");
@@ -514,21 +534,67 @@ const SingleChallenge = () => {
     // --- Save results to database when game ends ---
     useEffect(() => {
         if (gameState !== "results" || resultsSaved) return;
-        if (!currentUser?.id || !studentProfile?.id || !topicId || !content) return;
+        if (!topicId || !content) return;
+        /** لا نقرّ «من دون حفظ» قبل تحميل الجلسة عند وجود PIN — لنعرف إن كان المجدول ونستخدم ps */
+        if (pinLooksLikeSession && sessionForVisibilityLoading) {
+            return;
+        }
 
         const saveResults = async () => {
+            const results = getResults();
+
+            if (results.totalQuestions === 0) {
+                console.warn("No questions to save results for.");
+                setResultsSaved(true);
+                stop("background");
+                play("achievement");
+                return;
+            }
+
+            const hasFullProfile = !!currentUser?.id && !!studentProfile?.id;
+
+            /** طلاب مجدولون دون حساب: نحفظ على player_sessions حتى تظهر النتيجة في لوحة المعلم */
+            if (isScheduledLikeSession && playerSessionIdFromJoin && !hasFullProfile) {
+                setResultsSaved(true);
+                try {
+                    await updatePlayerSessionMutation.mutateAsync({
+                        id: playerSessionIdFromJoin,
+                        updates: {
+                            score: results.score,
+                            correct_answers: results.correctAnswers,
+                            wrong_answers: results.wrongAnswers,
+                            streak: results.longestStreak,
+                        },
+                    });
+                    stop("background");
+                    play("achievement");
+                    toast({
+                        title: "تم تسجيل النتيجة",
+                        description: "ستظهر للمعلّم في قسم النتائج المسجّلة.",
+                    });
+                } catch (error) {
+                    console.error("[Save] Scheduled player_session update failed:", error);
+                    stop("background");
+                    play("achievement");
+                    toast({
+                        variant: "destructive",
+                        title: "تنبيه",
+                        description: "تعذّر حفظ النتيجة للمعلّم. حاول مرة أخرى.",
+                    });
+                }
+                return;
+            }
+
+            if (!hasFullProfile) {
+                setResultsSaved(true);
+                stop("background");
+                play("achievement");
+                return;
+            }
+
             try {
                 setResultsSaved(true);
-                const results = getResults();
                 const subjectData = content.subject;
-
-                // Skip DB save if there are no questions
-                if (results.totalQuestions === 0) {
-                    console.warn("No questions to save results for.");
-                    stop('background');
-                    play('achievement');
-                    return;
-                }
                 // 0. Pre-check: Was this topic already completed?
                 // This must happen BEFORE we save the new activity!
                 console.log("[Save] Step 0: Checking for previous completions...");
@@ -542,20 +608,38 @@ const SingleChallenge = () => {
                 const wasTopicAlreadyCompleted = (previousCompletions || []).length > 0;
                 console.log("[Save] Was topic already completed?", wasTopicAlreadyCompleted);
 
-                // 1. Create a challenge session
-                console.log("[Save] Step 1: Creating challenge session...");
-                const session = await createSessionMutation.mutateAsync({
-                    topicId: topicId,
-                    hostId: currentUser.id,
-                    mode: "SINGLE",
-                    category: (category || "mixed").toUpperCase(),
-                });
-                console.log("[Save] Step 1 complete. Session ID:", session.id);
+                // 1. Get or Create challenge session
+                console.log("[Save] Step 1: Getting/Creating challenge session...");
+                let sessionId = "";
+                
+                if (pin) {
+                    // Try to find the existing session by PIN
+                    const { data: existingSession, error: sessionError } = await supabase
+                        .from("challenge_sessions")
+                        .select("id")
+                        .eq("pin", pin)
+                        .maybeSingle();
+                        
+                    if (existingSession) {
+                        sessionId = existingSession.id;
+                    }
+                }
+                
+                if (!sessionId) {
+                    const session = await createSessionMutation.mutateAsync({
+                        topicId: topicId,
+                        hostId: currentUser.id,
+                        mode: "SINGLE",
+                        category: (category || "mixed").toUpperCase(),
+                    });
+                    sessionId = session.id;
+                }
+                console.log("[Save] Step 1 complete. Session ID:", sessionId);
 
                 // 2. Save challenge result
                 console.log("[Save] Step 2: Saving challenge result...");
                 const savedResult = await saveResultMutation.mutateAsync({
-                    sessionId: session.id,
+                    sessionId: sessionId,
                     userId: currentUser.id,
                     totalQuestions: results.totalQuestions,
                     correctAnswers: results.correctAnswers,
@@ -586,6 +670,22 @@ const SingleChallenge = () => {
                 if (answersToSave.length > 0) {
                     await saveAnswersMutation.mutateAsync(answersToSave);
                     console.log("[Save] Step 2.5 complete. Saved", answersToSave.length, "answers.");
+                }
+
+                if (isScheduledLikeSession && playerSessionIdFromJoin) {
+                    try {
+                        await updatePlayerSessionMutation.mutateAsync({
+                            id: playerSessionIdFromJoin,
+                            updates: {
+                                score: results.score,
+                                correct_answers: results.correctAnswers,
+                                wrong_answers: results.wrongAnswers,
+                                streak: results.longestStreak,
+                            },
+                        });
+                    } catch (e) {
+                        console.warn("[Save] player_session sync (scheduled):", e);
+                    }
                 }
 
                 // 3. Log topic activity
@@ -726,7 +826,18 @@ const SingleChallenge = () => {
         };
 
         saveResults();
-    }, [gameState, resultsSaved, currentUser?.id, studentProfile?.id, topicId, content]);
+    }, [
+        gameState,
+        resultsSaved,
+        currentUser?.id,
+        studentProfile?.id,
+        topicId,
+        content,
+        isScheduledLikeSession,
+        playerSessionIdFromJoin,
+        pinLooksLikeSession,
+        sessionForVisibilityLoading,
+    ]);
 
     // Calculate results
     const getResults = (): SinglePlayerResult => {
@@ -797,6 +908,53 @@ const SingleChallenge = () => {
                             <Link to="/grades">
                                 العودة للصفوف
                             </Link>
+                        </Button>
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    /** نحتاج الجلسة عند وجود PIN لنعرف إن كان التحدي مجدولاً قبل تطبيق إخفاء الصفوف */
+    if (pinLooksLikeSession && sessionForVisibilityLoading) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <Skeleton className="h-12 w-64 mx-auto mb-4" />
+                        <Skeleton className="h-40 w-full max-w-2xl mx-auto" />
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    const visibilityGrade = (content as any)?.subject?.grade;
+    /** تجاوز إخفاء الصفوف للمجدول: من الجلسة (حقول متعددة الأشكال) أو ?scheduled=1 من رابط الانضمام */
+    const allowScheduledJoinVisibilityBypass =
+        pinLooksLikeSession &&
+        (sessionHasScheduledFields(sessionForVisibility) || scheduledFromJoinUrl);
+    /** نفس منطق ChallengeModeSelect: المسار يشير لصف الموضوع الفعلي (معرّف أو slug) */
+    const allowTopicRouteVisibilityBypass = routeGradeMatchesTopicGrade(gradeId, visibilityGrade);
+
+    if (
+        visibilityGrade &&
+        !gradeMatchesContentFocus(visibilityGrade, focus) &&
+        !allowScheduledJoinVisibilityBypass &&
+        !allowTopicRouteVisibilityBypass
+    ) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <h1 className="text-3xl font-bold mb-4">المحتوى غير متاح</h1>
+                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">هذا المحتوى غير معروض حالياً على المنصة.</p>
+                        <Button asChild>
+                            <Link to="/grades">العودة للصفوف</Link>
                         </Button>
                     </div>
                 </main>
@@ -1291,6 +1449,9 @@ const SingleChallenge = () => {
                 </motion.div>
 
                 <h2 className="text-3xl font-black mb-4">هل أنت مستعد؟</h2>
+                {joinDisplayName && (
+                    <p className="text-base font-bold text-primary mb-3">أهلاً، {joinDisplayName}</p>
+                )}
                 <p className="text-muted-foreground mb-8">
                     سيتضمن هذا التحدي <strong>{questions.length}</strong> سؤال
                     <br />
@@ -1393,9 +1554,20 @@ const SingleChallenge = () => {
                         </span>
                     </div>
 
-                    <h3 className="text-xl md:text-2xl font-bold text-center mb-8">
+                    <h3 className="text-xl md:text-2xl font-bold text-center mb-4">
                         {currentQuestion.question}
                     </h3>
+
+                    {/* Question Image */}
+                    {currentQuestion.imageUrl && (
+                        <div className="flex justify-center mb-8">
+                            <img
+                                src={currentQuestion.imageUrl}
+                                alt=""
+                                className="max-h-60 rounded-xl object-contain border shadow-sm"
+                            />
+                        </div>
+                    )}
 
                     {/* Multiple Choice / True-False / Shooting */}
                     {["multiple_choice", "true_false", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
@@ -1528,6 +1700,66 @@ const SingleChallenge = () => {
 
     const renderResults = () => {
         const results = getResults();
+        const isScheduledResultsView =
+            scheduledFromJoinUrl ||
+            (pinLooksLikeSession && sessionHasScheduledFields(sessionForVisibility));
+
+        if (isScheduledResultsView) {
+            return (
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="max-w-lg mx-auto"
+                >
+                    <Card className="p-8 md:p-10 text-center border-2 border-primary/15 shadow-lg">
+                        <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/15 flex items-center justify-center mb-5">
+                            <CheckCircle2 className="w-9 h-9 text-emerald-600" strokeWidth={2.5} />
+                        </div>
+                        <h2 className="text-2xl font-black mb-2">تم إكمال التحدي</h2>
+                        <p className="text-sm text-muted-foreground mb-5">
+                            تحدٍ مجدول — هذه ملخص نتيجتك.
+                        </p>
+                        {joinDisplayName && (
+                            <p className="text-base font-bold text-foreground mb-4">{joinDisplayName}</p>
+                        )}
+                        <div className="text-5xl font-black text-primary mb-1 tabular-nums" dir="ltr">
+                            {results.percentage}%
+                        </div>
+                        <p className="text-muted-foreground mb-8">{results.score} نقطة</p>
+                        <div className="grid grid-cols-2 gap-3 text-start mb-8 text-sm">
+                            <div className="rounded-xl border bg-muted/40 px-4 py-3">
+                                <div className="text-muted-foreground text-xs mb-1">صحيحة</div>
+                                <div className="text-xl font-bold tabular-nums">{results.correctAnswers}</div>
+                            </div>
+                            <div className="rounded-xl border bg-muted/40 px-4 py-3">
+                                <div className="text-muted-foreground text-xs mb-1">خاطئة</div>
+                                <div className="text-xl font-bold tabular-nums">{results.wrongAnswers}</div>
+                            </div>
+                            <div className="rounded-xl border bg-muted/40 px-4 py-3">
+                                <div className="text-muted-foreground text-xs mb-1">الوقت</div>
+                                <div className="text-xl font-bold tabular-nums">
+                                    {Math.round(results.timeTaken)} ثانية
+                                </div>
+                            </div>
+                            <div className="rounded-xl border bg-muted/40 px-4 py-3">
+                                <div className="text-muted-foreground text-xs mb-1">أطول سلسلة</div>
+                                <div className="text-xl font-bold tabular-nums">{results.longestStreak}</div>
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
+                            سُجّلت نتيجتك؛ يمكن لمعلّمك متابعتها من لوحة التحدي المجدول.
+                        </p>
+                        <Button asChild size="lg" variant="hero" className="w-full h-12 text-base font-bold gap-2">
+                            <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`}>
+                                <Home className="w-4 h-4" />
+                                العودة إلى المحتوى
+                            </Link>
+                        </Button>
+                    </Card>
+                </motion.div>
+            );
+        }
+
         const level = getLevelFromScore(results.percentage);
 
         return (

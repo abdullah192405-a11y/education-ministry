@@ -3,50 +3,136 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, BookOpen, CheckCircle, GraduationCap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useGrades } from "@/hooks/useDatabase";
+import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeGradeClassType } from "@/lib/gradeClassType";
+import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 
-const GradesSection = () => {
-    const { data: gradesData = [], isLoading } = useGrades();
-    const featuredGrades = gradesData.slice(0, 4);
+const SHOW_COUNT = 4;
 
-    const getLevelColor = (level: string) => {
-        switch (level) {
-            case "PRIMARY":
-                return "bg-emerald-500/90 text-white";
-            case "MIDDLE":
-                return "bg-blue-500/90 text-white";
-            case "SECONDARY":
-                return "bg-purple-500/90 text-white";
-            default:
-                return "bg-gray-500/90 text-white";
-        }
-    };
-
-    const getLevelLabel = (level: string) => {
-        switch (level) {
-            case "PRIMARY": return "ابتدائي";
-            case "MIDDLE": return "متوسط";
-            case "SECONDARY": return "ثانوي";
-            default: return level;
-        }
-    };
-
-    if (isLoading) {
-        return (
-            <section className="py-20 md:py-32">
-                <div className="container mx-auto px-4">
-                    <Skeleton className="h-12 w-64 mb-12" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}
-                    </div>
-                </div>
-            </section>
-        );
+const getLevelColor = (level: string) => {
+    switch (level) {
+        case "PRIMARY":
+            return "bg-emerald-500/90 text-white";
+        case "MIDDLE":
+            return "bg-blue-500/90 text-white";
+        case "SECONDARY":
+            return "bg-purple-500/90 text-white";
+        default:
+            return "bg-gray-500/90 text-white";
     }
+};
+
+const getLevelLabel = (level: string) => {
+    switch (level) {
+        case "PRIMARY":
+            return "ابتدائي";
+        case "MIDDLE":
+            return "متوسط";
+        case "SECONDARY":
+            return "ثانوي";
+        default:
+            return level;
+    }
+};
+
+type GradeRow = {
+    id: string;
+    name: string;
+    slug: string;
+    level: string;
+    description: string;
+    cover_image?: string | null;
+    coverImage?: string | null;
+    verified?: boolean;
+    students_count?: number;
+    studentsCount?: number;
+    subjects?: { id: string; name: string }[];
+    class_type?: string | null;
+    classType?: string | null;
+    is_hidden?: boolean | null;
+    isHidden?: boolean | null;
+};
+
+function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: index * 0.1 }}
+        >
+            <Link to={`/grade/${grade.slug}`}>
+                <Card variant="interactive" className="h-full overflow-hidden group">
+                    <div className="relative h-32 overflow-hidden">
+                        <img
+                            src={grade.cover_image || grade.coverImage || ""}
+                            alt={grade.name}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+
+                        <div className="absolute -bottom-6 right-4">
+                            <div className="w-12 h-12 rounded-xl border-2 border-background bg-primary/10 flex items-center justify-center shadow-lg">
+                                <GraduationCap className="w-7 h-7 text-primary" />
+                            </div>
+                        </div>
+
+                        <div className="absolute top-3 left-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${getLevelColor(grade.level)}`}>
+                                {getLevelLabel(grade.level)}
+                            </span>
+                        </div>
+                    </div>
+
+                    <CardContent className="pt-8 pb-5 px-5">
+                        <div className="flex items-center gap-1 mb-2">
+                            <h3 className="text-base font-bold line-clamp-1">{grade.name}</h3>
+                            {grade.verified && (
+                                <CheckCircle className="w-4 h-4 text-primary fill-primary/20 flex-shrink-0" />
+                            )}
+                        </div>
+
+                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{grade.description}</p>
+
+                        <div className="flex items-center justify-between text-xs pt-3 border-t">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                                <Users className="w-3 h-3" />
+                                <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-primary">
+                                <BookOpen className="w-3 h-3" />
+                                <span>{grade.subjects?.length || 0} مواد</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </Link>
+        </motion.div>
+    );
+}
+
+function SectionBlock({
+    title,
+    titleHighlight,
+    description,
+    ctaLabel,
+    ctaHref,
+    grades,
+    emptyMessage,
+}: {
+    title: string;
+    titleHighlight: string;
+    description: string;
+    ctaLabel: string;
+    ctaHref: string;
+    grades: GradeRow[];
+    emptyMessage: string;
+}) {
+    const featured = grades.slice(0, SHOW_COUNT);
 
     return (
-        <section className="py-20 md:py-32">
+        <section className="py-16 md:py-24">
             <div className="container mx-auto px-4">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -57,85 +143,83 @@ const GradesSection = () => {
                 >
                     <div>
                         <h2 className="text-3xl md:text-5xl font-black mb-4">
-                            القنوات <span className="text-primary">الإثرائية</span>
+                            {title} <span className="text-primary">{titleHighlight}</span>
                         </h2>
-                        <p className="text-muted-foreground text-lg max-w-xl">
-                            اختر محتواك الإثرائي واستكشف المواد التعليمية المتنوعة
-                        </p>
+                        <p className="text-muted-foreground text-lg max-w-xl">{description}</p>
                     </div>
                     <Button variant="outline" asChild>
-                        <Link to="/grades">عرض القنوات الإثرائية</Link>
+                        <Link to={ctaHref}>{ctaLabel}</Link>
                     </Button>
                 </motion.div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {featuredGrades.map((grade, index) => (
-                        <motion.div
-                            key={grade.id}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ duration: 0.5, delay: index * 0.1 }}
-                        >
-                            <Link to={`/grade/${grade.slug}`}>
-                                <Card variant="interactive" className="h-full overflow-hidden group">
-                                    {/* Cover Image */}
-                                    <div className="relative h-32 overflow-hidden">
-                                        <img
-                                            src={grade.cover_image || grade.coverImage}
-                                            alt={grade.name}
-                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
-
-                                        {/* Icon */}
-                                        <div className="absolute -bottom-6 right-4">
-                                            <div className="w-12 h-12 rounded-xl border-2 border-background bg-primary/10 flex items-center justify-center shadow-lg">
-                                                <GraduationCap className="w-7 h-7 text-primary" />
-                                            </div>
-                                        </div>
-
-                                        {/* Level Badge */}
-                                        <div className="absolute top-3 left-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${getLevelColor(grade.level)}`}>
-                                                {getLevelLabel(grade.level)}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <CardContent className="pt-8 pb-5 px-5">
-                                        {/* Name & Verification */}
-                                        <div className="flex items-center gap-1 mb-2">
-                                            <h3 className="text-base font-bold line-clamp-1">{grade.name}</h3>
-                                            {grade.verified && (
-                                                <CheckCircle className="w-4 h-4 text-primary fill-primary/20 flex-shrink-0" />
-                                            )}
-                                        </div>
-
-                                        {/* Description */}
-                                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                                            {grade.description}
-                                        </p>
-
-                                        {/* Stats */}
-                                        <div className="flex items-center justify-between text-xs pt-3 border-t">
-                                            <div className="flex items-center gap-1 text-muted-foreground">
-                                                <Users className="w-3 h-3" />
-                                                <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1 text-primary">
-                                                <BookOpen className="w-3 h-3" />
-                                                <span>{grade.subjects?.length || 0} مواد</span>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                        </motion.div>
-                    ))}
+                    {featured.length === 0 ? (
+                        <p className="col-span-full text-center text-muted-foreground py-10">{emptyMessage}</p>
+                    ) : (
+                        featured.map((grade, index) => <GradeSpotlightCard key={grade.id} grade={grade} index={index} />)
+                    )}
                 </div>
             </div>
         </section>
+    );
+}
+
+const GradesSection = () => {
+    const { data: gradesData = [], isLoading } = useGrades();
+    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+
+    const visible = filterGradesForPublicCatalog(gradesData as GradeRow[], visitorGradeMode);
+    const educational = visible.filter(
+        (g) => normalizeGradeClassType(g.class_type ?? g.classType) === "تعليمي",
+    );
+    const enrichment = visible.filter(
+        (g) => normalizeGradeClassType(g.class_type ?? g.classType) === "اثرائي",
+    );
+
+    if (isLoading) {
+        return (
+            <div className="py-20 md:py-32">
+                <div className="container mx-auto px-4 space-y-20">
+                    {[0, 1].map((block) => (
+                        <div key={block}>
+                            <Skeleton className="h-12 w-72 mb-12" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                    <Skeleton key={i} className="h-64 w-full" />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            {visitorGradeMode !== "enrichment_only" && (
+                <SectionBlock
+                    title="الصفوف"
+                    titleHighlight="التعليمية"
+                    description="تعرّف على الصفوف الدراسية الرسمية واستكشف المواد والمواضيع لكل مرحلة"
+                    ctaLabel="عرض جميع الصفوف التعليمية"
+                    ctaHref="/grades?kind=teaching"
+                    grades={educational}
+                    emptyMessage="لا توجد صفوف تعليمية منشورة حالياً."
+                />
+            )}
+            {visitorGradeMode !== "teaching_only" && (
+                <SectionBlock
+                    title="القنوات"
+                    titleHighlight="الإثرائية"
+                    description="اختر محتواك الإثرائي واستكشف المواد التعليمية المتنوعة"
+                    ctaLabel="عرض القنوات الإثرائية"
+                    ctaHref="/grades?kind=enrichment"
+                    grades={enrichment}
+                    emptyMessage="لا توجد قنوات إثرائية منشورة حالياً."
+                />
+            )}
+        </div>
     );
 };
 

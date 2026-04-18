@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,8 @@ import {
     KeyRound
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useGrades } from "@/hooks/useDatabase";
+import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
+import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignUp, useAuth } from "@clerk/clerk-react";
 
@@ -31,6 +32,11 @@ const Register = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { data: grades } = useGrades();
+    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+    const catalogGrades = useMemo(
+        () => filterGradesForPublicCatalog(grades, visitorGradeMode),
+        [grades, visitorGradeMode],
+    );
     const { signUp, isLoaded: isClerkLoaded, setActive } = useSignUp();
     const { signOut, isSignedIn } = useAuth();
 
@@ -639,7 +645,7 @@ const Register = () => {
                                                         className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                                     >
                                                         <option value="">اختر الصف...</option>
-                                                        {(grades || []).map((grade: any) => (
+                                                        {(catalogGrades || []).map((grade: any) => (
                                                             <option key={grade.id} value={grade.id}>
                                                                 {grade.name}
                                                             </option>

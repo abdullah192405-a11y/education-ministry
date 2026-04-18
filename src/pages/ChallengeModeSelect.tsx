@@ -11,7 +11,15 @@ import {
     Shuffle, Copy, Share2, Sparkles, Zap, Target,
     Trophy, Check
 } from "lucide-react";
-import { useTopic, useGrades, useSubject, useUser, useCreateChallengeSession } from "@/hooks/useDatabase";
+import {
+    useTopic,
+    useGrades,
+    useSubject,
+    useUser,
+    useCreateChallengeSession,
+    useVisitorGradeClassMode,
+} from "@/hooks/useDatabase";
+import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     categoryLabels,
@@ -26,7 +34,10 @@ const ChallengeModeSelect = () => {
     const navigate = useNavigate();
 
     const { data: grades = [] } = useGrades();
+    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
     const grade = grades.find(g => g.id.toString() === gradeId || g.slug === gradeId);
+    const gradeInPublicCatalog =
+        !!grade && filterGradesForPublicCatalog([grade], visitorGradeMode).length > 0;
 
     const { data: topic, isLoading: isLoadingTopic } = useTopic(topicId || "");
     const { data: subject, isLoading: isLoadingSubject } = useSubject(subjectId || "");
@@ -59,7 +70,7 @@ const ChallengeModeSelect = () => {
         );
     }
 
-    if (!grade || !subject || !topic) {
+    if (!grade || !gradeInPublicCatalog || !subject || !topic) {
         return (
             <div className="min-h-screen font-cairo">
                 <Header />

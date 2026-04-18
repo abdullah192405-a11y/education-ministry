@@ -4,12 +4,115 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, Bell, Shield, Globe, Mail } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Save, Bell, Shield, Globe, Mail, Layers, GraduationCap, Sparkles } from "lucide-react";
+import { useUpsertPlatformSetting, useVisitorGradeClassMode } from "@/hooks/useDatabase";
+import { VISITOR_GRADE_CLASS_MODE_KEY } from "@/lib/contentVisibility";
+import { useToast } from "@/hooks/use-toast";
+
+function VisitorContentVisibilityCard() {
+    const { toast } = useToast();
+    const { mode, isLoading } = useVisitorGradeClassMode();
+    const upsert = useUpsertPlatformSetting();
+
+    const onValueChange = (value: string) => {
+        upsert.mutate(
+            {
+                key: VISITOR_GRADE_CLASS_MODE_KEY,
+                value,
+                type: "string",
+                label: "ظهور المحتوى للزوار (تعليمي/إثرائي)",
+            },
+            {
+                onSuccess: () => toast({ title: "تم حفظ الإعدادات" }),
+                onError: (e: Error) =>
+                    toast({
+                        variant: "destructive",
+                        title: "تعذر الحفظ",
+                        description: e?.message || "حدث خطأ",
+                    }),
+            },
+        );
+    };
+
+    if (isLoading) {
+        return <Skeleton className="h-56 w-full rounded-xl" />;
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>ظهور المحتوى للزوار</CardTitle>
+                <CardDescription>
+                    إخفاء أحد النوعين دفعة واحدة: عند اختيار «إثرائي فقط» تُخفى الصفوف التعليمية والعكس. لوحة
+                    الإدارة تعرض كل الصفوف للإدارة.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <RadioGroup
+                    value={mode}
+                    onValueChange={onValueChange}
+                    className="gap-3"
+                    disabled={upsert.isPending}
+                    dir="rtl"
+                >
+                    <label
+                        htmlFor="vgc-all"
+                        className="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary"
+                    >
+                        <RadioGroupItem value="all" id="vgc-all" className="mt-1 shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-1">
+                            <span className="flex items-center gap-2 font-medium">
+                                <Layers className="h-4 w-4 shrink-0 text-primary" />
+                                عرض الكل
+                            </span>
+                            <p className="text-sm text-muted-foreground">
+                                الصفوف التعليمية والقنوات الإثرائية معاً
+                            </p>
+                        </div>
+                    </label>
+                    <label
+                        htmlFor="vgc-teaching"
+                        className="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary"
+                    >
+                        <RadioGroupItem value="teaching_only" id="vgc-teaching" className="mt-1 shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-1">
+                            <span className="flex items-center gap-2 font-medium">
+                                <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
+                                المحتوى التعليمي فقط
+                            </span>
+                            <p className="text-sm text-muted-foreground">
+                                إخفاء الصفوف والقنوات الإثرائية عن الزوار والمعلمين في الاختيار
+                            </p>
+                        </div>
+                    </label>
+                    <label
+                        htmlFor="vgc-enrichment"
+                        className="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary"
+                    >
+                        <RadioGroupItem value="enrichment_only" id="vgc-enrichment" className="mt-1 shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-1">
+                            <span className="flex items-center gap-2 font-medium">
+                                <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                                المحتوى الإثرائي فقط
+                            </span>
+                            <p className="text-sm text-muted-foreground">
+                                إخفاء الصفوف التعليمية (الدراسية) عن الزوار والمعلمين في الاختيار
+                            </p>
+                        </div>
+                    </label>
+                </RadioGroup>
+            </CardContent>
+        </Card>
+    );
+}
 
 const SettingsTab = () => {
     return (
+        <div className="w-full" dir="rtl">
         <Tabs defaultValue="general" className="w-full">
-            <TabsList className="w-full justify-start mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto">
+            <TabsList className="flex h-auto min-h-10 w-full flex-wrap justify-start gap-2 border-b border-border bg-transparent p-0 mb-6 rounded-none">
                 <TabsTrigger
                     value="general"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
@@ -57,6 +160,8 @@ const SettingsTab = () => {
                         </div>
                     </CardContent>
                 </Card>
+
+                <VisitorContentVisibilityCard />
 
                 <Card>
                     <CardHeader>
@@ -144,6 +249,7 @@ const SettingsTab = () => {
                 </Button>
             </div>
         </Tabs>
+        </div>
     );
 };
 

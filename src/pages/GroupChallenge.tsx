@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
     ChevronLeft, Trophy, Zap, Clock, Users, Crown,
     CheckCircle2, XCircle, Play, Copy, Share2, Check,
     Sparkles, Medal, Star, ArrowLeft, Volume2, VolumeX,
-    ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity, Gamepad2
+    ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity, Gamepad2,
+    Calendar, RefreshCw, BarChart3
 } from "lucide-react";
 import {
     useTopic,
+    useContentVisibilityFocus,
     useUser,
     useStudentProfile,
     useSaveTopicActivity,
@@ -26,7 +29,8 @@ import {
     useStudentTopicActivities,
     useAwardBadges,
     useChallengeSession,
-    useSaveAnswers
+    useSaveAnswers,
+    useSessionResults
 } from "@/hooks/useDatabase";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,20 +49,25 @@ import { useSound } from "@/hooks/useSound";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
 import { useMutation } from "@tanstack/react-query";
+import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
+import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 
 type GamePhase = "lobby" | "countdown" | "playing" | "question_result" | "leaderboard" | "final_results";
 
 const GroupChallenge = () => {
     const { category, pin, gradeId, subjectId, topicId } = useParams();
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const isHost = searchParams.get("host") === "true";
     const isCreator = searchParams.get("creator") === "true";
+    const isScheduledHostUrl = searchParams.get("scheduled") === "1";
     const playerName = searchParams.get("name") || "لاعب";
 
     const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
     const [phase, setPhase] = useState<GamePhase>("lobby");
     const { data: topic, isLoading: isLoadingTopic, error: topicError } = useTopic(topicId || "");
     const content = topic;
+    const { focus } = useContentVisibilityFocus();
     const [currentIndex, setCurrentIndex] = useState(0);
 
     // Initialize/Sync Questions
@@ -89,10 +98,17 @@ const GroupChallenge = () => {
     const [copied, setCopied] = useState(false);
     const { toast } = useToast();
 
-    const { data: currentUser } = useUser();
+    const { data: currentUser, isLoading: isLoadingUser } = useUser();
     const { data: studentProfile } = useStudentProfile(currentUser?.id || "");
 
-    const { data: sessionData, isLoading } = useChallengeSession(pin || "");
+    const { data: sessionData, isLoading, refetch: refetchSession } = useChallengeSession(pin || "", {
+        refetchInterval: isHost && isScheduledHostUrl ? 5000 : false,
+    });
+    const isScheduledSession = sessionHasScheduledFields(sessionData);
+    const { data: sessionResults, isLoading: loadingSessionResults, refetch: refetchSessionResults } = useSessionResults(
+        sessionData?.id || "",
+        { refetchInterval: isHost && isScheduledSession ? 5000 : false }
+    );
     const updateSessionMutation = useUpdateChallengeSession();
     const updatePlayerMutation = useUpdatePlayerSession();
 
@@ -239,6 +255,10 @@ const GroupChallenge = () => {
     // Data Fetching & Sync
     useEffect(() => {
         if (!sessionData?.id) return;
+        // تحدٍ مجدول + وضع فردي: لا نزامن مراحل الجماعي (كان يحوّل الشاشة من لوحة المتابعة إلى العدّ)
+        if (isHost && sessionHasScheduledFields(sessionData)) {
+            return;
+        }
 
         const fetchState = async () => {
             const { data: pData } = await publicClient.from('player_sessions').select('*').eq('session_id', sessionData.id);
@@ -910,7 +930,15 @@ const GroupChallenge = () => {
         return [...players].sort((a, b) => b.score - a.score).map((p, i) => ({ ...p, rank: i + 1 }));
     }, [players]);
 
-    if (isLoading || isLoadingTopic) {
+    /** لا نقرر «غير متاح» قبل انتهاء جلب المستخدم؛ وإلا لا يُطابق host_id ويُحجب المعلم لثوانٍ */
+    const sessionHostIdForWait = (sessionData as { host_id?: string } | null | undefined)?.host_id;
+    const awaitUserToResolveHost =
+        !!pin &&
+        pin.length === 6 &&
+        !!sessionHostIdForWait &&
+        isLoadingUser;
+
+    if (isLoading || isLoadingTopic || awaitUserToResolveHost) {
         return (
             <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5 flex flex-col items-center justify-center p-6 text-center">
                 <motion.div
@@ -996,6 +1024,36 @@ const GroupChallenge = () => {
                 <p className="text-muted-foreground mb-6 max-w-md">قد يكون الرابط غير صحيح أو أن التحدي غير متوفر حالياً.</p>
                 <Button asChild>
                     <Link to="/join">العودة لشاشة الانضمام</Link>
+                </Button>
+            </div>
+        );
+    }
+
+    const visibilityGrade = (content as any)?.subject?.grade;
+    /** المعلم: من الرابط (?host / ?creator) أو نفس حساب مضيف الجلسة حتى لو نسخ الرابط بدون معاملات */
+    const sessionHostId = (sessionData as { host_id?: string } | null | undefined)?.host_id;
+    const isLoggedInAsSessionHost =
+        !!currentUser?.id &&
+        !!sessionHostId &&
+        String(currentUser.id) === String(sessionHostId);
+    const isTeacherChallengeControl = isHost || isCreator || isLoggedInAsSessionHost;
+    /** انضمام برمز من صفحة «انضم للتحدي» — جلسة محمّلة؛ ليس تصفّحاً عشوائياً للمواد */
+    const isJoiningWithValidSession =
+        !!pin && pin.length === 6 && !!(sessionData as { id?: string } | null | undefined)?.id;
+    const canSeeChallengeContent = isTeacherChallengeControl || isJoiningWithValidSession;
+    const allowTopicRouteVisibilityBypass = routeGradeMatchesTopicGrade(gradeId, visibilityGrade);
+    if (
+        visibilityGrade &&
+        !gradeMatchesContentFocus(visibilityGrade, focus) &&
+        !canSeeChallengeContent &&
+        !allowTopicRouteVisibilityBypass
+    ) {
+        return (
+            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4 text-center">
+                <h1 className="text-3xl font-bold mb-4">المحتوى غير متاح</h1>
+                <p className="text-muted-foreground mb-6 max-w-md">هذا المحتوى غير معروض حالياً على المنصة.</p>
+                <Button asChild>
+                    <Link to="/grades">العودة للصفوف</Link>
                 </Button>
             </div>
         );
@@ -1375,8 +1433,322 @@ const GroupChallenge = () => {
         );
     };
 
+    /** تحدٍ مجدول يُلعب كفردي (SingleChallenge): المنضمون من player_sessions، النتائج من challenge_results */
+    const renderScheduledHostMonitor = () => {
+        const sd = sessionData as {
+            scheduled_start_time?: string;
+            scheduled_end_time?: string | null;
+            scheduledStartTime?: string;
+            scheduledEndTime?: string | null;
+            players?: Array<{
+                id: string;
+                name: string;
+                joined_at?: string;
+                is_host?: boolean;
+                user?: {
+                    details?: string | null;
+                    student_profiles?:
+                        | { grade?: { name?: string | null } | null }
+                        | Array<{ grade?: { name?: string | null } | null }>
+                        | null;
+                } | null;
+            }>;
+        } | null;
+
+        if (isLoading || !sd) {
+            return (
+                <motion.div
+                    key="scheduled-host-skeleton"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="max-w-3xl mx-auto px-4 pt-8"
+                >
+                    <Card className="p-10">
+                        <Skeleton className="h-10 w-2/3 mx-auto mb-6" />
+                        <Skeleton className="h-32 w-full rounded-xl" />
+                    </Card>
+                </motion.div>
+            );
+        }
+
+        const startRaw = sd.scheduled_start_time ?? sd.scheduledStartTime;
+        const endRaw = sd.scheduled_end_time ?? sd.scheduledEndTime;
+        const start = startRaw ? new Date(startRaw) : null;
+        const end = endRaw ? new Date(endRaw) : null;
+        const now = new Date();
+        const inWindow = !!(start && now >= start && (!end || now <= end));
+        const beforeStart = !!(start && now < start);
+        const afterEnd = !!(end && now > end);
+
+        const resultsFromDb = (sessionResults || []) as Array<{
+            id: string;
+            user_id?: string;
+            percentage: number;
+            score: number;
+            time_taken?: number;
+            created_at?: string;
+            user?: { id?: string; name?: string; avatar?: string | null };
+        }>;
+
+        const joiners = (sd.players || []).filter((p) => !p.is_host);
+
+        /** صفوف challenge_results؛ نستبعد من «player_sessions» من لهم نفس user_id حتى لا نكرر */
+        const resultUserIds = new Set(
+            resultsFromDb
+                .map((r) => r.user_id || r.user?.id)
+                .filter((id): id is string => !!id)
+        );
+
+        const fromPlayerSessionsOnly = joiners
+            .filter((p) => {
+                const ca = (p as { correct_answers?: number }).correct_answers ?? 0;
+                const wa = (p as { wrong_answers?: number }).wrong_answers ?? 0;
+                const played = ca + wa > 0 || ((p as { score?: number }).score ?? 0) > 0;
+                if (!played) return false;
+                const uid = (p as { user_id?: string | null }).user_id;
+                if (uid && resultUserIds.has(uid)) return false;
+                return true;
+            })
+            .map((p) => {
+                const ca = (p as { correct_answers?: number }).correct_answers ?? 0;
+                const wa = (p as { wrong_answers?: number }).wrong_answers ?? 0;
+                const pct = ca + wa > 0 ? Math.round((ca / (ca + wa)) * 100) : 0;
+                return {
+                    id: `ps-${p.id}`,
+                    percentage: pct,
+                    score: (p as { score?: number }).score ?? 0,
+                    time_taken: 0,
+                    created_at: (p as { joined_at?: string }).joined_at,
+                    user: { name: p.name, avatar: null as string | null },
+                };
+            });
+
+        const results = [...resultsFromDb, ...fromPlayerSessionsOnly].sort(
+            (a, b) => (b.percentage ?? 0) - (a.percentage ?? 0)
+        );
+
+        const gradeLabelForScheduledPlayer = (p: (typeof joiners)[number]) => {
+            const sp = p.user?.student_profiles;
+            const row = Array.isArray(sp) ? sp[0] : sp;
+            const n = row?.grade?.name;
+            if (typeof n === "string" && n.trim()) return n.trim();
+            const d = p.user?.details;
+            if (typeof d === "string" && d.trim()) return d.trim();
+            return "—";
+        };
+
+        return (
+            <motion.div
+                key="scheduled-host-monitor"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="max-w-3xl mx-auto px-4 pt-6 pb-12"
+            >
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate("/dashboard/teacher")}>
+                        <ArrowLeft className="w-4 h-4" />
+                        لوحة المعلم
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => {
+                            void refetchSessionResults();
+                            void refetchSession();
+                        }}
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        تحديث القائمة
+                    </Button>
+                </div>
+
+                <Card className="overflow-hidden border-2 border-primary/15 shadow-lg">
+                    <div className="bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-6 md:p-8 border-b border-border/60">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <Badge className="bg-blue-600 hover:bg-blue-600">
+                                        <Calendar className="w-3 h-3 ml-1" />
+                                        تحدي مجدول
+                                    </Badge>
+                                    {beforeStart && (
+                                        <Badge variant="secondary">لم يبدأ الموعد بعد</Badge>
+                                    )}
+                                    {inWindow && (
+                                        <Badge className="bg-emerald-600 hover:bg-emerald-600 animate-pulse">النافذة مفتوحة — يمكن اللعب</Badge>
+                                    )}
+                                    {afterEnd && (
+                                        <Badge variant="destructive">انتهت فترة الانضمام</Badge>
+                                    )}
+                                </div>
+                                <h1 className="text-2xl md:text-3xl font-black mb-1">{content?.title || "التحدي"}</h1>
+                                <p className="text-sm text-muted-foreground">
+                                    يظهر أدناه من انضم برمز التحدي (بعد إدخال الاسم)، ثم من أتم اللعب وسُجّلت نتيجته.
+                                </p>
+                            </div>
+                            <div
+                                className="text-center bg-card/80 backdrop-blur px-5 py-3 rounded-2xl border border-primary/20 cursor-pointer"
+                                onClick={handleCopyPin}
+                                title="نسخ الرمز"
+                            >
+                                <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">رمز الانضمام</span>
+                                <span className="text-3xl font-mono font-black text-primary tracking-widest" dir="ltr">{pin}</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid sm:grid-cols-2 gap-3 text-sm">
+                            {start && (
+                                <div className="flex items-center gap-2 rounded-xl bg-background/80 border px-4 py-3">
+                                    <Clock className="w-4 h-4 text-primary shrink-0" />
+                                    <div>
+                                        <div className="text-[10px] font-bold text-muted-foreground uppercase">يبدأ</div>
+                                        <div className="font-bold">{start.toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" })}</div>
+                                    </div>
+                                </div>
+                            )}
+                            {end && (
+                                <div className="flex items-center gap-2 rounded-xl bg-background/80 border px-4 py-3">
+                                    <Clock className="w-4 h-4 text-destructive shrink-0" />
+                                    <div>
+                                        <div className="text-[10px] font-bold text-muted-foreground uppercase">ينتهي</div>
+                                        <div className="font-bold">{end.toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" })}</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="p-6 md:p-8 space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="rounded-2xl border bg-muted/30 p-4 text-center">
+                                <div className="text-3xl font-black text-primary">{joiners.length}</div>
+                                <div className="text-xs font-bold text-muted-foreground mt-1">انضموا بالرمز</div>
+                            </div>
+                            <div className="rounded-2xl border bg-muted/30 p-4 text-center">
+                                <div className="text-3xl font-black text-emerald-600">{results.length}</div>
+                                <div className="text-xs font-bold text-muted-foreground mt-1">سجّلوا نتيجة</div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 border-b pb-2">
+                            <Users className="w-5 h-5 text-primary" />
+                            <h2 className="font-black text-lg">المنضمون</h2>
+                        </div>
+
+                        {joiners.length === 0 ? (
+                            <div className="text-center py-10 rounded-2xl border border-dashed bg-muted/20">
+                                <p className="font-bold text-muted-foreground">لم ينضم أحد بعد</p>
+                                <p className="text-sm text-muted-foreground mt-1">بعد إدخال الرمز والاسم يظهر الطالب هنا مع وقت الانضمام.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {joiners.map((p, idx) => (
+                                    <div
+                                        key={p.id}
+                                        className="flex flex-wrap items-center gap-3 p-4 rounded-2xl border bg-card"
+                                    >
+                                        <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary font-black flex items-center justify-center shrink-0">
+                                            {idx + 1}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-bold truncate">{p.name}</div>
+                                            <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                                                <span>
+                                                    الصف:{" "}
+                                                    <span className="font-semibold text-foreground/80">
+                                                        {gradeLabelForScheduledPlayer(p)}
+                                                    </span>
+                                                </span>
+                                                {p.joined_at && (
+                                                    <span>
+                                                        الانضمام:{" "}
+                                                        {new Date(p.joined_at).toLocaleString("ar-EG", {
+                                                            dateStyle: "short",
+                                                            timeStyle: "short",
+                                                        })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-2 border-b pb-2 pt-2">
+                            <BarChart3 className="w-5 h-5 text-primary" />
+                            <h2 className="font-black text-lg">النتائج المسجّلة</h2>
+                        </div>
+
+                        {loadingSessionResults ? (
+                            <div className="space-y-3">
+                                <Skeleton className="h-16 w-full rounded-xl" />
+                                <Skeleton className="h-16 w-full rounded-xl" />
+                            </div>
+                        ) : results.length === 0 ? (
+                            <div className="text-center py-14 rounded-2xl border border-dashed bg-muted/20">
+                                <Users className="w-14 h-14 mx-auto mb-3 text-muted-foreground/40" />
+                                <p className="font-bold text-muted-foreground">لا توجد نتائج بعد</p>
+                                <p className="text-sm text-muted-foreground mt-1">عندما يُكمل الطلاب التحدي ستظهر أسماؤهم ودرجاتهم هنا.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {results.map((r, idx) => (
+                                    <div
+                                        key={r.id}
+                                        className="flex flex-wrap items-center gap-4 p-4 rounded-2xl border bg-card hover:border-primary/30 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                            <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary font-black flex items-center justify-center shrink-0">
+                                                {idx + 1}
+                                            </span>
+                                            <img
+                                                src={r.user?.avatar || getRandomAvatar(r.user?.name || "?")}
+                                                alt=""
+                                                className="w-11 h-11 rounded-full border bg-muted"
+                                            />
+                                            <div className="min-w-0">
+                                                <div className="font-bold truncate">{r.user?.name || "طالب"}</div>
+                                                <div className="text-[11px] text-muted-foreground">
+                                                    {r.created_at
+                                                        ? `أُرسل في ${new Date(r.created_at).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" })}`
+                                                        : "—"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-6 ms-auto">
+                                            <div className="text-center">
+                                                <div className="text-2xl font-black text-primary leading-none">{Math.round(r.percentage ?? 0)}%</div>
+                                                <div className="text-[10px] text-muted-foreground font-bold">الدقة</div>
+                                            </div>
+                                            <div className="text-center min-w-[4rem]">
+                                                <div className="font-bold flex items-center gap-1 justify-center text-muted-foreground">
+                                                    <Clock className="w-3.5 h-3.5" />
+                                                    {String(r.id).startsWith("ps-")
+                                                        ? "—"
+                                                        : `${Math.round(r.time_taken ?? 0)}ث`}
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground">الوقت</div>
+                                            </div>
+                                            <Trophy className="w-5 h-5 text-amber-500 hidden sm:block" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </Card>
+            </motion.div>
+        );
+    };
+
     // Lobby Phase
     const renderLobby = () => {
+        if (isHost && isScheduledSession && sessionData) {
+            return renderScheduledHostMonitor();
+        }
+
         // If not a host/creator, show the student's "You're in!" waiting screen
         if (!isHost && !isCreator) {
             return (
@@ -1857,9 +2229,20 @@ const GroupChallenge = () => {
                         </span>
                     </div>
 
-                    <h3 className="text-xl md:text-2xl font-bold text-center mb-8">
+                    <h3 className="text-xl md:text-2xl font-bold text-center mb-4">
                         {currentQuestion.question}
                     </h3>
+
+                    {/* Question Image */}
+                    {currentQuestion.imageUrl && (
+                        <div className="flex justify-center mb-8">
+                            <img
+                                src={currentQuestion.imageUrl}
+                                alt=""
+                                className="max-h-60 rounded-xl object-contain border shadow-sm"
+                            />
+                        </div>
+                    )}
 
                     {/* Multiple Choice / True-False / Puzzle / Shooting */}
                     {["multiple_choice", "true_false", "puzzle", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (

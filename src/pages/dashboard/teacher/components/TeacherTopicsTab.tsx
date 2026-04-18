@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -25,7 +25,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { useSubject, useGrades, useCreateTopic, useUpdateTopic, useDeleteTopic, useSaveTopicMedia, useSaveChallengeQuestions } from "@/hooks/useDatabase";
+import {
+    useSubject,
+    useGrades,
+    useCreateTopic,
+    useUpdateTopic,
+    useDeleteTopic,
+    useSaveTopicMedia,
+    useSaveChallengeQuestions,
+    useVisitorGradeClassMode,
+} from "@/hooks/useDatabase";
+import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import ContentEditor from "./ContentEditor";
 import { useToast } from "@/components/ui/use-toast";
@@ -56,21 +66,28 @@ interface ExtendedTopic {
 const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
     const { toast } = useToast();
 
-    // Get all grades
+    // Get all grades (respect platform visibility for visitors/teachers)
     const { data: grades } = useGrades();
+    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+    const visibleGrades = useMemo(
+        () => filterGradesForPublicCatalog(grades as any[] | undefined, visitorGradeMode),
+        [grades, visitorGradeMode],
+    );
 
     // Selected grade state - defaults to prop or empty
     const [selectedGradeId, setSelectedGradeId] = useState<string>(propGradeId || "");
 
-    // Auto-select first grade when grades load and none is selected
+    // Auto-select first visible grade when list loads or selection becomes invalid
     useEffect(() => {
-        if (!selectedGradeId && grades && grades.length > 0) {
-            setSelectedGradeId(grades[0].id);
+        if (!visibleGrades?.length) return;
+        const valid = visibleGrades.some((g: any) => g.id === selectedGradeId);
+        if (!selectedGradeId || !valid) {
+            setSelectedGradeId(visibleGrades[0].id);
         }
-    }, [grades, selectedGradeId]);
+    }, [visibleGrades, selectedGradeId]);
 
     // Get available subjects for the selected grade
-    const currentGrade = grades?.find((g: any) => g.id === selectedGradeId);
+    const currentGrade = visibleGrades?.find((g: any) => g.id === selectedGradeId);
     const availableSubjects = currentGrade?.subjects || [];
 
     // Selected subject state - defaults to prop or first available subject
@@ -274,7 +291,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     <SelectValue placeholder="اختر الصف" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {grades?.map((grade: any) => (
+                                    {visibleGrades?.map((grade: any) => (
                                         <SelectItem key={grade.id} value={grade.id}>
                                             {grade.name}
                                         </SelectItem>
@@ -511,7 +528,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                                            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
@@ -521,14 +538,122 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     <Edit className="w-4 h-4" />
                                                     تعديل المحتوى
                                                 </Button>
-                                                <Button
-                                                    className="flex-1 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                                                    onClick={() => onCreateChallenge(topic.id, { title: topic.title, gradeId: selectedGradeId, subjectId: selectedSubjectId })}
-                                                    disabled={topic.status === "draft"}
-                                                >
-                                                    <Gamepad2 className="w-4 h-4" />
-                                                    إنشاء تحدي
-                                                </Button>
+                                                <div className="flex flex-1 min-w-[min(100%,14rem)] gap-2">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                className="flex-1 min-w-0 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                                                disabled={topic.status === "draft"}
+                                                            >
+                                                                <Gamepad2 className="w-4 h-4 shrink-0" />
+                                                                إنشاء تحدي
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-52">
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "ACTIVITIES",
+                                                                    })
+                                                                }
+                                                            >
+                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />
+                                                                أنشطة تفاعلية
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "GAMES",
+                                                                    })
+                                                                }
+                                                            >
+                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />
+                                                                أنشطة تلعيبية
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer font-semibold"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "MIXED",
+                                                                    })
+                                                                }
+                                                            >
+                                                                <Target className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                                الكل (مختلط)
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                variant="outline"
+                                                                className="flex-1 min-w-0 gap-2 border-primary/35 text-primary hover:bg-primary/10"
+                                                                disabled={topic.status === "draft"}
+                                                            >
+                                                                <Calendar className="w-4 h-4 shrink-0" />
+                                                                تحدي مجدول
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-56">
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "ACTIVITIES",
+                                                                        isScheduled: true,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />
+                                                                أنشطة تفاعلية
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "GAMES",
+                                                                        isScheduled: true,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />
+                                                                أنشطة تلعيبية
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="gap-2 cursor-pointer font-semibold"
+                                                                onClick={() =>
+                                                                    onCreateChallenge(topic.id, {
+                                                                        title: topic.title,
+                                                                        gradeId: selectedGradeId,
+                                                                        subjectId: selectedSubjectId,
+                                                                        category: "MIXED",
+                                                                        isScheduled: true,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <Target className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                                الكل (مختلط)
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
                                             </div>
                                         </div>
                                     </CardContent>

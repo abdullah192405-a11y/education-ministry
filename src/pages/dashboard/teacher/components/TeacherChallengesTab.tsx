@@ -37,6 +37,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { isScheduledTeacherChallenge } from "@/lib/teacherScheduledChallenge";
 
 interface Challenge {
     id: number;
@@ -51,6 +52,9 @@ interface Challenge {
     status: "playing" | "waiting" | "finished";
     startedAt: string;
     type: "admin" | "user";
+    category?: string;
+    scheduledStartTime?: string;
+    scheduledEndTime?: string;
 }
 
 interface TeacherChallengesTabProps {
@@ -265,11 +269,21 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
 };
 
 const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, subjectId, onStartChallenge, onDeleteChallenge }: TeacherChallengesTabProps) => {
-    const navigate = useNavigate();
+const navigate = useNavigate();
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
     const { data: user } = useUser();
     const { data: hostedResults } = useHostedChallengeResults(user?.id || "", 500);
     const { data: hostedSessions, isLoading } = useHostedSessions(user?.id || "");
+    
+    const scheduledChallenges = useMemo(
+        () => activeChallenges.filter(isScheduledTeacherChallenge),
+        [activeChallenges]
+    );
+
+    const trulyActiveChallenges = useMemo(
+        () => activeChallenges.filter(c => !isScheduledTeacherChallenge(c)),
+        [activeChallenges]
+    );
 
     // Derive challenge history from hosted sessions AND results
     const historyChallenges = useMemo(() => {
@@ -341,7 +355,12 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                 <TabsTrigger value="active" className="gap-2">
                     <Zap className="w-4 h-4" />
                     التحديات النشطة
-                    <Badge variant="secondary" className="me-1 ms-0 px-1 h-5 min-w-[1.25rem]">{activeChallenges.length}</Badge>
+                    <Badge variant="secondary" className="me-1 ms-0 px-1 h-5 min-w-[1.25rem]">{trulyActiveChallenges.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="scheduled" className="gap-2">
+                    <Calendar className="w-4 h-4" />
+                    تحديات مجدولة
+                    <Badge variant="secondary" className="me-1 ms-0 px-1 h-5 min-w-[1.25rem]">{scheduledChallenges.length}</Badge>
                 </TabsTrigger>
                 <TabsTrigger value="history" className="gap-2">
                     <History className="w-4 h-4" />
@@ -392,8 +411,7 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                     ))
                 ) : (
                 <>
-                {/* Live update indicator */}
-                {activeChallenges.length > 0 && (
+                {trulyActiveChallenges.length > 0 && (
                     <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
                         <div className="flex items-center gap-2">
                             <span className="relative flex h-2 w-2">
@@ -409,9 +427,9 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                     </div>
                 )}
 
-                {activeChallenges.length > 0 ? (
+                {trulyActiveChallenges.length > 0 ? (
                     <div className="grid grid-cols-1 gap-6">
-                        {activeChallenges.map((challenge) => (
+                        {trulyActiveChallenges.map((challenge) => (
                             <Card key={challenge.id} className="border-r-4 border-r-emerald-500 overflow-hidden group">
                                 <CardContent className="p-0">
                                     {/* Header Section */}
@@ -501,7 +519,8 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                 className="flex-1 min-w-[140px] gap-2 bg-primary hover:bg-primary/90 shadow-sm active:scale-[0.98] transition-all h-11"
                                                 size="default"
                                                 onClick={() => {
-                                                    const url = `/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/ACTIVITIES/${challenge.pin}?host=true`;
+                                                    const cat = challenge.category || "ACTIVITIES";
+                                                    const url = `/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/${cat}/${challenge.pin}?host=true`;
                                                     console.log("Navigating from tab to Control Panel:", url);
                                                     navigate(url);
                                                 }}
@@ -519,7 +538,8 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                         if (onStartChallenge) {
                                                             onStartChallenge(challenge.pin, String(challenge.topicId));
                                                         } else {
-                                                            navigate(`/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/ACTIVITIES/${challenge.pin}?host=true`);
+                                                            const cat = challenge.category || "ACTIVITIES";
+                                                            navigate(`/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/${cat}/${challenge.pin}?host=true`);
                                                         }
                                                     }}
                                                 >
@@ -531,7 +551,8 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                     className="flex-1 min-w-[140px] gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm active:scale-[0.98] transition-all h-11"
                                                     size="default"
                                                     onClick={() => {
-                                                        navigate(`/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/ACTIVITIES/${challenge.pin}?host=true`);
+                                                        const cat = challenge.category || "ACTIVITIES";
+                                                        navigate(`/grade/${challenge.gradeId || gradeId || '0'}/subject/${challenge.subjectId || subjectId || '0'}/topic/${challenge.topicId || '0'}/challenge/group/${cat}/${challenge.pin}?host=true`);
                                                     }}
                                                 >
                                                     <RefreshCw className="w-5 h-5" />
@@ -641,11 +662,139 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                 ) : (
                     <div className="text-center py-12 bg-muted/30 rounded-xl border-dashed border-2">
                         <Gamepad2 className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                        <h3 className="text-xl font-bold mb-2">لا توجد تحديات نشطة</h3>
+                        <h3 className="text-xl font-bold mb-2">لا توجد تحديات نشطة حالياً</h3>
                         <p className="text-muted-foreground mb-6">قم بإنشاء تحدي جديد من صفحة الدروس لبدء المنافسة</p>
                     </div>
                 )}
                 </>
+                )}
+            </TabsContent>
+
+            <TabsContent value="scheduled" className="space-y-4">
+                {isLoading ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                        <Skeleton key={i} className="h-40 w-full rounded-2xl" />
+                    ))
+                ) : scheduledChallenges.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-6">
+                        {scheduledChallenges.map((challenge) => (
+                            <Card key={challenge.id} className="border-r-4 border-r-blue-500 overflow-hidden group">
+                                <CardContent className="p-0">
+                                    <div className="p-5 pb-4">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h3 className="font-bold text-lg mb-1 group-hover:text-primary transition-colors">{challenge.topicTitle}</h3>
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <Badge variant="outline" className="border-blue-500 text-blue-500 bg-blue-50/50">
+                                                        <Calendar className="w-3 h-3 ml-1" />
+                                                        تحدي مجدول
+                                                    </Badge>
+                                                    {(() => {
+                                                        const now = new Date();
+                                                        const start = challenge.scheduledStartTime ? new Date(challenge.scheduledStartTime) : null;
+                                                        const end = challenge.scheduledEndTime ? new Date(challenge.scheduledEndTime) : null;
+                                                        const isLive = start && now >= start && (!end || now <= end);
+                                                        
+                                                        if (isLive) {
+                                                            return (
+                                                                <Badge className="bg-emerald-500 border-emerald-500 text-white animate-pulse">
+                                                                    <Play className="w-3 h-3 ml-1" />
+                                                                    متاح للضم حالياً
+                                                                </Badge>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                    <span>•</span>
+                                                    <span className="font-bold text-blue-700">
+                                                        {challenge.scheduledStartTime
+                                                            ? `يبدأ في: ${new Date(challenge.scheduledStartTime).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" })}`
+                                                            : "—"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div
+                                                className="text-center bg-blue-50 p-3 rounded-xl border border-blue-100 cursor-pointer hover:border-blue-300 transition-all"
+                                                onClick={() => onCopyToClipboard(challenge.pin)}
+                                            >
+                                                <span className="block text-[10px] text-blue-600 uppercase font-bold tracking-wider">رمز الانضمام</span>
+                                                <span className="block text-2xl font-mono font-black tracking-widest text-blue-700" dir="ltr">{challenge.pin}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-4 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                                            <div className="flex-1 flex items-center gap-2">
+                                                <Clock className="w-4 h-4 text-blue-500" />
+                                                <span>
+                                                    {challenge.scheduledEndTime
+                                                        ? `ينتهي في: ${new Date(challenge.scheduledEndTime).toLocaleString("ar-EG", { timeStyle: "short" })}`
+                                                        : "—"}
+                                                </span>
+                                            </div>
+                                            <div className="h-4 w-px bg-border" />
+                                            <div className="flex-1 flex items-center gap-2 justify-end">
+                                                <Users className="w-4 h-4 text-blue-500" />
+                                                <span>{challenge.players?.length || 0} منضمين مسبقاً</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5 pt-0 border-t bg-muted/5 flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            className="flex-1 gap-2 border-primary/20 hover:bg-primary/5"
+                                            onClick={() => {
+                                                const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                onCopyToClipboard(link);
+                                            }}
+                                        >
+                                            <Copy className="w-4 h-4 text-primary" />
+                                            نسخ الرابط
+                                        </Button>
+                                        <Button
+                                            className="flex-1 gap-2 bg-primary hover:bg-primary/90"
+                                            onClick={() => {
+                                                const cat = (challenge.category || "ACTIVITIES").toLowerCase();
+                                                navigate(`/grade/${challenge.gradeId}/subject/${challenge.subjectId}/topic/${challenge.topicId}/challenge/group/${cat}/${challenge.pin}?host=true&scheduled=1`);
+                                            }}
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                            لوحة التحكم
+                                        </Button>
+                                        
+                                        <DropdownMenu dir="rtl">
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" size="icon" className="shrink-0">
+                                                    <Share2 className="w-4 h-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => {
+                                                    const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                    const text = `انضم إلى تحدي "${challenge.topicTitle}" المجدول! يبدأ في: ${new Date(challenge.scheduledStartTime!).toLocaleString("ar-EG")}`;
+                                                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n" + text)}`);
+                                                }}>
+                                                    <MessageCircle className="w-4 h-4 ml-2 text-emerald-500" />
+                                                    واتساب
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDeleteChallenge && onDeleteChallenge(challenge.pin)} className="text-destructive focus:bg-destructive/5 focus:text-destructive">
+                                                    <Trash2 className="w-4 h-4 ml-2" />
+                                                    إلغاء التحدي
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-24 bg-blue-50/50 rounded-3xl border-2 border-dashed border-blue-200">
+                        <Calendar className="w-16 h-16 mx-auto mb-4 text-blue-200" />
+                        <h3 className="text-xl font-bold text-blue-900 mb-2">لا توجد تحديات مجدولة</h3>
+                        <p className="text-blue-700/60 max-w-xs mx-auto">قم بجدولة تحدي من تبويب "الدروس" ليظهر هنا للطلاب للبدء في الموعد المحدد.</p>
+                    </div>
                 )}
             </TabsContent>
 

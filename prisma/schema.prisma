@@ -139,6 +139,8 @@ model Grade {
   verified      Boolean    @default(false)
   sortOrder     Int        @default(0) @map("sort_order")
   isActive      Boolean    @default(true) @map("is_active")
+  isHidden      Boolean    @default(false) @map("is_hidden")
+  classType     String     @default("تعليمي") @map("class_type") // تعليمي or اثرائي
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
 
@@ -212,6 +214,8 @@ enum MediaType {
   IMAGE
   TEXT
   PDF
+  AUDIO
+  LINK
 }
 
 /// Media item attached to a Topic
@@ -364,6 +368,8 @@ model ChallengeSession {
 
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
+  scheduledStartTime DateTime? @map("scheduled_start_time")
+  scheduledEndTime   DateTime? @map("scheduled_end_time")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 

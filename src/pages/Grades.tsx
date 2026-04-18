@@ -6,19 +6,41 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Users, Search, Filter, CheckCircle, GraduationCap, BookOpen } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useGrades } from "@/hooks/useDatabase";
+import { Link, useSearchParams } from "react-router-dom";
+import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeGradeClassType } from "@/lib/gradeClassType";
+import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 
 const Grades = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedLevel, setSelectedLevel] = useState("الكل");
+    const [searchParams] = useSearchParams();
+    const kindParam = searchParams.get("kind");
 
     const { data: gradesData, isLoading, error } = useGrades();
+    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+
+    /** When admin shows only one catalog type, URL kind tabs are hidden — ignore kind filter */
+    const kind =
+        visitorGradeMode === "all"
+            ? kindParam
+            : null;
+
+    const showKindFilter = visitorGradeMode === "all";
 
     const levels = ["الكل", "ابتدائي", "متوسط", "ثانوي"];
 
-    const filteredGrades = (gradesData || []).filter((grade) => {
+    const catalogGrades = filterGradesForPublicCatalog(gradesData || [], visitorGradeMode);
+
+    const filteredGrades = catalogGrades.filter((grade) => {
+        const classKind = normalizeGradeClassType(
+            (grade as { class_type?: string; classType?: string }).class_type ??
+                (grade as { class_type?: string; classType?: string }).classType,
+        );
+        if (kind === "teaching" && classKind !== "تعليمي") return false;
+        if (kind === "enrichment" && classKind !== "اثرائي") return false;
+
         const matchesSearch = grade.name.includes(searchTerm) ||
             grade.description.includes(searchTerm);
         const matchesLevel = selectedLevel === "الكل" || (
@@ -54,12 +76,52 @@ const Grades = () => {
                         className="text-center mb-12 mt-8"
                     >
                         <h1 className="text-4xl md:text-5xl font-black mb-4">
-                            اكتشف <span className="text-primary">الصفوف الدراسية</span>
+                            {visitorGradeMode === "teaching_only" ? (
+                                <>
+                                    الصفوف <span className="text-primary">التعليمية</span>
+                                </>
+                            ) : visitorGradeMode === "enrichment_only" ? (
+                                <>
+                                    القنوات <span className="text-primary">الإثرائية</span>
+                                </>
+                            ) : kind === "teaching" ? (
+                                <>
+                                    الصفوف <span className="text-primary">التعليمية</span>
+                                </>
+                            ) : kind === "enrichment" ? (
+                                <>
+                                    القنوات <span className="text-primary">الإثرائية</span>
+                                </>
+                            ) : (
+                                <>
+                                    اكتشف <span className="text-primary">الصفوف الدراسية</span>
+                                </>
+                            )}
                         </h1>
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                            اختر صفك الدراسي واستكشف المواد التعليمية المتنوعة والتحديات الممتعة
+                            {visitorGradeMode === "enrichment_only" ||
+                            (visitorGradeMode === "all" && kind === "enrichment")
+                                ? "اختر قناتك الإثرائية واستكشف المواد والتحديات"
+                                : visitorGradeMode === "teaching_only" ||
+                                    (visitorGradeMode === "all" && kind === "teaching")
+                                  ? "اختر صفك واستكشف المواد التعليمية والتحديات المناسبة لمرحلتك"
+                                  : "اختر صفك الدراسي واستكشف المواد التعليمية المتنوعة والتحديات الممتعة"}
                         </p>
                     </motion.div>
+
+                    {showKindFilter && (
+                        <div className="flex flex-wrap gap-2 justify-center mb-10">
+                            <Button asChild variant={kind == null ? "default" : "outline"} size="sm" className="rounded-full">
+                                <Link to="/grades">الكل</Link>
+                            </Button>
+                            <Button asChild variant={kind === "teaching" ? "default" : "outline"} size="sm" className="rounded-full">
+                                <Link to="/grades?kind=teaching">تعليمي</Link>
+                            </Button>
+                            <Button asChild variant={kind === "enrichment" ? "default" : "outline"} size="sm" className="rounded-full">
+                                <Link to="/grades?kind=enrichment">إثرائي</Link>
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Search and Filter */}
                     <motion.div

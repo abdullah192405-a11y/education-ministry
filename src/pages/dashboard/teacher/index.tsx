@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ClipboardList } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
     ResponsiveContainer, PieChart, Pie, Cell
@@ -14,12 +15,19 @@ import {
     LayoutDashboard, Library, Users, Gamepad2, ChartBar, Cog,
     Bell, LogOut, ChevronRight, GraduationCap, Award, Search,
     Plus, Trophy, History, Clock, Eye, Star, Info, AlertTriangle,
-    CheckCircle, TrendingUp, Zap, Copy, Upload, Share2, MessageCircle, Twitter, Send
+    CheckCircle, TrendingUp, Zap, Copy, Upload, Share2, MessageCircle, Twitter, Send,
+    ListChecks, Target, Calendar
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { generatePin } from "@/data/challengeTypes";
 import { useUser, useTeacherProfile, useActiveChallengesByHost, useHostedChallengeResults, useHostedSessions, useRecentChallengeResults, useCreateChallengeSession, useUpdateChallengeSession, useDeleteChallengeSession, useTeacherAllTopics } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import TeacherTopicsTab from "./components/TeacherTopicsTab";
 import TeacherChallengesTab from "./components/TeacherChallengesTab";
 import TeacherStudentsTab from "./components/TeacherStudentsTab";
@@ -37,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { supabase } from "@/lib/supabase";
+import { isScheduledTeacherChallenge } from "@/lib/teacherScheduledChallenge";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 
@@ -69,7 +78,11 @@ const TeacherDashboard = () => {
     const [localChallenges, setLocalChallenges] = useState<any[]>([]);
 
     // State for sharing modal
-    const [createdChallengeInfo, setCreatedChallengeInfo] = useState<{ pin: string, title: string } | null>(null);
+    const [createdChallengeInfo, setCreatedChallengeInfo] = useState<{ pin: string, title: string, scheduledStartTime?: string } | null>(null);
+
+    // State for scheduling
+    const [schedulingTopic, setSchedulingTopic] = useState<{ id: string | number, details: any } | null>(null);
+    const [scheduledTimes, setScheduledTimes] = useState({ start: "", end: "" });
 
     const handleLogout = async () => {
         try {
@@ -153,9 +166,23 @@ const TeacherDashboard = () => {
             playersCount: c.players?.length || 0,
             status: c.status?.toLowerCase() || "waiting",
             startedAt: c.created_at ? new Date(c.created_at).toLocaleString("ar-SA") : "",
-            type: "admin" as const
+            type: "admin" as const,
+            category: c.category || "ACTIVITIES",
+            scheduledStartTime: c.scheduled_start_time ?? c.scheduledStartTime,
+            scheduledEndTime: c.scheduled_end_time ?? c.scheduledEndTime
         }))
     ] as any[];
+
+    /** مجدول = أي تحدٍ له موعد جدولة؛ يبقى تحت «مجدولة» حتى تُغلق الجلسة (النشطة = فوري فقط) */
+    const scheduledChallenges = useMemo(
+        () => activeChallenges.filter(isScheduledTeacherChallenge),
+        [activeChallenges]
+    );
+
+    const trulyActiveChallenges = useMemo(
+        () => activeChallenges.filter(c => !isScheduledTeacherChallenge(c)),
+        [activeChallenges]
+    );
 
     // Map hosted results for "recent students" section
     const recentStudents = (hostedResults || []).slice(0, 4).map((r: any) => ({
@@ -175,7 +202,8 @@ const TeacherDashboard = () => {
             const challenge = activeChallenges.find(c => c.pin === pin);
             const gId = challenge?.gradeId || "0";
             const sId = challenge?.subjectId || "0";
-            navigate(`/grade/${gId}/subject/${sId}/topic/${topicId}/challenge/group/ACTIVITIES/${pin}?host=true`);
+            const cat = challenge?.category || "ACTIVITIES";
+            navigate(`/grade/${gId}/subject/${sId}/topic/${topicId}/challenge/group/${cat}/${pin}?host=true`);
         } catch (error) {
             console.error("Failed to start session:", error);
             toast({
@@ -204,7 +232,66 @@ const TeacherDashboard = () => {
         }
     };
 
-    const handleCreateChallenge = async (topicId: string | number, details?: { title: string, gradeId?: string, subjectId?: string }) => {
+    const handleCreateChallenge = async (topicId: string | number, details?: { title: string, gradeId?: string, subjectId?: string, category?: string, isScheduled?: boolean }) => {
+        if (details?.isScheduled) {
+            setSchedulingTopic({ id: topicId, details });
+            // Default: يبدأ بعد ربع ساعة، وينتهي بعد ساعة من البدء
+            const now = new Date();
+            const startDefault = new Date(now.getTime() + 15 * 60 * 1000);
+            const endDefault = new Date(startDefault.getTime() + 60 * 60 * 1000);
+
+            const formatForInput = (date: Date) => {
+                const isoStr = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString();
+                return isoStr.slice(0, 16);
+            };
+
+            setScheduledTimes({
+                start: formatForInput(startDefault),
+                end: formatForInput(endDefault)
+            });
+            return;
+        }
+
+        await performChallengeCreation(topicId, details);
+    };
+
+    const handleConfirmSchedule = async () => {
+        if (!schedulingTopic) return;
+
+        const start = new Date(scheduledTimes.start);
+        const end = new Date(scheduledTimes.end);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            toast({
+                title: "تاريخ غير صالح",
+                description: "يرجى اختيار وقت البدء والانتهاء.",
+                variant: "destructive"
+            });
+            return;
+        }
+        if (end <= start) {
+            toast({
+                title: "موعد غير صالح",
+                description: "يجب أن يكون وقت الانتهاء بعد وقت البدء.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        const { id, details } = schedulingTopic;
+
+        const finalDetails = {
+            ...details,
+            mode: "SINGLE",
+            isScheduled: false,
+            scheduledStartTime: start.toISOString(),
+            scheduledEndTime: end.toISOString()
+        };
+
+        setSchedulingTopic(null);
+        await performChallengeCreation(id, finalDetails);
+    };
+
+    const performChallengeCreation = async (topicId: string | number, details?: any) => {
         let topic = topics.find((t: any) => String(t.id) === String(topicId));
         
         if (!topic && details) {
@@ -235,6 +322,9 @@ const TeacherDashboard = () => {
         }
 
         const pin = generatePin();
+        const category = details?.category || "ACTIVITIES";
+        const isScheduled = !!details?.scheduledStartTime;
+
         const newChallenge = {
             id: Date.now(),
             topicId: topic.id,
@@ -246,8 +336,11 @@ const TeacherDashboard = () => {
             players: [],
             playersCount: 0,
             status: "waiting" as const,
-            startedAt: "الآن",
-            type: "admin" as const
+            startedAt: isScheduled ? "مجدول" : "الآن",
+            type: "admin" as const,
+            category: category,
+            scheduledStartTime: details?.scheduledStartTime,
+            scheduledEndTime: details?.scheduledEndTime
         };
 
         try {
@@ -255,20 +348,26 @@ const TeacherDashboard = () => {
                 topicId: topic.id,
                 hostId: teacherData.id,
                 mode: "GROUP",
-                category: "ACTIVITIES",
-                pin: pin
+                category: category,
+                pin: pin,
+                scheduledStartTime: details?.scheduledStartTime,
+                scheduledEndTime: details?.scheduledEndTime
             });
 
             setLocalChallenges(prev => [newChallenge, ...prev]);
 
             const joinLink = `${window.location.origin}/join/${pin}`;
-            const shareText = `انضم إلى تحدي "${topic.title}"! رمز الانضمام: ${pin}`;
+            const shareText = isScheduled 
+                ? `انضم إلى التحدي المجدول "${topic.title}"! رمز الانضمام: ${pin}. يبدأ في: ${new Date(details.scheduledStartTime).toLocaleString("ar-EG")}`
+                : `انضم إلى تحدي "${topic.title}"! رمز الانضمام: ${pin}`;
+
+            setCreatedChallengeInfo({ pin, title: topic.title, scheduledStartTime: details?.scheduledStartTime });
 
             toast({
-                title: "تم إنشاء التحدي بنجاح",
+                title: isScheduled ? "تمت جدولة التحدي بنجاح" : "تم إنشاء التحدي بنجاح",
                 description: (
                     <div className="flex flex-col gap-3 mt-1">
-                        <p>رمز الدخول: <span className="font-mono font-bold text-primary">{pin}</span>. يمكنك الآن متابعة المنضمين من تبويب التحديات.</p>
+                        <p>رمز الدخول: <span className="font-mono font-bold text-primary">{pin}</span>. {isScheduled ? "يمكن للطلاب الانضمام في الموعد المحدد." : "يمكنك الآن متابعة المنضمين من تبويب التحديات."}</p>
                         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50">
                             <Button
                                 size="sm"
@@ -299,28 +398,13 @@ const TeacherDashboard = () => {
                 ),
             });
 
-            // Transition to challenges tab to see the new lobby row
-            setActiveTab("challenges");
+            if (!isScheduled) {
+                setActiveTab("challenges");
+            }
         } catch (error: any) {
             console.error("Detailed Error creating challenge:", error);
-
-            // Extract the most descriptive error message
-            const errorMessage = error?.message ||
-                error?.error_description ||
-                (typeof error === 'string' ? error : "تعذر إنشاء التحدي في قاعدة البيانات.");
-
-            toast({
-                title: "خطأ في إنشاء التحدي",
-                description: (
-                    <div className="mt-1 flex flex-col gap-1">
-                        <p>{errorMessage}</p>
-                        {error?.details && <p className="text-[10px] opacity-70">Details: {error.details}</p>}
-                        {error?.hint && <p className="text-[10px] opacity-70">Hint: {error.hint}</p>}
-                        {error?.code && <p className="text-[10px] font-mono">Code: {error.code}</p>}
-                    </div>
-                ),
-                variant: "destructive"
-            });
+            const errorMessage = error?.message || "تعذر إنشاء التحدي.";
+            toast({ title: "خطأ في إنشاء التحدي", description: errorMessage, variant: "destructive" });
         }
     };
 
@@ -615,11 +699,11 @@ const TeacherDashboard = () => {
                                                     التحديات النشطة
                                                 </CardTitle>
                                                 <span className="px-2 py-1 rounded-full bg-success/10 text-success text-xs font-bold">
-                                                    {activeChallenges.length} قيد التشغيل
+                                                    {trulyActiveChallenges.length} قيد التشغيل
                                                 </span>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
-                                                {activeChallenges.slice(0, 3).map(challenge => (
+                                                {trulyActiveChallenges.slice(0, 3).map(challenge => (
                                                     <div
                                                         key={challenge.id}
                                                         className="p-3 rounded-xl bg-primary/5 border border-primary/20"
@@ -667,7 +751,8 @@ const TeacherDashboard = () => {
                                                                     className="h-8 gap-1.5 bg-primary hover:bg-primary/90 shadow-sm px-3 active:scale-95 transition-transform"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        const url = `/grade/${challenge.gradeId}/subject/${challenge.subjectId}/topic/${challenge.topicId}/challenge/group/ACTIVITIES/${challenge.pin}?host=true`;
+                                                                        const cat = challenge.category || "ACTIVITIES";
+                                                                        const url = `/grade/${challenge.gradeId}/subject/${challenge.subjectId}/topic/${challenge.topicId}/challenge/group/${cat}/${challenge.pin}?host=true`;
                                                                         console.log("Navigating to Control Panel:", url);
                                                                         navigate(url);
                                                                     }}
@@ -687,7 +772,7 @@ const TeacherDashboard = () => {
                                                         </div>
                                                     </div>
                                                 ))}
-                                                {activeChallenges.length === 0 && (
+                                                {trulyActiveChallenges.length === 0 && (
                                                     <div className="text-center py-8 text-muted-foreground">
                                                         <Gamepad2 className="w-12 h-12 mx-auto mb-2 opacity-30" />
                                                         <p className="text-sm">لا توجد تحديات نشطة</p>
@@ -777,10 +862,43 @@ const TeacherDashboard = () => {
                                                                         عرض
                                                                     </Link>
                                                                 </Button>
-                                                                <Button size="sm" className="flex-1 text-xs" onClick={() => handleCreateChallenge(topic.id, { title: topic.title, gradeId: gId, subjectId: sId })}>
-                                                                    <Gamepad2 className="w-3 h-3 ml-1" />
-                                                                    تحدي
-                                                                </Button>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button size="sm" className="flex-1 text-xs">
+                                                                            <Gamepad2 className="w-3 h-3 ml-1" />
+                                                                            تحدي
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-48">
+                                                                        <DropdownMenuItem 
+                                                                            className="text-xs gap-2 cursor-pointer"
+                                                                            onClick={() => handleCreateChallenge(topic.id, { 
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "ACTIVITIES" 
+                                                                            })}
+                                                                        >
+                                                                            <ListChecks className="w-3.5 h-3.5 text-blue-500" />
+                                                                            أنشطة تفاعلية
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            className="text-xs gap-2 cursor-pointer"
+                                                                            onClick={() => handleCreateChallenge(topic.id, { 
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "GAMES" 
+                                                                            })}
+                                                                        >
+                                                                            <Gamepad2 className="w-3.5 h-3.5 text-purple-500" />
+                                                                            أنشطة تلعيبية
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            className="text-xs gap-2 cursor-pointer font-bold"
+                                                                            onClick={() => handleCreateChallenge(topic.id, { 
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "MIXED" 
+                                                                            })}
+                                                                        >
+                                                                            <Target className="w-3.5 h-3.5 text-emerald-500" />
+                                                                            الكل
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
                                                             </div>
                                                         </div>
                                                     )
@@ -845,12 +963,25 @@ const TeacherDashboard = () => {
                         </div>
                         <DialogTitle className="text-center text-xl">شارك رابط التحدي</DialogTitle>
                         <DialogDescription className="text-center">
-                            تم إنشاء تحدي <span className="font-bold text-foreground">"{createdChallengeInfo?.title}"</span> بنجاح. شارك رمز الانضمام مع طلابك للبدء.
+                            تم {createdChallengeInfo?.scheduledStartTime ? "جدولة" : "إنشاء"} تحدي <span className="font-bold text-foreground">"{createdChallengeInfo?.title}"</span> بنجاح. شارك رمز الانضمام مع طلابك للبدء.
                         </DialogDescription>
                     </DialogHeader>
 
                     {createdChallengeInfo && (
                         <div className="space-y-6 py-4">
+                            {createdChallengeInfo.scheduledStartTime && (
+                                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">موعد البدء المجدول</div>
+                                        <div className="font-bold text-blue-950">
+                                            {new Date(createdChallengeInfo.scheduledStartTime).toLocaleString("ar-EG", { dateStyle: 'medium', timeStyle: 'short' })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex flex-col items-center justify-center bg-muted/50 p-6 rounded-2xl border-2 border-dashed">
                                 <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">رمز التحدي</span>
                                 <span className="text-5xl font-mono font-black text-primary tracking-widest">{createdChallengeInfo.pin}</span>
@@ -908,6 +1039,67 @@ const TeacherDashboard = () => {
                             </div>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Scheduling Dialog */}
+            <Dialog open={!!schedulingTopic} onOpenChange={(open) => !open && setSchedulingTopic(null)}>
+                <DialogContent className="sm:max-w-md" dir="rtl">
+                    <DialogHeader>
+                        <div className="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                            <Calendar className="w-6 h-6" />
+                        </div>
+                        <DialogTitle className="text-center text-xl font-bold">جدولة تحدي جديد</DialogTitle>
+                        <DialogDescription className="text-center">
+                            حدد الموعد الذي سيتمكن فيه الطلاب من الانضمام إلى تحدي <span className="font-bold text-foreground">"{schedulingTopic?.details?.title}"</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-6 py-4">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-primary" />
+                                    وقت البدء:
+                                </label>
+                                <Input 
+                                    type="datetime-local" 
+                                    className="h-11"
+                                    value={scheduledTimes.start}
+                                    onChange={(e) => setScheduledTimes(prev => ({ ...prev, start: e.target.value }))}
+                                />
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-destructive" />
+                                    وقت الانتهاء:
+                                </label>
+                                <Input 
+                                    type="datetime-local" 
+                                    className="h-11"
+                                    value={scheduledTimes.end}
+                                    onChange={(e) => setScheduledTimes(prev => ({ ...prev, end: e.target.value }))}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white font-bold"
+                                onClick={handleConfirmSchedule}
+                            >
+                                تأكيد الجدولة
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-12 border-primary/20"
+                                onClick={() => setSchedulingTopic(null)}
+                            >
+                                إلغاء
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div >

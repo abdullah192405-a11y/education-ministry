@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { encodeTopicMediaForInsert, mapTopicMediaItems, getMediaItemsFromTopicRow } from "@/lib/topicMediaCodec";
+import {
+    CONTENT_VISIBILITY_FOCUS_KEY,
+    parseContentVisibilityFocus,
+    VISITOR_GRADE_CLASS_MODE_KEY,
+    parseVisitorGradeClassMode,
+} from "@/lib/contentVisibility";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -74,9 +81,18 @@ export const useGradeDetail = (slug: string) => {
 
             if (error) throw error;
 
-            // Map student_profiles count to students_count
+            // Map student_profiles count to students_count; decode صوت/رابط المخزّنة كـ TEXT
+            const subjects = (data?.subjects || []).map((s: any) => ({
+                ...s,
+                topics: (s.topics || []).map((t: any) => ({
+                    ...t,
+                    mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(t)),
+                })),
+            }));
+
             return {
                 ...data,
+                subjects,
                 students_count: data?.student_profiles?.length || 0,
             };
         },
@@ -115,11 +131,12 @@ export const useSubject = (id: string, teacherId?: string) => {
 
             if (error) throw error;
 
-            // Map challenge questions for each topic
+            // Map challenge questions for each topic; decode وسائط الدرس
             return {
                 ...data,
                 topics: (data?.topics || []).map((topic: any) => ({
                     ...topic,
+                    mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(topic)),
                     challengeItems: (topic.challengeItems || []).map(mapChallengeQuestion),
                 })),
             };
@@ -150,6 +167,7 @@ export const useTopic = (id: string) => {
             // Map challenge questions from DB snake_case to frontend camelCase
             return {
                 ...data,
+                mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(data)),
                 challengeItems: (data?.challengeItems || []).map(mapChallengeQuestion),
             };
         },
@@ -159,7 +177,40 @@ export const useTopic = (id: string) => {
 
 // --- Challenges ---
 
-export const useChallengeSession = (pin: string) => {
+/** Attach `players` (player_sessions) for host dashboards and join flows. */
+async function mergeSessionWithPlayers<T extends { id: string }>(session: T): Promise<T & { players: unknown[] }> {
+    const { data, error } = await supabase
+        .from("player_sessions")
+        .select(`
+            *,
+            user:users(
+                id,
+                name,
+                details,
+                student_profiles(
+                    grade:grades(name)
+                )
+            )
+        `)
+        .eq("session_id", session.id)
+        .order("joined_at", { ascending: true });
+
+    if (error) {
+        console.warn("mergeSessionWithPlayers: fallback plain players", error.message);
+        const { data: plain } = await supabase
+            .from("player_sessions")
+            .select("*")
+            .eq("session_id", session.id)
+            .order("joined_at", { ascending: true });
+        return { ...session, players: plain || [] };
+    }
+    return { ...session, players: data || [] };
+}
+
+export const useChallengeSession = (
+    pin: string,
+    options?: { refetchInterval?: number | false }
+) => {
     return useQuery({
         queryKey: ["challenge_session", pin],
         queryFn: async () => {
@@ -201,19 +252,20 @@ export const useChallengeSession = (pin: string) => {
                             .single();
                         
                         if (topicData) {
-                            return { ...sessionOnly, topic: topicData };
+                            return mergeSessionWithPlayers({ ...sessionOnly, topic: topicData });
                         }
                     } catch (e) {
                         console.error("Failed to fetch topic separately:", e);
                     }
                 }
                 
-                return sessionOnly;
+                return mergeSessionWithPlayers(sessionOnly);
             }
 
-            return data;
+            return mergeSessionWithPlayers(data);
         },
         enabled: pin.length === 6,
+        refetchInterval: options?.refetchInterval,
     });
 };
 
@@ -235,6 +287,46 @@ export const usePlatformSettings = () => {
                 settings[s.key] = s.value;
             });
             return settings;
+        },
+    });
+};
+
+export const useContentVisibilityFocus = () => {
+    const q = usePlatformSettings();
+    const focus = parseContentVisibilityFocus(q.data?.[CONTENT_VISIBILITY_FOCUS_KEY]);
+    return { ...q, focus };
+};
+
+export const useVisitorGradeClassMode = () => {
+    const q = usePlatformSettings();
+    const mode = parseVisitorGradeClassMode(q.data?.[VISITOR_GRADE_CLASS_MODE_KEY]);
+    return { ...q, mode };
+};
+
+export const useUpsertPlatformSetting = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: { key: string; value: string; type?: string; label?: string | null }) => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("platform_settings")
+                .upsert(
+                    {
+                        key: payload.key,
+                        value: payload.value,
+                        type: payload.type ?? "string",
+                        label: payload.label ?? null,
+                        updated_at: now,
+                    },
+                    { onConflict: "key" }
+                )
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["platform_settings"] });
         },
     });
 };
@@ -639,7 +731,10 @@ export const useHostedSessions = (teacherId: string) => {
     });
 };
 
-export const useSessionResults = (sessionId: string) => {
+export const useSessionResults = (
+    sessionId: string,
+    options?: { refetchInterval?: number | false }
+) => {
     return useQuery({
         queryKey: ["session_results", sessionId],
         queryFn: async () => {
@@ -656,6 +751,7 @@ export const useSessionResults = (sessionId: string) => {
             return data;
         },
         enabled: !!sessionId,
+        refetchInterval: options?.refetchInterval ?? false,
     });
 };
 
@@ -797,11 +893,17 @@ export const useCreateTopic = () => {
                 .single();
             if (error) throw error;
 
-            // Link to teacher profile if provided
+            // Link to teacher profile if provided (required for teacher-scoped RLS on related rows)
             if (teacherId && data.id) {
-                await supabase
+                const { error: linkError } = await supabase
                     .from("_TeacherTopics")
                     .insert([{ A: teacherId, B: data.id }]);
+                if (linkError) {
+                    console.error("_TeacherTopics insert failed:", linkError);
+                    throw new Error(
+                        `فشل ربط الدرس بحساب المعلم: ${linkError.message}. بدون هذا الربط قد يفشل حفظ الوسائط أو الأسئلة.`
+                    );
+                }
             }
 
             return data;
@@ -974,16 +1076,20 @@ export const useSaveTopicMedia = () => {
 
             if (media.length === 0) return [];
 
-            // Insert new media items
-            const mediaPayload = media.map((m, index) => ({
-                topic_id: topicId,
-                type: m.type?.toUpperCase() || "TEXT",
-                url: m.url || null,
-                content: m.content || null,
-                caption: m.caption || null,
-                file_name: m.fileName || null,
-                sort_order: index,
-            }));
+            // Insert new media items (صوت/رابط → TEXT + JSON إذا لم يدعم DB قيم AUDIO/LINK)
+            const mediaPayload = media.map((m, index) => {
+                const row = encodeTopicMediaForInsert(m);
+                return {
+                    topic_id: topicId,
+                    type: row.type,
+                    url: row.url,
+                    content: row.content,
+                    caption: row.caption,
+                    file_name: row.file_name,
+                    pdf_base64: row.pdf_base64,
+                    sort_order: index,
+                };
+            });
 
             console.log("Saving media payload:", JSON.stringify(mediaPayload, null, 2));
 
@@ -1068,7 +1174,10 @@ export const useSaveChallengeQuestions = () => {
                 .from("challenge_questions")
                 .insert(questionsPayload)
                 .select();
-            if (error) throw error;
+            if (error) {
+                console.error("challenge_questions insert:", error);
+                throw new Error(`فشل حفظ أسئلة التحدي: ${error.message}${error.details ? ` (${error.details})` : ""}`);
+            }
             return data;
         },
         onSuccess: (_, variables) => {
@@ -1104,10 +1213,12 @@ export const useCreateChallengeSession = () => {
             mode: string;
             category: string;
             pin?: string;
+            scheduledStartTime?: string;
+            scheduledEndTime?: string;
         }) => {
             const pin = session.pin || Math.floor(100000 + Math.random() * 900000).toString();
             const now = new Date().toISOString();
-            const initialStatus = session.mode === "GROUP" ? "WAITING" : "PLAYING";
+            const initialStatus = (session.mode === "GROUP" && !session.scheduledStartTime) ? "WAITING" : "PLAYING";
 
             const insertData: any = {
                 pin,
@@ -1117,6 +1228,8 @@ export const useCreateChallengeSession = () => {
                 category: session.category,
                 status: initialStatus,
                 started_at: now,
+                scheduled_start_time: session.scheduledStartTime,
+                scheduled_end_time: session.scheduledEndTime,
                 created_at: now,
                 updated_at: now,
             };
@@ -1313,6 +1426,7 @@ export const useSaveChallengeResult = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["recent_challenge_results", variables.userId] });
             queryClient.invalidateQueries({ queryKey: ["hosted_challenge_results"] });
+            queryClient.invalidateQueries({ queryKey: ["session_results", variables.sessionId] });
         }
     });
 };

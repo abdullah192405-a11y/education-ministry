@@ -1,7 +1,7 @@
 // Challenge Types and Game Types
 export interface ContentMedia {
     id?: string;
-    type: "video" | "image" | "text" | "pdf";
+    type: "video" | "image" | "text" | "pdf" | "audio" | "link";
     url?: string;
     content?: string; // For text type
     caption?: string;
@@ -150,17 +150,17 @@ export const gameTypeLabels: Record<GameType, string> = {
 
 export const categoryLabels: Record<ChallengeCategory, { name: string; description: string; icon: string }> = {
     activities: {
-        name: "الأنشطة التفاعلية",
+        name: "الأنشطة التفاعلية فقط",
         description: "أسئلة ممتعة بأنماط مختلفة",
         icon: "💡"
     },
     games: {
-        name: "الأنشطة التلعيبية",
+        name: "الأنشطة التلعيبية فقط",
         description: "تعلّم من خلال اللعب",
         icon: "🎮"
     },
     mixed: {
-        name: "تحدي مختلط",
+        name: "الكل",
         description: "خليط من الألعاب والأسئلة",
         icon: "🎯"
     }

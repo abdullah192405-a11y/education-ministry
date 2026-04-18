@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-    School, BookOpen, GraduationCap, Plus,
-    Search, Filter, MoreVertical, Edit, Trash
+    BookOpen, GraduationCap, Plus,
+    Search, Filter, MoreVertical, Edit, Trash, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGrades } from "@/hooks/useDatabase";
 import {
@@ -24,9 +26,11 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useCreateGrade, useUpdateGrade, useDeleteGrade } from "@/hooks/useDatabase";
+import { useCreateGrade, useUpdateGrade, useDeleteGrade, useUser } from "@/hooks/useDatabase";
+import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { normalizeGradeClassType } from "@/lib/gradeClassType";
 
 const getLevelLabel = (level: string) => {
     switch (level) {
@@ -37,8 +41,22 @@ const getLevelLabel = (level: string) => {
     }
 };
 
+/** Stored in DB (`class_type`); labels are for UI */
+const CLASS_TYPE_OPTIONS = [
+    { value: "تعليمي" as const, label: "تعليمي" },
+    { value: "اثرائي" as const, label: "إثرائي" },
+];
+
+const getClassTypeLabel = (classType: unknown) => {
+    const v = normalizeGradeClassType(classType);
+    return CLASS_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
+};
+
 const GradesTab = () => {
     const { toast } = useToast();
+    const { data: user } = useUser();
+    const coverFileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploadingCover, setIsUploadingCover] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingGrade, setEditingGrade] = useState<any>(null);
@@ -47,7 +65,10 @@ const GradesTab = () => {
         slug: "",
         level: "PRIMARY",
         description: "",
-        cover_image: ""
+        cover_image: "",
+        /** DB column `class_type`: تعليمي | اثرائي */
+        class_type: "تعليمي",
+        is_hidden: false,
     });
 
     const { data: gradesData, isLoading } = useGrades();
@@ -68,7 +89,9 @@ const GradesTab = () => {
                 slug: grade.slug,
                 level: grade.level,
                 description: grade.description || "",
-                cover_image: grade.cover_image || grade.coverImage || ""
+                cover_image: grade.cover_image || grade.coverImage || "",
+                class_type: normalizeGradeClassType(grade.class_type ?? grade.classType),
+                is_hidden: Boolean(grade.is_hidden ?? grade.isHidden),
             });
         } else {
             setEditingGrade(null);
@@ -77,22 +100,33 @@ const GradesTab = () => {
                 slug: "",
                 level: "PRIMARY",
                 description: "",
-                cover_image: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800&auto=format&fit=crop&q=60"
+                cover_image: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800&auto=format&fit=crop&q=60",
+                class_type: "تعليمي",
+                is_hidden: false,
             });
         }
         setIsDialogOpen(true);
     };
 
     const handleSave = async () => {
+        const payload = {
+            name: formData.name.trim(),
+            slug: formData.slug.trim(),
+            level: formData.level,
+            description: formData.description.trim(),
+            cover_image: formData.cover_image.trim() || null,
+            class_type: formData.class_type,
+            is_hidden: formData.is_hidden,
+        };
         try {
             if (editingGrade) {
                 await updateGradeMutation.mutateAsync({
                     id: editingGrade.id,
-                    updates: formData
+                    updates: payload,
                 });
                 toast({ title: "تم التحديث", description: "تم تحديث بيانات الصف بنجاح." });
             } else {
-                await createGradeMutation.mutateAsync(formData);
+                await createGradeMutation.mutateAsync(payload);
                 toast({ title: "تم الإضافة", description: "تم إضافة الصف الجديد بنجاح." });
             }
             setIsDialogOpen(false);
@@ -104,6 +138,41 @@ const GradesTab = () => {
                 title: "خطأ", 
                 description: errorMsg
             });
+        }
+    };
+
+    const handleCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        if (!user?.id) {
+            toast({ title: "تعذر الرفع", description: "يجب تسجيل الدخول لرفع الصور.", variant: "destructive" });
+            return;
+        }
+        if (!file.type.startsWith("image/")) {
+            toast({ title: "نوع غير مدعوم", description: "يرجى اختيار ملف صورة (PNG، JPEG، WebP، GIF).", variant: "destructive" });
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت.", variant: "destructive" });
+            return;
+        }
+        setIsUploadingCover(true);
+        try {
+            const ext = file.name.split(".").pop() || "jpg";
+            const fileName = `grade-cover-${crypto.randomUUID()}.${ext}`;
+            const filePath = `${user.id}/grades/${fileName}`;
+            const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
+            setFormData((prev) => ({ ...prev, cover_image: data.publicUrl }));
+            toast({ title: "تم الرفع", description: "تم تعيين صورة الغلاف من الملف المرفوع." });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "حدث خطأ أثناء الرفع.";
+            console.error("[GradesTab] cover upload:", err);
+            toast({ title: "خطأ في الرفع", description: msg, variant: "destructive" });
+        } finally {
+            setIsUploadingCover(false);
         }
     };
 
@@ -173,9 +242,14 @@ const GradesTab = () => {
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-lg leading-none mb-1">{grade.name}</h3>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {getLevelLabel(grade.level)}
-                                        </Badge>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <Badge variant="secondary" className="text-xs">
+                                                {getLevelLabel(grade.level)}
+                                            </Badge>
+                                            <Badge variant="outline" className="text-xs border-primary/30">
+                                                {getClassTypeLabel(grade.class_type ?? grade.classType)}
+                                            </Badge>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -250,44 +324,126 @@ const GradesTab = () => {
                                 placeholder="مثلاً: الصف الأول الابتدائي"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="level">المرحلة الدراسية</Label>
-                            <Select
-                                value={formData.level}
-                                onValueChange={(value) => setFormData({ ...formData, level: value })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="اختر المرحلة" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="PRIMARY">ابتدائي</SelectItem>
-                                    <SelectItem value="MIDDLE">متوسط</SelectItem>
-                                    <SelectItem value="SECONDARY">ثانوي</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="level">المرحلة الدراسية</Label>
+                                <Select
+                                    value={formData.level}
+                                    onValueChange={(value) => setFormData({ ...formData, level: value })}
+                                >
+                                    <SelectTrigger id="level">
+                                        <SelectValue placeholder="اختر المرحلة" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="PRIMARY">ابتدائي</SelectItem>
+                                        <SelectItem value="MIDDLE">متوسط</SelectItem>
+                                        <SelectItem value="SECONDARY">ثانوي</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="class_type">نوع الصف</Label>
+                                <Select
+                                    value={formData.class_type}
+                                    onValueChange={(value) =>
+                                        setFormData({ ...formData, class_type: value as "تعليمي" | "اثرائي" })
+                                    }
+                                >
+                                    <SelectTrigger id="class_type">
+                                        <SelectValue placeholder="اختر نوع الصف" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {CLASS_TYPE_OPTIONS.map((opt) => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="description">الوصف</Label>
-                            <Input
+                            <Textarea
                                 id="description"
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                 placeholder="وصف مختصر للصف"
+                                rows={4}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="cover_image">رابط صورة الغلاف</Label>
-                            <Input
-                                id="cover_image"
-                                value={formData.cover_image}
-                                onChange={(e) => setFormData({ ...formData, cover_image: e.target.value })}
-                                placeholder="URL للصورة"
+                            <Label htmlFor="cover_image">صورة الغلاف</Label>
+                            <p className="text-sm text-muted-foreground">
+                                ارفع صورة من جهازك أو الصق رابطًا يبدأ بـ <span dir="ltr">https://</span>
+                            </p>
+                            <input
+                                ref={coverFileInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                className="sr-only"
+                                tabIndex={-1}
+                                onChange={handleCoverFile}
+                            />
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="gap-2 shrink-0"
+                                    disabled={isUploadingCover}
+                                    onClick={() => coverFileInputRef.current?.click()}
+                                >
+                                    <Upload className="w-4 h-4" />
+                                    {isUploadingCover ? "جاري الرفع..." : "رفع صورة"}
+                                </Button>
+                                <Input
+                                    id="cover_image"
+                                    dir="ltr"
+                                    className="font-mono text-sm"
+                                    value={formData.cover_image}
+                                    onChange={(e) => setFormData({ ...formData, cover_image: e.target.value })}
+                                    placeholder="https://..."
+                                />
+                            </div>
+                            {formData.cover_image.trim() ? (
+                                <div className="relative mt-2 max-w-sm overflow-hidden rounded-lg border bg-muted/30">
+                                    <img
+                                        src={formData.cover_image.trim()}
+                                        alt=""
+                                        className="h-36 w-full object-cover"
+                                        onError={(ev) => {
+                                            (ev.target as HTMLImageElement).style.display = "none";
+                                        }}
+                                    />
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="is_hidden" className="text-base">
+                                    إخفاء الصف
+                                </Label>
+                                <p className="text-sm text-muted-foreground">
+                                    لن يظهر هذا الصف للطلاب والمعلمين
+                                </p>
+                            </div>
+                            <Switch
+                                id="is_hidden"
+                                checked={formData.is_hidden}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_hidden: checked })}
                             />
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                        <Button onClick={handleSave} disabled={createGradeMutation.isPending || updateGradeMutation.isPending}>
+                        <Button
+                            onClick={handleSave}
+                            disabled={
+                                createGradeMutation.isPending ||
+                                updateGradeMutation.isPending ||
+                                isUploadingCover
+                            }
+                        >
                             {createGradeMutation.isPending || updateGradeMutation.isPending ? "جاري الحفظ..." : "حفظ الصف"}
                         </Button>
                     </DialogFooter>

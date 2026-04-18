@@ -402,35 +402,36 @@ ${userPrompt}
                                     )}
                                 </div>
                                 {file && (
-                                    <div className="flex items-center gap-2 text-sm text-success">
+                                    <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 font-medium">
                                         {fileType === "pdf" ? (
-                                            <FileText className="w-4 h-4" />
+                                            <FileText className="w-4 h-4 shrink-0" />
                                         ) : (
-                                            <ImageIcon className="w-4 h-4" />
+                                            <ImageIcon className="w-4 h-4 shrink-0" />
                                         )}
-                                        <span>{file.name}</span>
-                                        <span className="text-muted-foreground">
+                                        <span className="truncate" title={file.name}>{file.name}</span>
+                                        <span className="text-muted-foreground shrink-0 tabular-nums">
                                             ({(file.size / 1024 / 1024).toFixed(2)} MB)
                                         </span>
                                     </div>
                                 )}
                                 {!file && (
                                     <p className="text-xs text-muted-foreground">
-                                        💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية
+                                        💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية. بعد الاختيار يظهر هنا اسم الملف والحجم.
                                     </p>
                                 )}
                             </TabsContent>
 
                             <TabsContent value="video" className="space-y-3 mt-4">
                                 <div className="space-y-2">
-                                    <div className="relative">
-                                        <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    {/* dir=ltr يمنع تداخل الأيقونة مع النص في الصفحات العربية RTL */}
+                                    <div className="relative" dir="ltr">
+                                        <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                                         <Input
                                             type="url"
                                             placeholder="https://www.youtube.com/watch?v=..."
                                             value={videoUrl}
                                             onChange={(e) => setVideoUrl(e.target.value)}
-                                            className="pl-10"
+                                            className="pl-10 text-left"
                                             disabled={isProcessing}
                                         />
                                     </div>

@@ -44,6 +44,7 @@ const App = () => (
 
           {/* Challenge Routes */}
           <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge" element={<ChallengeModeSelect />} />
+          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category/:pin" element={<SingleChallenge />} />
           <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category" element={<SingleChallenge />} />
           <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/group/:category/:pin" element={<GroupChallenge />} />
 

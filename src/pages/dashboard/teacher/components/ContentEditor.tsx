@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Plus, Edit, Trash2, Save, X, Upload, Video, Image, FileText,
     ChevronDown, ChevronUp, GripVertical, CheckCircle, XCircle,
-    Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2
+    Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
+    Headphones, Link2,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
 import QuestionGameEditor from "./QuestionGameEditor";
@@ -16,6 +17,12 @@ import { supabase } from "@/lib/supabase";
 import { useUser } from "@/hooks/useDatabase";
 import { getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
 
+function normalizeExternalUrl(raw: string): string {
+    const t = raw.trim();
+    if (!t) return "";
+    if (/^https?:\/\//i.test(t)) return t;
+    return `https://${t}`;
+}
 
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
@@ -28,6 +35,8 @@ const mediaTypes = [
     { type: "image" as const, label: "صورة", icon: Image },
     { type: "text" as const, label: "نص", icon: FileText },
     { type: "pdf" as const, label: "PDF", icon: FileType },
+    { type: "audio" as const, label: "صوت", icon: Headphones },
+    { type: "link" as const, label: "رابط", icon: Link2 },
 ];
 
 const targetAudienceOptions = [
@@ -157,6 +166,41 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         }
     };
 
+    const handleAudioUpload = async (file: File) => {
+        if (!file || !user) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الملف الصوتي 25 ميجابايت", variant: "destructive" });
+            return;
+        }
+        setIsUploadingMedia(true);
+        try {
+            const fileExt = file.name.split(".").pop() || "mp3";
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/content/${fileName}`;
+            const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
+            setNewMedia((prev) => ({
+                ...prev,
+                url: data.publicUrl,
+                fileName: file.name,
+            }));
+            toast({ title: "تم الرفع", description: "تم رفع الملف الصوتي بنجاح" });
+        } catch (error: any) {
+            console.error("Audio upload error:", error);
+            toast({
+                title: "خطأ في الرفع",
+                description: error.message || "حدث خطأ أثناء رفع الملف الصوتي.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingMedia(false);
+        }
+    };
+
     const handleSave = async () => {
         setIsSaving(true);
         try {
@@ -180,20 +224,32 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
     // Media handlers
     const saveMedia = () => {
-        // Validate based on media type
+        const normalizedLinkUrl =
+            newMedia.type === "link" ? normalizeExternalUrl(newMedia.url || "") : "";
+        const payload =
+            newMedia.type === "link"
+                ? { ...newMedia, url: normalizedLinkUrl }
+                : newMedia;
+
         const isValid =
-            newMedia.type === "text" ? newMedia.content :
-                newMedia.type === "pdf" ? newMedia.file || newMedia.fileName :
-                    newMedia.url;
+            payload.type === "text"
+                ? payload.content?.trim()
+                : payload.type === "pdf"
+                    ? payload.file || payload.fileName
+                    : payload.type === "link"
+                        ? normalizedLinkUrl
+                        : payload.type === "audio"
+                            ? payload.url?.trim()
+                            : payload.url?.trim();
 
         if (isValid) {
             if (editingMediaIndex !== null) {
                 const newList = [...mediaList];
-                newList[editingMediaIndex] = newMedia;
+                newList[editingMediaIndex] = payload;
                 setMediaList(newList);
                 setEditingMediaIndex(null);
             } else {
-                setMediaList([...mediaList, { ...newMedia }]);
+                setMediaList([...mediaList, { ...payload }]);
             }
             setNewMedia({ type: "video", url: "", caption: "" });
             setShowAddMedia(false);
@@ -351,7 +407,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             {activeTab === "media" && (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <p className="text-muted-foreground">أضف الوسائط التعليمية (فيديوهات، صور، نصوص)</p>
+                        <p className="text-muted-foreground">
+                            أضف الوسائط التعليمية: فيديو، صورة، نص، PDF، صوت، رابط
+                        </p>
                         <Button onClick={() => setShowAddMedia(true)} className="gap-2">
                             <Plus className="w-4 h-4" />
                             إضافة وسيط
@@ -368,13 +426,22 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                             >
                                 <Card className="border-primary/50">
                                     <CardContent className="pt-6 space-y-4">
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-wrap gap-2">
                                             {mediaTypes.map(m => (
                                                 <Button
                                                     key={m.type}
                                                     variant={newMedia.type === m.type ? "default" : "outline"}
                                                     size="sm"
-                                                    onClick={() => setNewMedia({ ...newMedia, type: m.type, url: "", content: "" })}
+                                                    onClick={() => setNewMedia({
+                                                        ...newMedia,
+                                                        type: m.type,
+                                                        url: "",
+                                                        content: "",
+                                                        file: undefined,
+                                                        fileName: undefined,
+                                                        pdfBase64: undefined,
+                                                        imageBase64: undefined,
+                                                    })}
                                                     className="gap-2"
                                                 >
                                                     <m.icon className="w-4 h-4" />
@@ -488,13 +555,42 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     </Button>
                                                 </div>
                                             </div>
-                                        ) : (
+                                        ) : newMedia.type === "audio" ? (
+                                            <div className="space-y-2">
+                                                <Input
+                                                    type="file"
+                                                    accept="audio/*"
+                                                    disabled={isUploadingMedia}
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) handleAudioUpload(file);
+                                                    }}
+                                                />
+                                                {isUploadingMedia && (
+                                                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        جاري رفع الملف الصوتي...
+                                                    </div>
+                                                )}
+                                                {!isUploadingMedia && newMedia.fileName && (
+                                                    <div className="text-sm text-green-600 flex items-center gap-2">
+                                                        <CheckCircle className="w-4 h-4" />
+                                                        {newMedia.fileName}
+                                                    </div>
+                                                )}
+                                                {newMedia.url && (
+                                                    <audio controls src={newMedia.url} className="w-full max-w-md rounded-lg" />
+                                                )}
+                                            </div>
+                                        ) : newMedia.type === "link" ? (
                                             <Input
                                                 value={newMedia.url || ""}
                                                 onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                placeholder="الرابط"
+                                                placeholder="https://example.com أو example.com"
+                                                dir="ltr"
+                                                className="text-left font-mono text-sm"
                                             />
-                                        )}
+                                        ) : null}
 
                                         <Input
                                             value={newMedia.caption || ""}
@@ -538,15 +634,20 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             {media.type === "image" && <Image className="w-5 h-5 text-secondary" />}
                                             {media.type === "text" && <FileText className="w-5 h-5 text-muted-foreground" />}
                                             {media.type === "pdf" && <FileType className="w-5 h-5 text-orange-500" />}
+                                            {media.type === "audio" && <Headphones className="w-5 h-5 text-violet-500" />}
+                                            {media.type === "link" && <Link2 className="w-5 h-5 text-sky-600" />}
                                         </div>
 
                                         <div className="flex-1">
                                             <div className="font-medium text-sm">
-                                                {media.type === "video" ? "فيديو" : media.type === "image" ? "صورة" : media.type === "pdf" ? "PDF" : "نص"}
+                                                {media.type === "video" ? "فيديو" : media.type === "image" ? "صورة" : media.type === "pdf" ? "PDF" : media.type === "audio" ? "صوت" : media.type === "link" ? "رابط" : "نص"}
                                             </div>
                                             <div className="text-xs text-muted-foreground truncate max-w-md">
                                                 {media.type === "text" ? media.content?.substring(0, 100) + "..." :
-                                                    media.type === "pdf" ? media.fileName : media.url}
+                                                    media.type === "pdf" ? media.fileName :
+                                                        media.type === "link" ? media.url :
+                                                            media.type === "audio" ? (media.fileName || media.url) :
+                                                                media.url}
                                             </div>
                                             {media.caption && <div className="text-xs text-primary mt-1">{media.caption}</div>}
                                         </div>

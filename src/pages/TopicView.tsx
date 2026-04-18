@@ -9,7 +9,8 @@ import { Progress } from "@/components/ui/progress";
 import {
     ChevronLeft, ChevronRight, Play, Eye, Clock,
     Trophy, BookOpen, Gamepad2, Users, Zap,
-    FileText, Image as ImageIcon, AlignLeft, Video
+    FileText, Image as ImageIcon, AlignLeft, Video,
+    Headphones, Link2, ExternalLink
 } from "lucide-react";
 import { useTopic, useUpdateTopic } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,7 +77,7 @@ const TopicView = () => {
                 type,
                 url,
                 content: m.content,
-                caption: m.caption || m.file_name || m.type
+                caption: m.caption || m.fileName || m.file_name || m.type
             };
         });
     }, [topic?.mediaItems, topicId]);
@@ -133,6 +134,8 @@ const TopicView = () => {
             case "image": return <ImageIcon className="w-4 h-4" />;
             case "text": return <AlignLeft className="w-4 h-4" />;
             case "pdf": return <FileText className="w-4 h-4" />;
+            case "audio": return <Headphones className="w-4 h-4" />;
+            case "link": return <Link2 className="w-4 h-4" />;
             default: return <BookOpen className="w-4 h-4" />;
         }
     };
@@ -263,6 +266,87 @@ const TopicView = () => {
                             </Button>
                         </div>
                     </div>
+                );
+            }
+            case "audio": {
+                if (!currentMedia.url) {
+                    return (
+                        <div className="w-full min-h-[200px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
+                            <Headphones className="w-16 h-16 text-muted-foreground/30 mb-4" />
+                            <h3 className="text-lg font-bold mb-2">ملف صوتي غير متوفر</h3>
+                            <p className="text-muted-foreground max-w-sm text-sm">
+                                لم يتم العثور على رابط التشغيل. يرجى التواصل مع المعلم.
+                            </p>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="rounded-2xl overflow-hidden border bg-muted/20 p-6 md:p-8 flex flex-col items-center gap-4">
+                        <audio
+                            controls
+                            className="w-full max-w-2xl"
+                            src={currentMedia.url}
+                            preload="metadata"
+                        >
+                            متصفحك لا يدعم تشغيل الصوت.
+                        </audio>
+                        {currentMedia.caption ? (
+                            <p className="text-center text-muted-foreground text-sm md:text-base max-w-2xl">
+                                {currentMedia.caption}
+                            </p>
+                        ) : null}
+                    </div>
+                );
+            }
+            case "link": {
+                if (!currentMedia.url) {
+                    return (
+                        <div className="w-full min-h-[200px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
+                            <Link2 className="w-16 h-16 text-muted-foreground/30 mb-4" />
+                            <h3 className="text-lg font-bold mb-2">رابط غير متوفر</h3>
+                        </div>
+                    );
+                }
+                const linkUrl = currentMedia.url;
+                const isYouTube =
+                    linkUrl.includes("youtube.com") ||
+                    linkUrl.includes("youtu.be");
+                if (isYouTube) {
+                    const embedUrl = getYouTubeEmbedUrl(linkUrl);
+                    return (
+                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
+                            <iframe
+                                src={embedUrl}
+                                title={currentMedia.caption || "رابط فيديو"}
+                                className="w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            />
+                        </div>
+                    );
+                }
+                return (
+                    <Card className="p-8 md:p-10 max-w-2xl mx-auto">
+                        <div className="flex flex-col items-center gap-6 text-center">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                <ExternalLink className="w-8 h-8 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold mb-2">
+                                    {currentMedia.caption || "رابط خارجي"}
+                                </h3>
+                                <p className="text-sm text-muted-foreground break-all mb-6" dir="ltr">
+                                    {linkUrl}
+                                </p>
+                            </div>
+                            <Button size="lg" className="font-bold gap-2" asChild>
+                                <a href={linkUrl} target="_blank" rel="noopener noreferrer">
+                                    فتح الرابط
+                                    <ExternalLink className="w-4 h-4" />
+                                </a>
+                            </Button>
+                        </div>
+                    </Card>
                 );
             }
             default: return null;
