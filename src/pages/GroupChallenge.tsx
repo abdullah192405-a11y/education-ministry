@@ -2379,7 +2379,6 @@ const GroupChallenge = () => {
                                         </motion.div>
                                     )}
 
-                                    <p className="text-muted-foreground italic">"{currentQuestion.explanation}"</p>
                                 </div>
 
                                 {isHost && autoAdvanceCountdown > 0 && (

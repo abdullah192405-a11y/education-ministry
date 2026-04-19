@@ -1662,11 +1662,6 @@ const SingleChallenge = () => {
                                         <div className="font-bold text-red-600">
                                             {selectedAnswer === -1 ? "انتهى الوقت!" : "حاول مرة أخرى"}
                                         </div>
-                                        {currentQuestion.explanation && (
-                                            <div className="text-sm text-muted-foreground mt-2">
-                                                {currentQuestion.explanation}
-                                            </div>
-                                        )}
                                     </div>
                                 )}
                             </motion.div>

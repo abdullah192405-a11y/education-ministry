@@ -352,6 +352,75 @@ ${generatedText}`;
         }
     };
 
+    const normalizeGeneratedItems = (items: Record<string, unknown>[]): Record<string, unknown>[] => {
+        return items.map((item) => {
+            const type = String(item.type || "");
+            const question = String(item.question || "").trim();
+            const explanation = String(item.explanation || "").trim();
+            const rawAnswer = item.correctAnswer;
+            const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : "";
+            const options = Array.isArray(item.options)
+                ? item.options.map((v) => String(v ?? "").trim()).filter(Boolean)
+                : [];
+            const orderItems = Array.isArray(item.orderItems)
+                ? item.orderItems.map((v) => String(v ?? "").trim()).filter(Boolean)
+                : [];
+
+            if (type === "qa" || type === "know_dont_know") {
+                const fallbackAnswer =
+                    explanation ||
+                    (question ? `الإجابة المتوقعة: ${question}` : "أجب باختصار اعتماداً على محتوى المورد.");
+                return {
+                    ...item,
+                    correctAnswer: answerAsText || fallbackAnswer,
+                    explanation:
+                        explanation ||
+                        "هذه الإجابة مستخلصة مباشرة من مورد الدرس المختار، ويمكن اعتمادها كمرجع للتقييم.",
+                };
+            }
+
+            if (type === "true_false") {
+                let normalizedAnswer: number = 0;
+                if (typeof rawAnswer === "number") {
+                    normalizedAnswer = rawAnswer === 1 ? 1 : 0;
+                } else if (typeof rawAnswer === "boolean") {
+                    normalizedAnswer = rawAnswer ? 0 : 1; // true => صح
+                } else if (typeof rawAnswer === "string") {
+                    const low = rawAnswer.trim().toLowerCase();
+                    normalizedAnswer =
+                        low === "1" || low.includes("خطأ") || low === "false"
+                            ? 1
+                            : 0;
+                }
+                return {
+                    ...item,
+                    options: options.length >= 2 ? options.slice(0, 2) : ["صح ✓", "خطأ ✗"],
+                    correctAnswer: normalizedAnswer,
+                };
+            }
+
+            if (type === "order_questions") {
+                const fromAnswerText = answerAsText
+                    ? answerAsText
+                        .split(/\n|،|,|>/)
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                    : [];
+                const normalizedOrder = orderItems.length > 1
+                    ? orderItems
+                    : options.length > 1
+                        ? options
+                        : fromAnswerText;
+                return {
+                    ...item,
+                    orderItems: normalizedOrder,
+                };
+            }
+
+            return item;
+        });
+    };
+
     const transcribeAudioParts = async (
         audioParts: { fileName: string; base64: string; mimeType: string }[],
         apiKey: string
@@ -623,7 +692,9 @@ ${generatedText}`;
                 throw new Error("لم يتم توليد أي محتوى");
             }
 
-            const items = await parseItemsWithRepair(generatedText, apiKey, generateType);
+            const items = normalizeGeneratedItems(
+                await parseItemsWithRepair(generatedText, apiKey, generateType)
+            );
             const questions = items.map((item: any, index: number) => ({
                 ...item,
                 id: item.id || Date.now() + index,
@@ -797,6 +868,7 @@ ${availableTypes}
 - صِغ الأسئلة كجمل مستقلة مباشرة، وممنوع استخدام عبارات إحالية مثل: "كما ترى في الصورة" أو "في الفيديو المعروض" أو "في الرابط أعلاه".
 - إذا كان المصدر صورة أو PDF بصري، استخرج الحقائق أولاً ثم حوّلها مباشرة إلى أسئلة/ألعاب بدون وصف للمصدر نفسه.
 - احرص أن كل عنصر يطابق قالب نوعه تماماً (مثال: matching يحتوي pairs، وwheel_spin يحتوي wheelSegments كاملة، وpuzzle يحتوي correctAnswer + options مناسبة).
+- في نوع qa وknow_dont_know يجب دائماً تعبئة correctAnswer كنص واضح ومباشر، ويُفضّل إضافة explanation موجز يدعم التقييم.
 - لا تترك حقولاً أساسية فارغة، ولا تضف مفاتيح غير لازمة، وتأكد من توافق نوع correctAnswer مع النوع المطلوب.
 - استخدم اللغة العربية الفصحى
 - اجعل المحتوى واضحاً ومفيداً ومستنداً إلى المحتوى المقدم
