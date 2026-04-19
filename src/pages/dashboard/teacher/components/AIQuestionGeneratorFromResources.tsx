@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     FileText, Sparkles, AlertCircle, CheckCircle2,
     Loader2, X, Wand2, Video, Image, FileType,
-    Database, Brain, Zap
+    Database, Brain, Zap, Headphones, Link2
 } from "lucide-react";
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
@@ -37,6 +37,20 @@ const AIQuestionGeneratorFromResources = ({
     const [generateType, setGenerateType] = useState<"questions" | "games" | "both">("both");
     const { toast } = useToast();
 
+    const getGeminiApiKey = (): string => {
+        const key = (import.meta.env.VITE_GEMINI_API_KEY || "").trim();
+        const looksLikePlaceholder =
+            !key ||
+            key === "your_gemini_api_key_here" ||
+            key.toLowerCase().includes("replace_me");
+        if (looksLikePlaceholder) {
+            throw new Error(
+                "مفتاح Gemini API غير مهيأ بشكل صحيح. أضف قيمة صالحة في VITE_GEMINI_API_KEY ثم أعد المحاولة."
+            );
+        }
+        return key;
+    };
+
     // Auto-select all media by default
     useEffect(() => {
         if (media.length > 0) {
@@ -58,6 +72,8 @@ const AIQuestionGeneratorFromResources = ({
             case "image": return <Image className="w-4 h-4 text-blue-500" />;
             case "text": return <FileText className="w-4 h-4 text-green-500" />;
             case "pdf": return <FileType className="w-4 h-4 text-orange-500" />;
+            case "audio": return <Headphones className="w-4 h-4 text-violet-500" />;
+            case "link": return <Link2 className="w-4 h-4 text-sky-600" />;
             default: return <FileText className="w-4 h-4" />;
         }
     };
@@ -68,9 +84,40 @@ const AIQuestionGeneratorFromResources = ({
             case "image": return "صورة";
             case "text": return "نص";
             case "pdf": return "PDF";
+            case "audio": return "صوت";
+            case "link": return "رابط";
             default: return type;
         }
     };
+
+    const normalizeExternalUrl = (raw?: string): string => {
+        const t = (raw || "").trim();
+        if (!t) return "";
+        if (/^https?:\/\//i.test(t)) return t;
+        return `https://${t}`;
+    };
+
+    const guessMimeTypeFromUrl = (url: string): string => {
+        const lower = url.toLowerCase();
+        if (lower.endsWith(".wav")) return "audio/wav";
+        if (lower.endsWith(".ogg")) return "audio/ogg";
+        if (lower.endsWith(".m4a")) return "audio/mp4";
+        if (lower.endsWith(".aac")) return "audio/aac";
+        return "audio/mpeg";
+    };
+
+    const toBase64 = (blob: Blob): Promise<string> =>
+        new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result?.toString() || "";
+                const base64 = result.split(",")[1] || "";
+                if (!base64) reject(new Error("فشل تحويل الملف إلى Base64"));
+                else resolve(base64);
+            };
+            reader.onerror = () => reject(new Error("فشل قراءة الملف"));
+            reader.readAsDataURL(blob);
+        });
 
     // Gather text-based content from resources
     const gatherTextContent = (): string => {
@@ -97,6 +144,16 @@ const AIQuestionGeneratorFromResources = ({
                         ? `🖼️ [صورة]: ${resource.caption}\nرابط: ${resource.url}`
                         : `🖼️ [صورة]: ${resource.url || 'صورة تعليمية'}`;
                     contentParts.push(imageInfo);
+                    break;
+                case "audio":
+                    contentParts.push(
+                        `🎧 [ملف صوتي]: ${resource.caption || resource.fileName || "مقطع صوتي"}\nرابط: ${resource.url || "غير متاح"}`
+                    );
+                    break;
+                case "link":
+                    contentParts.push(
+                        `🔗 [رابط خارجي]: ${resource.caption || "مرجع خارجي"}\nرابط: ${normalizeExternalUrl(resource.url)}`
+                    );
                     break;
             }
         }
@@ -143,16 +200,17 @@ const AIQuestionGeneratorFromResources = ({
     };
 
     // Get Image resources with base64 data for visual analysis
-    const getImageParts = async (): Promise<{ fileName: string; base64: string }[]> => {
+    const getImageParts = async (): Promise<{ fileName: string; base64: string; mimeType: string }[]> => {
         const selectedResources = selectedMedia.map(index => media[index]);
-        const imageParts: { fileName: string; base64: string }[] = [];
+        const imageParts: { fileName: string; base64: string; mimeType: string }[] = [];
 
         for (const resource of selectedResources) {
             if (resource.type === "image") {
                 if (resource.imageBase64) {
                     imageParts.push({
                         fileName: resource.url?.split('/').pop() || 'image.jpg',
-                        base64: resource.imageBase64
+                        base64: resource.imageBase64,
+                        mimeType: "image/jpeg"
                     });
                 } else if (resource.url) {
                     try {
@@ -168,7 +226,8 @@ const AIQuestionGeneratorFromResources = ({
                         if (base64) {
                             imageParts.push({
                                 fileName: resource.url.split('/').pop() || 'image.jpg',
-                                base64: base64
+                                base64: base64,
+                                mimeType: blob.type || "image/jpeg"
                             });
                         }
                     } catch (err) {
@@ -179,6 +238,169 @@ const AIQuestionGeneratorFromResources = ({
         }
 
         return imageParts;
+    };
+
+    const getAudioParts = async (): Promise<{ fileName: string; base64: string; mimeType: string }[]> => {
+        const selectedResources = selectedMedia.map(index => media[index]);
+        const audioParts: { fileName: string; base64: string; mimeType: string }[] = [];
+
+        for (const resource of selectedResources) {
+            if (resource.type !== "audio" || !resource.url) continue;
+            try {
+                const audioUrl = normalizeExternalUrl(resource.url);
+                const response = await fetch(audioUrl);
+                if (!response.ok) continue;
+                const blob = await response.blob();
+                const base64 = await toBase64(blob);
+                audioParts.push({
+                    fileName: resource.fileName || audioUrl.split("/").pop() || "audio-file",
+                    base64,
+                    mimeType: blob.type || guessMimeTypeFromUrl(audioUrl),
+                });
+            } catch (err) {
+                console.warn("Error fetching audio for AI:", err);
+            }
+        }
+
+        return audioParts;
+    };
+
+    const getExternalLinksContext = async (): Promise<string> => {
+        const selectedResources = selectedMedia.map(index => media[index]);
+        const links = selectedResources.filter((m) => m.type === "link" && m.url?.trim());
+        if (links.length === 0) return "";
+
+        const chunks: string[] = [];
+        for (const link of links) {
+            const normalizedUrl = normalizeExternalUrl(link.url);
+            const caption = link.caption?.trim() || "مرجع خارجي";
+            let extractedText = "";
+            try {
+                const proxyUrl = `https://r.jina.ai/http://${normalizedUrl.replace(/^https?:\/\//i, "")}`;
+                const res = await fetch(proxyUrl);
+                if (res.ok) {
+                    const rawText = await res.text();
+                    extractedText = rawText.replace(/\s+/g, " ").trim().slice(0, 6000);
+                }
+            } catch (err) {
+                console.warn("Failed to extract external link content:", normalizedUrl, err);
+            }
+
+            if (extractedText) {
+                chunks.push(`🔗 [محتوى رابط خارجي]: ${caption}\nالرابط: ${normalizedUrl}\nالنص المستخرج:\n${extractedText}`);
+            } else {
+                chunks.push(`🔗 [رابط خارجي]: ${caption}\nالرابط: ${normalizedUrl}\nتعذّر استخراج النص مباشرة، استخدم العنوان/الوصف فقط دون افتراضات زائدة.`);
+            }
+        }
+
+        return chunks.join("\n\n---\n\n");
+    };
+
+    const parseItemsWithRepair = async (
+        generatedText: string,
+        apiKey: string,
+        generateType: "questions" | "games" | "both"
+    ) => {
+        try {
+            return parseAiGeneratedChallengeItems(generatedText);
+        } catch (firstErr) {
+            console.warn("Initial parse failed, trying JSON repair", firstErr);
+            setProgress("جاري إصلاح تنسيق النتائج تلقائياً...");
+
+            const typeHint =
+                generateType === "questions"
+                    ? "أسئلة فقط"
+                    : generateType === "games"
+                        ? "ألعاب فقط"
+                        : "أسئلة وألعاب";
+
+            const repairPrompt = `حوّل النص التالي إلى JSON array صالح فقط وبدون أي نص إضافي.
+المطلوب: ${typeHint}
+قواعد الإصلاح:
+- لا تستخدم markdown أو شرح.
+- كل عنصر يجب أن يحتوي type وquestion وpoints وtimeLimit.
+- matching يجب أن يحتوي pairs.
+- wheel_spin يجب أن يحتوي wheelSegments من 4 إلى 6 عناصر مع question وخيارات وإجابة.
+- shooting يجب أن يحتوي options (4) وcorrectAnswer.
+- puzzle يجب أن يحتوي options وcorrectAnswer.
+- اجعل correctAnswer مناسباً لنوع السؤال.
+
+النص المراد إصلاحه:
+${generatedText}`;
+
+            const repaired = (await generateGeminiContent(apiKey, {
+                contents: [{ parts: [{ text: repairPrompt }] }],
+                generationConfig: {
+                    temperature: 0.2,
+                    topK: 20,
+                    topP: 0.9,
+                    maxOutputTokens: 8192,
+                    responseMimeType: "application/json",
+                },
+            }, {
+                models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+            })) as {
+                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            };
+
+            const repairedText = repaired.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!repairedText) {
+                throw new Error("تعذّر إصلاح تنسيق مخرجات الذكاء الاصطناعي");
+            }
+
+            return parseAiGeneratedChallengeItems(repairedText);
+        }
+    };
+
+    const transcribeAudioParts = async (
+        audioParts: { fileName: string; base64: string; mimeType: string }[],
+        apiKey: string
+    ): Promise<string> => {
+        if (audioParts.length === 0) return "";
+
+        const transcripts: string[] = [];
+        for (const audio of audioParts) {
+            try {
+                setProgress(`جاري تفريغ الملف الصوتي: ${audio.fileName}...`);
+                const transcription = (await generateGeminiContent(apiKey, {
+                    contents: [{
+                        parts: [
+                            {
+                                inline_data: {
+                                    mime_type: audio.mimeType,
+                                    data: audio.base64,
+                                }
+                            },
+                            {
+                                text:
+                                    "استخرج النص المنطوق من هذا الملف الصوتي بدقة. " +
+                                    "أعد الناتج كنص خام فقط بدون تنسيق أو JSON أو شروحات إضافية. " +
+                                    "إذا كان الصوت تعليميًا، حافظ على المصطلحات العلمية كما هي."
+                            }
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        topK: 20,
+                        topP: 0.9,
+                        maxOutputTokens: 8192,
+                    },
+                }, {
+                    models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+                })) as {
+                    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+                };
+
+                const transcriptText = transcription.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+                if (transcriptText) {
+                    transcripts.push(`🎧 [تفريغ صوتي: ${audio.fileName}]\n${transcriptText}`);
+                }
+            } catch (err) {
+                console.warn("Audio transcription failed for:", audio.fileName, err);
+            }
+        }
+
+        return transcripts.join("\n\n---\n\n");
     };
 
     const handleGenerate = async () => {
@@ -214,22 +436,29 @@ const AIQuestionGeneratorFromResources = ({
             setProgress("جاري جلب الصور المحددة...");
             const imageParts = await getImageParts();
 
+            setProgress("جاري جلب الملفات الصوتية المحددة...");
+            const audioParts = await getAudioParts();
+
+            setProgress("جاري استخراج محتوى الروابط الخارجية...");
+            const externalLinksContext = await getExternalLinksContext();
+
             console.log("Text content:", textContent);
             console.log("PDF parts count:", pdfParts.length);
             console.log("Image parts count:", imageParts.length);
+            console.log("Audio parts count:", audioParts.length);
 
             // Check if we have any content
-            if (!textContent.trim() && pdfParts.length === 0 && imageParts.length === 0) {
-                throw new Error("لم يتم العثور على محتوى قابل للتحليل. تأكد من أن الموارد تحتوي على محتوى (نص، صورة أو ملف PDF).");
+            if (!textContent.trim() && !externalLinksContext.trim() && pdfParts.length === 0 && imageParts.length === 0 && audioParts.length === 0) {
+                throw new Error("لم يتم العثور على محتوى قابل للتحليل. تأكد من أن الموارد تحتوي على نص أو صورة أو PDF أو صوت أو رابط صالح.");
             }
 
             setProcessingPhase("analyzing");
             setProgress("جاري تحليل المحتوى بالذكاء الاصطناعي...");
 
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) {
-                throw new Error("لم يتم تكوين مفتاح Gemini API");
-            }
+            const apiKey = getGeminiApiKey();
+
+            setProgress("جاري تفريغ المحتوى الصوتي إلى نص...");
+            const audioTranscriptContext = await transcribeAudioParts(audioParts, apiKey);
 
             // Fetch metadata or transcripts for videos if any
             let videoResourceMetadata = "";
@@ -340,21 +569,31 @@ const AIQuestionGeneratorFromResources = ({
             imageParts.forEach(img => {
                 parts.push({
                     inline_data: {
-                        mime_type: "image/jpeg", // Fallback to jpeg
+                        mime_type: img.mimeType || "image/jpeg",
                         data: img.base64
                     }
                 });
             });
 
+            // We intentionally do not attach raw audio in the final generation call.
+            // Using transcript text is more stable and reduces malformed responses.
+
             setProcessingPhase("generating");
             setProgress("جاري توليد الأسئلة والألعاب...");
 
             // Build comprehensive prompt
-            const fullContent = `${textContent}\n\n${videoResourceMetadata}`;
-            const promptText = buildPrompt(fullContent, prompt, pdfParts.length, imageParts.length, generateType);
+            const fullContent = `${textContent}\n\n${videoResourceMetadata}\n\n${externalLinksContext}\n\n${audioTranscriptContext}`;
+            const promptText = buildPrompt(
+                fullContent,
+                prompt,
+                pdfParts.length,
+                imageParts.length,
+                audioParts.length,
+                generateType
+            );
             parts.push({ text: promptText });
 
-            console.log(`Gemini generateContent (PDFs: ${pdfParts.length}, Images: ${imageParts.length})`);
+            console.log(`Gemini generateContent (PDFs: ${pdfParts.length}, Images: ${imageParts.length}, Audio: ${audioParts.length})`);
 
             const data = (await generateGeminiContent(apiKey, {
                 contents: [{ parts }],
@@ -366,6 +605,7 @@ const AIQuestionGeneratorFromResources = ({
                     responseMimeType: "application/json",
                 },
             }, {
+                models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
                 onRetry: ({ attempt, delayMs, model, reason }) => {
                     const sec = Math.max(1, Math.round(delayMs / 1000));
                     setProgress(
@@ -383,7 +623,7 @@ const AIQuestionGeneratorFromResources = ({
                 throw new Error("لم يتم توليد أي محتوى");
             }
 
-            const items = parseAiGeneratedChallengeItems(generatedText);
+            const items = await parseItemsWithRepair(generatedText, apiKey, generateType);
             const questions = items.map((item: any, index: number) => ({
                 ...item,
                 id: item.id || Date.now() + index,
@@ -405,9 +645,19 @@ const AIQuestionGeneratorFromResources = ({
 
         } catch (error) {
             console.error("Error generating questions:", error);
+            const errorMessage = error instanceof Error ? error.message : "حدث خطأ غير متوقع";
+            const normalizedErrorMessage = errorMessage.toLowerCase();
+            const apiKeyError =
+                normalizedErrorMessage.includes("api key") ||
+                normalizedErrorMessage.includes("api_key") ||
+                normalizedErrorMessage.includes("unauthorized") ||
+                normalizedErrorMessage.includes("permission denied") ||
+                normalizedErrorMessage.includes("invalid key");
             toast({
                 title: "خطأ في التوليد",
-                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                description: apiKeyError
+                    ? "مفتاح Gemini غير صالح أو غير مفعّل. حدّث VITE_GEMINI_API_KEY ثم أعد تشغيل التطبيق."
+                    : errorMessage,
                 variant: "destructive",
             });
             setProgress("");
@@ -417,11 +667,20 @@ const AIQuestionGeneratorFromResources = ({
         }
     };
 
-    const buildPrompt = (textContent: string, userPrompt: string, pdfCount: number = 0, imageCount: number = 0, genType: "questions" | "games" | "both" = "both"): string => {
-        const fileNote = (pdfCount > 0 || imageCount > 0)
-            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF متكامل` : ''}${pdfCount > 0 && imageCount > 0 ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}. 
+    const buildPrompt = (
+        textContent: string,
+        userPrompt: string,
+        pdfCount: number = 0,
+        imageCount: number = 0,
+        audioCount: number = 0,
+        genType: "questions" | "games" | "both" = "both"
+    ): string => {
+        const hasRichFiles = pdfCount > 0 || imageCount > 0 || audioCount > 0;
+        const fileNote = hasRichFiles
+            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF` : ''}${pdfCount > 0 && (imageCount > 0 || audioCount > 0) ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}${imageCount > 0 && audioCount > 0 ? ' و ' : ''}${audioCount > 0 ? `${audioCount} ملف صوتي` : ''}. 
 يجب عليك تحليل **كامل الصفحات** المرفقة (سواء كانت نصوصاً مستخرجة أو صوراً للصفحات). قم بإجراء OCR ذاتي للصور إذا لزم الأمر.
-يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الملفات. لا تتجاهل أي صفحة ولا تستخدم أي معلومات خارجية.`
+حلّل الصوت لاستخراج الأفكار والمفاهيم التعليمية الأساسية قبل بناء الأسئلة.
+يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الموارد. لا تتجاهل أي مورد ولا تستخدم معلومات خارجية.`
             : '';
 
         const contentSection = textContent.trim()
@@ -474,7 +733,7 @@ ${fileNote}${contentSection}
 طلب المعلم:
 ${userPrompt}
 
-${typeInstruction} بناءً **فقط** على المعلومات المستخرجة من الصور أو ملفات PDF أو النصوص المختارة، مع الالتزام بالتنسيق التالي بدقة. لا تولد أي سؤال من خارج المحتوى المختار.
+${typeInstruction} بناءً **فقط** على المعلومات المستخرجة من الصور أو ملفات PDF أو الملفات الصوتية أو النصوص أو الروابط المختارة، مع الالتزام بالتنسيق التالي بدقة. لا تولد أي سؤال من خارج المحتوى المختار.
 ${availableTypes}
 
 يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي:
@@ -534,7 +793,11 @@ ${availableTypes}
 ]
 
 ملاحظات مهمة:
-- التزم بنسبة 100% بالمحتوى المرفق (الصور وPDF والنصوص). ممنوع تماماً توليد أسئلة من خارجها.
+- التزم بنسبة 100% بالمحتوى المرفق (الصور وPDF والنصوص والصوت والروابط). ممنوع تماماً توليد أسئلة من خارجها.
+- صِغ الأسئلة كجمل مستقلة مباشرة، وممنوع استخدام عبارات إحالية مثل: "كما ترى في الصورة" أو "في الفيديو المعروض" أو "في الرابط أعلاه".
+- إذا كان المصدر صورة أو PDF بصري، استخرج الحقائق أولاً ثم حوّلها مباشرة إلى أسئلة/ألعاب بدون وصف للمصدر نفسه.
+- احرص أن كل عنصر يطابق قالب نوعه تماماً (مثال: matching يحتوي pairs، وwheel_spin يحتوي wheelSegments كاملة، وpuzzle يحتوي correctAnswer + options مناسبة).
+- لا تترك حقولاً أساسية فارغة، ولا تضف مفاتيح غير لازمة، وتأكد من توافق نوع correctAnswer مع النوع المطلوب.
 - استخدم اللغة العربية الفصحى
 - اجعل المحتوى واضحاً ومفيداً ومستنداً إلى المحتوى المقدم
 - بالنسبة لعجلة الحظ (wheel_spin): يجب أن تحتوي العجلة على 4-6 شرائح (segments) مع أسئلة كاملة
@@ -550,6 +813,8 @@ ${availableTypes}
     const textCount = selectedMedia.filter(i => media[i].type === "text").length;
     const videoCount = selectedMedia.filter(i => media[i].type === "video").length;
     const imageCount = selectedMedia.filter(i => media[i].type === "image").length;
+    const audioCount = selectedMedia.filter(i => media[i].type === "audio").length;
+    const linkCount = selectedMedia.filter(i => media[i].type === "link").length;
 
     return (
         <motion.div
@@ -647,6 +912,18 @@ ${availableTypes}
                                     <Badge variant="outline" className="gap-1">
                                         <Image className="w-3 h-3" />
                                         {imageCount} صورة
+                                    </Badge>
+                                )}
+                                {audioCount > 0 && (
+                                    <Badge variant="outline" className="gap-1">
+                                        <Headphones className="w-3 h-3" />
+                                        {audioCount} صوت
+                                    </Badge>
+                                )}
+                                {linkCount > 0 && (
+                                    <Badge variant="outline" className="gap-1">
+                                        <Link2 className="w-3 h-3" />
+                                        {linkCount} رابط
                                     </Badge>
                                 )}
                             </div>
