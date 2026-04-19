@@ -1091,7 +1091,7 @@ export const useSaveTopicMedia = () => {
                 };
             });
 
-            console.log("Saving media payload:", JSON.stringify(mediaPayload, null, 2));
+            console.log("[useSaveTopicMedia] inserting rows:", mediaPayload.length);
 
             const { data, error } = await supabase
                 .from("topic_media")

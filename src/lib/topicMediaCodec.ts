@@ -126,8 +126,11 @@ export function encodeTopicMediaForInsert(m: Record<string, unknown>): EncodedTo
     const url = (m.url as string | undefined) ?? null;
     const caption = (m.caption as string | undefined) ?? null;
     const file_name = (m.file_name as string | undefined) ?? (m.fileName as string | undefined) ?? null;
-    const pdf_base64 = (m.pdf_base64 as string | undefined) ?? (m.pdfBase64 as string | undefined) ?? null;
     const content = (m.content as string | undefined) ?? null;
+
+    // Never persist PDF/base64 blobs — multi‑MB strings cause Postgres statement timeouts and huge rows.
+    // `url` points at Supabase Storage; AI flows re-fetch the file from URL when pdfBase64 is absent.
+    const pdf_base64 = null;
 
     return {
         type,

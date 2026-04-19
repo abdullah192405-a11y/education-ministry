@@ -4,11 +4,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     Plus, Edit, Trash2, Save, X, Upload, Video, Image, FileText,
     ChevronDown, ChevronUp, GripVertical, CheckCircle, XCircle,
     Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
-    Headphones, Link2,
+    Headphones, Link2, Sparkles,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
 import QuestionGameEditor from "./QuestionGameEditor";
@@ -16,6 +32,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/hooks/useDatabase";
 import { getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
+import {
+    generateImagePromptFromAnalyzedResources,
+    generateImageBytesFromPrompt,
+    type ImagePromptPreferences,
+    type ImagePromptLanguageMode,
+} from "@/lib/educationalImageGeneration";
 
 function normalizeExternalUrl(raw: string): string {
     const t = raw.trim();
@@ -105,6 +127,23 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     // New media form
     const [newMedia, setNewMedia] = useState<ContentMedia>({ type: "video", url: "", caption: "" });
     const [showAddMedia, setShowAddMedia] = useState(false);
+    const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
+    const [isRenderingAiImage, setIsRenderingAiImage] = useState(false);
+    const [aiImageProgress, setAiImageProgress] = useState("");
+    const [showImagePromptDialog, setShowImagePromptDialog] = useState(false);
+    const [editableImagePrompt, setEditableImagePrompt] = useState("");
+    const [aiImageAudience, setAiImageAudience] = useState<ImagePromptPreferences["audience"]>("general");
+    const [aiImageVisualTheme, setAiImageVisualTheme] =
+        useState<ImagePromptPreferences["visualTheme"]>("infographic");
+    const [aiImageTone, setAiImageTone] = useState<ImagePromptPreferences["tone"]>("friendly");
+    const [aiImageColorMood, setAiImageColorMood] =
+        useState<ImagePromptPreferences["colorMood"]>("bright");
+    const [aiImageExtraNotes, setAiImageExtraNotes] = useState("");
+    /** Language of the prompt text shown in the dialog and sent to the image model (after confirm). */
+    const [aiImagePromptLanguage, setAiImagePromptLanguage] =
+        useState<ImagePromptLanguageMode>("auto");
+    /** Narrows what to read from PDF/images for the prompt (e.g. unit 1 of 7, topic). */
+    const [aiImageContentFocus, setAiImageContentFocus] = useState("");
 
     // Handle PDF file upload - stores as base64 for later AI analysis
     // Handle PDF file upload - stores in Supabase Storage and optionally base64 for AI analysis
@@ -198,6 +237,112 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             });
         } finally {
             setIsUploadingMedia(false);
+        }
+    };
+
+    const handlePrepareImagePromptFromResources = async () => {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey) {
+            toast({
+                title: "مفتاح API غير مهيأ",
+                description: "أضف VITE_GEMINI_API_KEY في ملف .env",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (!user) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+        setIsGeneratingAiImage(true);
+        setAiImageProgress("");
+        try {
+            const preferences: ImagePromptPreferences = {
+                audience: aiImageAudience,
+                visualTheme: aiImageVisualTheme,
+                tone: aiImageTone,
+                colorMood: aiImageColorMood,
+                notes: aiImageExtraNotes,
+            };
+            const prompt = await generateImagePromptFromAnalyzedResources(
+                apiKey,
+                mediaList,
+                title,
+                description,
+                preferences,
+                {
+                    languageMode: aiImagePromptLanguage,
+                    contentFocus: aiImageContentFocus.trim() || undefined,
+                    onProgress: setAiImageProgress,
+                }
+            );
+            setEditableImagePrompt(prompt);
+            setShowImagePromptDialog(true);
+        } catch (error: unknown) {
+            console.error("AI image prompt:", error);
+            toast({
+                title: "فشل تحليل الموارد",
+                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                variant: "destructive",
+            });
+        } finally {
+            setIsGeneratingAiImage(false);
+            setAiImageProgress("");
+        }
+    };
+
+    const handleConfirmGenerateImageFromPrompt = async () => {
+        const trimmed = editableImagePrompt.trim();
+        if (!trimmed) {
+            toast({
+                title: "وصف فارغ",
+                description: "أدخل أو احتفظ بوصف الصورة قبل التوليد.",
+                variant: "destructive",
+            });
+            return;
+        }
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey || !user) return;
+
+        setIsRenderingAiImage(true);
+        try {
+            const { mimeType, base64 } = await generateImageBytesFromPrompt(apiKey, trimmed);
+            const ext = mimeType.includes("png")
+                ? "png"
+                : mimeType.includes("jpeg") || mimeType.includes("jpg")
+                    ? "jpg"
+                    : "png";
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mimeType });
+            const file = new File([blob], `lesson-ai-image-${Date.now()}.${ext}`, { type: mimeType });
+
+            await handleImageUpload(
+                file,
+                (url) => {
+                    setNewMedia((prev) => ({
+                        ...prev,
+                        url,
+                        imageBase64: base64,
+                        caption: prev.caption?.trim()
+                            ? prev.caption
+                            : "صورة توضيحية مُولَّدة من تحليل موارد الدرس",
+                    }));
+                },
+                () => {}
+            );
+            setShowImagePromptDialog(false);
+            setEditableImagePrompt("");
+        } catch (error: unknown) {
+            console.error("AI image generation:", error);
+            toast({
+                title: "فشل توليد الصورة",
+                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                variant: "destructive",
+            });
+        } finally {
+            setIsRenderingAiImage(false);
         }
     };
 
@@ -516,43 +661,215 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             </div>
 
                                         ) : newMedia.type === "image" ? (
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    value={newMedia.url || ""}
-                                                    onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                    placeholder="رابط الصورة"
-                                                    className="flex-1"
-                                                />
-                                                <div className="relative">
-                                                    <input
-                                                        type="file"
-                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                        accept="image/*"
-                                                        disabled={isUploadingMedia}
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (file) {
-                                                                // 1. Convert to base64 for AI analysis
-                                                                const reader = new FileReader();
-                                                                reader.onloadend = () => {
-                                                                    const base64 = reader.result?.toString().split(',')[1];
-                                                                    if (base64) {
-                                                                        setNewMedia(prev => ({ ...prev, imageBase64: base64 }));
-                                                                    }
-                                                                };
-                                                                reader.readAsDataURL(file);
-
-                                                                // 2. Upload to Supabase
-                                                                handleImageUpload(file, (url) => {
-                                                                    setNewMedia(prev => ({ ...prev, url }));
-                                                                }, setIsUploadingMedia);
-                                                            }
-                                                        }}
+                                            <div className="space-y-3">
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        value={newMedia.url || ""}
+                                                        onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
+                                                        placeholder="رابط الصورة"
+                                                        className="flex-1"
                                                     />
-                                                    <Button type="button" variant="outline" disabled={isUploadingMedia}>
-                                                        {isUploadingMedia ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                                                        رفع
+                                                    <div className="relative">
+                                                        <input
+                                                            type="file"
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                            accept="image/*"
+                                                            disabled={isUploadingMedia || isGeneratingAiImage || isRenderingAiImage}
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) {
+                                                                    // 1. Convert to base64 for AI analysis
+                                                                    const reader = new FileReader();
+                                                                    reader.onloadend = () => {
+                                                                        const base64 = reader.result?.toString().split(',')[1];
+                                                                        if (base64) {
+                                                                            setNewMedia(prev => ({ ...prev, imageBase64: base64 }));
+                                                                        }
+                                                                    };
+                                                                    reader.readAsDataURL(file);
+
+                                                                    // 2. Upload to Supabase
+                                                                    handleImageUpload(file, (url) => {
+                                                                        setNewMedia(prev => ({ ...prev, url }));
+                                                                    }, setIsUploadingMedia);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <Button type="button" variant="outline" disabled={isUploadingMedia || isGeneratingAiImage || isRenderingAiImage}>
+                                                            {isUploadingMedia ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                                                            رفع
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                                                    <p className="text-sm font-medium">خيارات الصورة (قبل التحليل)</p>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs text-muted-foreground">
+                                                            لغة وصف التوليد (يظهر في النافذة ثم يُرسَل لتوليد الصورة)
+                                                        </Label>
+                                                        <Select
+                                                            value={aiImagePromptLanguage}
+                                                            onValueChange={(v) =>
+                                                                setAiImagePromptLanguage(
+                                                                    v as ImagePromptLanguageMode
+                                                                )
+                                                            }
+                                                            disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                        >
+                                                            <SelectTrigger className="h-9 text-right">
+                                                                <SelectValue placeholder="اختر" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="auto">
+                                                                    تلقائي — عربي إن كانت المواد عربية
+                                                                </SelectItem>
+                                                                <SelectItem value="ar">عربي</SelectItem>
+                                                                <SelectItem value="en">English</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs text-muted-foreground">
+                                                            نطاق المحتوى من الموارد (اختياري) — أي جزء يُحلَّل لصياغة الوصف
+                                                        </Label>
+                                                        <Textarea
+                                                            value={aiImageContentFocus}
+                                                            onChange={(e) => setAiImageContentFocus(e.target.value)}
+                                                            placeholder="مثال: الملف فيه 7 وحدات — اعتمد الوحدة الأولى فقط. الموضوع: التركيب الضوئي…"
+                                                            rows={3}
+                                                            className="text-sm resize-y min-h-[72px]"
+                                                            disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-xs text-muted-foreground">الجمهور المستهدف</Label>
+                                                            <Select
+                                                                value={aiImageAudience}
+                                                                onValueChange={(v) =>
+                                                                    setAiImageAudience(v as ImagePromptPreferences["audience"])
+                                                                }
+                                                                disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                            >
+                                                                <SelectTrigger className="h-9 text-right">
+                                                                    <SelectValue placeholder="اختر" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="kids">أطفال</SelectItem>
+                                                                    <SelectItem value="teens">مراهقون / ثانوي</SelectItem>
+                                                                    <SelectItem value="adults">بالغون</SelectItem>
+                                                                    <SelectItem value="university">جامعة / دراسات عليا</SelectItem>
+                                                                    <SelectItem value="general">عام / مختلط</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-xs text-muted-foreground">النمط البصري</Label>
+                                                            <Select
+                                                                value={aiImageVisualTheme}
+                                                                onValueChange={(v) =>
+                                                                    setAiImageVisualTheme(
+                                                                        v as ImagePromptPreferences["visualTheme"]
+                                                                    )
+                                                                }
+                                                                disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                            >
+                                                                <SelectTrigger className="h-9 text-right">
+                                                                    <SelectValue placeholder="اختر" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="infographic">إنفوجرافيك</SelectItem>
+                                                                    <SelectItem value="poster">ملصق / بوستر</SelectItem>
+                                                                    <SelectItem value="storybook">قصة مصورة</SelectItem>
+                                                                    <SelectItem value="diagram">مخطط / رسم توضيحي</SelectItem>
+                                                                    <SelectItem value="minimal">بسيط Minimal</SelectItem>
+                                                                    <SelectItem value="textbook">أسلوب كتاب مدرسي</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-xs text-muted-foreground">النبرة</Label>
+                                                            <Select
+                                                                value={aiImageTone}
+                                                                onValueChange={(v) =>
+                                                                    setAiImageTone(v as ImagePromptPreferences["tone"])
+                                                                }
+                                                                disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                            >
+                                                                <SelectTrigger className="h-9 text-right">
+                                                                    <SelectValue placeholder="اختر" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="playful">مرح</SelectItem>
+                                                                    <SelectItem value="friendly">ودّي</SelectItem>
+                                                                    <SelectItem value="formal">رسمي</SelectItem>
+                                                                    <SelectItem value="scientific">علمي</SelectItem>
+                                                                    <SelectItem value="neutral">محايد</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-xs text-muted-foreground">الألوان / الجو</Label>
+                                                            <Select
+                                                                value={aiImageColorMood}
+                                                                onValueChange={(v) =>
+                                                                    setAiImageColorMood(
+                                                                        v as ImagePromptPreferences["colorMood"]
+                                                                    )
+                                                                }
+                                                                disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                            >
+                                                                <SelectTrigger className="h-9 text-right">
+                                                                    <SelectValue placeholder="اختر" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="bright">زاهية</SelectItem>
+                                                                    <SelectItem value="pastel">باستيل</SelectItem>
+                                                                    <SelectItem value="dark">داكن (نص فاتح)</SelectItem>
+                                                                    <SelectItem value="high_contrast">تباين عالٍ</SelectItem>
+                                                                    <SelectItem value="natural">طبيعي / أرضي</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs text-muted-foreground">
+                                                            ملاحظات إضافية (اختياري) — مثال: لغة معيّنة، تجنّب عناصر، شعار
+                                                        </Label>
+                                                        <Textarea
+                                                            value={aiImageExtraNotes}
+                                                            onChange={(e) => setAiImageExtraNotes(e.target.value)}
+                                                            placeholder="مثال: استخدم مصطلحات بالعربية للعناوين الرئيسية فقط…"
+                                                            rows={2}
+                                                            className="text-sm resize-y min-h-[60px]"
+                                                            disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        الخطوة 1: تحليل الوسائط وعرض وصف مختصر يغطي الأفكار الرئيسية. الخطوة 2: بعد التأكيد يُرسل إلى نموذج الصور.
+                                                    </p>
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        className="w-full sm:w-auto gap-2"
+                                                        disabled={isUploadingMedia || isGeneratingAiImage || isRenderingAiImage}
+                                                        onClick={handlePrepareImagePromptFromResources}
+                                                    >
+                                                        {isGeneratingAiImage ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Sparkles className="w-4 h-4" />
+                                                        )}
+                                                        تحليل الموارد وعرض وصف الصورة
                                                     </Button>
+                                                    {aiImageProgress && (
+                                                        <p className="text-xs text-primary flex items-center gap-2">
+                                                            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                                                            {aiImageProgress}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         ) : newMedia.type === "audio" ? (
@@ -803,6 +1120,67 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                     </div>
                 )
             }
+
+            <Dialog
+                open={showImagePromptDialog}
+                onOpenChange={(open) => {
+                    if (!open && isRenderingAiImage) return;
+                    setShowImagePromptDialog(open);
+                    if (!open) setEditableImagePrompt("");
+                }}
+            >
+                <DialogContent className="max-h-[90vh] max-w-2xl gap-4 overflow-y-auto sm:max-w-2xl" dir="rtl">
+                    <DialogHeader>
+                        <DialogTitle>تأكيد وصف توليد الصورة</DialogTitle>
+                        <DialogDescription className="text-right space-y-1">
+                            <span className="block">
+                                النص أدناه هو <strong>نفسه</strong> الذي يُرسل إلى نموذج توليد الصورة عند الضغط على «توليد الصورة»
+                                (يمكنك تعديله قبل الإرسال).
+                            </span>
+                            <span className="block text-muted-foreground">
+                                لفرض لغة الوصف: من «خيارات الصورة» قبل «تحليل الموارد» اختر تلقائي أو عربي أو English.
+                            </span>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Textarea
+                        value={editableImagePrompt}
+                        onChange={(e) => setEditableImagePrompt(e.target.value)}
+                        className="min-h-[min(40vh,320px)] text-sm leading-relaxed"
+                        dir="auto"
+                        disabled={isRenderingAiImage}
+                        placeholder="يُولَّد بالعربية أو الإنجليزية حسب لغة الموارد — يمكنك التعديل هنا..."
+                    />
+                    <DialogFooter className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                                if (!isRenderingAiImage) {
+                                    setShowImagePromptDialog(false);
+                                    setEditableImagePrompt("");
+                                }
+                            }}
+                            disabled={isRenderingAiImage}
+                        >
+                            إلغاء
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleConfirmGenerateImageFromPrompt}
+                            disabled={isRenderingAiImage || !editableImagePrompt.trim()}
+                        >
+                            {isRenderingAiImage ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                                    جاري توليد الصورة...
+                                </>
+                            ) : (
+                                "توليد الصورة"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div >
     );
 };

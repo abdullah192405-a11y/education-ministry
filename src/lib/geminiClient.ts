@@ -73,6 +73,33 @@ function shouldRetry(httpStatus: number, apiCode: number, message: string): bool
     return isRetryableHttp(httpStatus) || isRetryableHttp(apiCode) || isRetryableMessage(message);
 }
 
+/** Gemini often embeds "Please retry in 6.84s" in the error message for 429s. */
+function parseRetryAfterMsFromMessage(message: string): number | null {
+    const m = message.match(/retry in ([\d.]+)\s*s/i);
+    if (!m) return null;
+    const sec = parseFloat(m[1]);
+    if (Number.isNaN(sec) || sec < 0) return null;
+    return Math.ceil(sec * 1000);
+}
+
+/**
+ * Prefer server hint for 429 waits (Retry-After header or message text) over generic backoff.
+ */
+function getPreferred429WaitMs(res: Response, message: string, fallbackMs: number): number {
+    const header = res.headers.get("retry-after");
+    if (header) {
+        const sec = parseFloat(header);
+        if (!Number.isNaN(sec) && sec >= 0) {
+            return Math.min(Math.ceil(sec * 1000), 120_000);
+        }
+    }
+    const fromMsg = parseRetryAfterMsFromMessage(message);
+    if (fromMsg !== null) {
+        return Math.min(fromMsg + 400, 120_000);
+    }
+    return fallbackMs;
+}
+
 /**
  * POST generateContent; retries with backoff, then tries fallback models.
  */
@@ -134,7 +161,9 @@ export async function generateGeminiContent(
                 break;
             }
 
-            const waitMs = withJitter(Math.min(delay, maxDelay));
+            const baseWait = withJitter(Math.min(delay, maxDelay));
+            const waitMs =
+                res.status === 429 ? getPreferred429WaitMs(res, message, baseWait) : baseWait;
             options?.onRetry?.({
                 model,
                 attempt,
