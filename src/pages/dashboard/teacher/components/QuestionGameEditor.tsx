@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,15 @@ import {
     Plus, X, Save, Trash2, ChevronUp, ChevronDown,
     HelpCircle, Gamepad2, CheckCircle, XCircle,
     Clock, Star, Sparkles, ListOrdered, ArrowLeftRight,
-    Target, CircleDot, RotateCcw, Wand2, Database, FileUp
+    Target, CircleDot, RotateCcw, Wand2, Database, FileUp,
+    Image as ImageIcon, Upload, Loader2
 } from "lucide-react";
 import type { ActivityType, GameType, ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import AIQuestionGenerator from "./AIQuestionGenerator";
 import AIQuestionGeneratorFromResources from "./AIQuestionGeneratorFromResources";
+import { useUser } from "@/hooks/useDatabase";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
 
 // Type definitions
 type ItemCategory = "activity" | "game";
@@ -96,6 +100,118 @@ const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestio
         default:
             return baseItem;
     }
+};
+
+interface QuestionImageFieldsProps {
+    imageUrl?: string;
+    onImageUrlChange: (url: string | undefined) => void;
+}
+
+/** Optional image shown with the question: public URL or upload to Supabase `teacher-content`. */
+const QuestionImageFields = ({ imageUrl, onImageUrlChange }: QuestionImageFieldsProps) => {
+    const { data: user } = useUser();
+    const { toast } = useToast();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        if (!user?.id) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+        if (!file.type.startsWith("image/")) {
+            toast({ title: "نوع غير مدعوم", description: "يرجى اختيار ملف صورة", variant: "destructive" });
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت", variant: "destructive" });
+            return;
+        }
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split(".").pop() || "png";
+            const fileName = `q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExt}`;
+            const filePath = `${user.id}/question-images/${fileName}`;
+            const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
+            onImageUrlChange(data.publicUrl);
+            toast({ title: "تم الرفع", description: "تم ربط الصورة بالسؤال" });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "فشل رفع الصورة";
+            console.error(err);
+            toast({
+                title: "خطأ في الرفع",
+                description: message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    return (
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+                <div className="mt-0.5 rounded-md bg-background p-1.5 border">
+                    <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div>
+                    <label className="text-sm font-medium block">صورة مع السؤال (اختياري)</label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        أدخل رابط صورة عام أو ارفع صورة من جهازك (تُحفظ في التخزين السحابي).
+                    </p>
+                </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                    value={imageUrl || ""}
+                    onChange={(e) => {
+                        const v = e.target.value.trim();
+                        onImageUrlChange(v ? v : undefined);
+                    }}
+                    placeholder="https://..."
+                    dir="ltr"
+                    className="sm:flex-1 font-mono text-sm"
+                />
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFile}
+                />
+                <Button
+                    type="button"
+                    variant="secondary"
+                    className="gap-2 shrink-0"
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    رفع صورة
+                </Button>
+            </div>
+            {imageUrl ? (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3 pt-1">
+                    <img
+                        src={imageUrl}
+                        alt=""
+                        className="max-h-40 max-w-full rounded-md border object-contain bg-background"
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="text-destructive shrink-0" onClick={() => onImageUrlChange(undefined)}>
+                        إزالة الصورة
+                    </Button>
+                </div>
+            ) : null}
+        </div>
+    );
 };
 
 const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = false }: QuestionGameEditorProps) => {
@@ -508,6 +624,11 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                             </div>
                                                         </div>
                                                     </div>
+
+                                                    <QuestionImageFields
+                                                        imageUrl={item.imageUrl}
+                                                        onImageUrlChange={(url) => updateItem(index, { imageUrl: url })}
+                                                    />
 
                                                     {/* Type-specific fields */}
                                                     {renderTypeSpecificFields(item, index, updateItem)}
@@ -984,14 +1105,6 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => (
                     </div>
                 ))}
             </div>
-        </div>
-        <div>
-            <label className="text-sm font-medium mb-2 block">رابط صورة اللغز (اختياري)</label>
-            <Input
-                value={item.imageUrl || ""}
-                onChange={(e) => updateItem(index, { imageUrl: e.target.value })}
-                placeholder="https://..."
-            />
         </div>
     </div>
 );
