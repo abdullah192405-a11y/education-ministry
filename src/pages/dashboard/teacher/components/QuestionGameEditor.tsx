@@ -1078,35 +1078,73 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
     );
 };
 
-const PuzzleFields = ({ item, index, updateItem }: FieldProps) => (
-    <div className="space-y-4">
-        <div>
-            <label className="text-sm font-medium mb-2 block">خيارات اللغز</label>
-            <div className="space-y-2">
-                {(item.options || []).map((opt, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                        <Button
-                            variant={item.correctAnswer === i ? "default" : "outline"}
-                            size="icon"
-                            className="h-9 w-9 flex-shrink-0"
-                            onClick={() => updateItem(index, { correctAnswer: i })}
-                        >
-                            {item.correctAnswer === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
-                        </Button>
-                        <Input
-                            value={opt}
-                            onChange={(e) => {
-                                const opts = [...(item.options || [])];
-                                opts[i] = e.target.value;
-                                updateItem(index, { options: opts });
-                            }}
-                            placeholder={`الخيار ${i + 1}`}
-                        />
-                    </div>
-                ))}
+const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
+    const options = item.options || [];
+    const correctAnswerIndex = typeof item.correctAnswer === "number" ? item.correctAnswer : 0;
+
+    const addOption = () => {
+        updateItem(index, { options: [...options, ""] });
+    };
+
+    const removeOption = (optionIndex: number) => {
+        const newOptions = options.filter((_, i) => i !== optionIndex);
+        let newCorrectAnswer = correctAnswerIndex;
+
+        if (optionIndex === correctAnswerIndex) {
+            newCorrectAnswer = 0;
+        } else if (optionIndex < correctAnswerIndex) {
+            newCorrectAnswer = correctAnswerIndex - 1;
+        }
+
+        updateItem(index, {
+            options: newOptions,
+            correctAnswer: Math.max(0, Math.min(newCorrectAnswer, Math.max(newOptions.length - 1, 0))),
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <label className="text-sm font-medium mb-2 block">خيارات اللغز</label>
+                <div className="space-y-2">
+                    {options.map((opt, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                            <Button
+                                variant={correctAnswerIndex === i ? "default" : "outline"}
+                                size="icon"
+                                className="h-9 w-9 flex-shrink-0"
+                                onClick={() => updateItem(index, { correctAnswer: i })}
+                            >
+                                {correctAnswerIndex === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                            </Button>
+                            <Input
+                                value={opt}
+                                onChange={(e) => {
+                                    const opts = [...options];
+                                    opts[i] = e.target.value;
+                                    updateItem(index, { options: opts });
+                                }}
+                                placeholder={`الخيار ${i + 1}`}
+                            />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                onClick={() => removeOption(i)}
+                                disabled={options.length <= 2}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={addOption} className="gap-1">
+                        <Plus className="w-4 h-4" />
+                        إضافة خيار
+                    </Button>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 export default QuestionGameEditor;

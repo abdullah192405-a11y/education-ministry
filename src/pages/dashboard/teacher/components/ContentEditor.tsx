@@ -67,6 +67,8 @@ const targetAudienceOptions = [
     { value: "adults", label: "للكبار" },
 ];
 
+const isYouTubeUrl = (url?: string): boolean => Boolean(url && getYouTubeId(url));
+
 const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const { data: user } = useUser();
     const [activeTab, setActiveTab] = useState<"info" | "media" | "questions">("info");
@@ -959,12 +961,40 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             <div className="font-medium text-sm">
                                                 {media.type === "video" ? "فيديو" : media.type === "image" ? "صورة" : media.type === "pdf" ? "PDF" : media.type === "audio" ? "صوت" : media.type === "link" ? "رابط" : "نص"}
                                             </div>
-                                            <div className="text-xs text-muted-foreground truncate max-w-md">
-                                                {media.type === "text" ? media.content?.substring(0, 100) + "..." :
-                                                    media.type === "pdf" ? media.fileName :
-                                                        media.type === "link" ? media.url :
-                                                            media.type === "audio" ? (media.fileName || media.url) :
-                                                                media.url}
+                                            {media.type === "image" && media.url && (
+                                                <div className="mt-2">
+                                                    <img
+                                                        src={media.url}
+                                                        alt={media.caption || "صورة مرفقة"}
+                                                        className="h-24 w-36 rounded-md border object-cover"
+                                                        loading="lazy"
+                                                    />
+                                                </div>
+                                            )}
+                                            {media.type === "video" && media.url && isYouTubeUrl(media.url) && (
+                                                <div className="relative mt-2 h-24 w-36 overflow-hidden rounded-md border">
+                                                    <img
+                                                        src={getYouTubeThumbnail(media.url) || ""}
+                                                        alt={media.caption || "معاينة فيديو"}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                                        <Play className="w-5 h-5 text-white fill-current" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="mt-2 text-xs text-muted-foreground truncate max-w-md">
+                                                {media.type === "text"
+                                                    ? (media.content?.substring(0, 100) || "") + "..."
+                                                    : media.type === "pdf"
+                                                        ? media.fileName || "ملف PDF"
+                                                        : media.type === "audio"
+                                                            ? media.fileName || "ملف صوتي"
+                                                            : media.type === "link"
+                                                                ? media.url
+                                                                : media.type === "video" && isYouTubeUrl(media.url)
+                                                                    ? "فيديو يوتيوب"
+                                                                    : media.url}
                                             </div>
                                             {media.caption && <div className="text-xs text-primary mt-1">{media.caption}</div>}
                                         </div>
