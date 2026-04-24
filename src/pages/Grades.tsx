@@ -82,7 +82,7 @@ const Grades = () => {
                                 </>
                             ) : visitorGradeMode === "enrichment_only" ? (
                                 <>
-                                    القنوات <span className="text-primary">الإثرائية</span>
+                                    قنوات <span className="text-primary">المحتوى</span>
                                 </>
                             ) : kind === "teaching" ? (
                                 <>
@@ -90,7 +90,7 @@ const Grades = () => {
                                 </>
                             ) : kind === "enrichment" ? (
                                 <>
-                                    القنوات <span className="text-primary">الإثرائية</span>
+                                    قنوات <span className="text-primary">المحتوى</span>
                                 </>
                             ) : (
                                 <>
@@ -101,7 +101,7 @@ const Grades = () => {
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
                             {visitorGradeMode === "enrichment_only" ||
                             (visitorGradeMode === "all" && kind === "enrichment")
-                                ? "اختر قناتك الإثرائية واستكشف المواد والتحديات"
+                                ? "اختر محتواك التفاعلي واصنع التحديات"
                                 : visitorGradeMode === "teaching_only" ||
                                     (visitorGradeMode === "all" && kind === "teaching")
                                   ? "اختر صفك واستكشف المواد التعليمية والتحديات المناسبة لمرحلتك"

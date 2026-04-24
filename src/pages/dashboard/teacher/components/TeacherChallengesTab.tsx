@@ -2,7 +2,7 @@ import {
     Gamepad2, Zap, Users, Calendar, History,
     Trophy, Clock, Eye, Copy, ArrowRight, Play, Radio,
     Trash2, StopCircle, RefreshCw, BarChart3, PieChart,
-    CheckCircle2, XCircle, Info, ChevronLeft, Share2, MessageCircle, Twitter, Send
+    CheckCircle2, XCircle, Info, ChevronLeft, Share2, MessageCircle, Twitter, Send, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
-import { useUser, useHostedChallengeResults, useHostedSessions, useTopic } from "@/hooks/useDatabase";
+import {
+    useUser,
+    useTeacherProfile,
+    useHostedChallengeResults,
+    useHostedSessions,
+    useTeacherSingleChallengeResults,
+    useTopic
+} from "@/hooks/useDatabase";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -99,6 +106,11 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
         return {
             avgAccuracy,
             avgTime,
+            averageScore: Math.round(
+                results.reduce((acc: number, r: any) => acc + (r.score || 0), 0) / results.length
+            ),
+            memberParticipants: results.filter((r: any) => !!r.user?.id).length,
+            guestParticipants: results.filter((r: any) => !r.user?.id).length,
             questionStats: Array.from(questionStats.entries()).map(([id, data]) => ({
                 id,
                 ...data,
@@ -153,6 +165,26 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                             </CardContent>
                         </Card>
                     </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <Card className="bg-sky-50 border-none shadow-none">
+                            <CardContent className="p-4 text-center">
+                                <div className="text-3xl font-black text-sky-600 mb-1">{stats?.averageScore || 0}</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">متوسط النقاط</div>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-indigo-50 border-none shadow-none">
+                            <CardContent className="p-4 text-center">
+                                <div className="text-3xl font-black text-indigo-600 mb-1">{stats?.memberParticipants || 0}</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">أعضاء مسجلون</div>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-violet-50 border-none shadow-none">
+                            <CardContent className="p-4 text-center">
+                                <div className="text-3xl font-black text-violet-600 mb-1">{stats?.guestParticipants || 0}</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">مشاركون ضيوف</div>
+                            </CardContent>
+                        </Card>
+                    </div>
 
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 font-bold text-lg border-r-4 border-primary pr-3 py-1">
@@ -203,11 +235,14 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                                         {index + 1}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-base group-hover:text-primary transition-colors text-start">{res.user?.name || "طالب"}</div>
+                                        <div className="font-bold text-base group-hover:text-primary transition-colors text-start">{res.user?.name || res.name || "طالب"}</div>
                                         <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-2 mt-1">
                                             <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold"><CheckCircle2 className="w-3 h-3" /> {res.correct_answers || 0}</span>
                                             <span className="flex items-center gap-1.5 bg-red-50 text-red-700 px-2 py-0.5 rounded-full border border-red-100 font-bold"><XCircle className="w-3 h-3" /> {res.wrong_answers || 0}</span>
                                             <span className="flex items-center gap-1.5 bg-slate-50 text-slate-700 px-2 py-0.5 rounded-full border border-slate-100 font-bold"><Clock className="w-3 h-3" /> {res.time_taken || 0}ث</span>
+                                            {!res.user?.id && (
+                                                <span className="flex items-center gap-1.5 bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full border border-violet-100 font-bold">زائر</span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="text-end shrink-0">
@@ -227,7 +262,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                 <TabsContent value="questions" className="mt-0 space-y-4">
                     {topic?.challengeItems && topic.challengeItems.length > 0 ? (
                         topic.challengeItems.map((q: any, idx: number) => {
-                            const qStat = stats?.questionStats.find(s => s.id === String(idx)) || { accuracy: 0, correct: 0, total: 0 };
+                            const qStat = stats?.questionStats.find(s => s.id === String(q.id)) || { accuracy: 0, correct: 0, total: 0 };
                             return (
                                 <div key={q.id} className="p-5 rounded-2xl border bg-muted/10 hover:bg-muted/20 transition-colors space-y-4">
                                     <div className="flex items-start justify-between gap-4">
@@ -272,8 +307,30 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
 const navigate = useNavigate();
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
     const { data: user } = useUser();
+    const { data: teacherProfile } = useTeacherProfile(user?.id || "");
     const { data: hostedResults } = useHostedChallengeResults(user?.id || "", 500);
     const { data: hostedSessions, isLoading } = useHostedSessions(user?.id || "");
+    const { data: topicOwnedSingleResults } = useTeacherSingleChallengeResults(teacherProfile?.id || "", 1000);
+
+    const downloadChallengeQR = async (link: string, pin: string) => {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1024x1024&data=${encodeURIComponent(link)}`;
+        try {
+            const response = await fetch(qrUrl);
+            if (!response.ok) throw new Error("QR fetch failed");
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = objectUrl;
+            anchor.download = `challenge-join-${pin}.png`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error("Failed to download challenge QR:", error);
+        }
+    };
     
     const scheduledChallenges = useMemo(
         () => activeChallenges.filter(isScheduledTeacherChallenge),
@@ -288,6 +345,22 @@ const navigate = useNavigate();
     // Derive challenge history from hosted sessions AND results
     const historyChallenges = useMemo(() => {
         const map = new Map<string, any>();
+        const playerNameBySessionUser = new Map<string, string>();
+        (hostedSessions || []).forEach((session: any) => {
+            (session.players || []).forEach((player: any) => {
+                const uid = player.user_id || player.user?.id;
+                if (!uid) return;
+                if (!playerNameBySessionUser.has(`${session.id}:${uid}`)) {
+                    playerNameBySessionUser.set(`${session.id}:${uid}`, player.name || player.user?.name || "طالب");
+                }
+            });
+        });
+        const mergedResults = [
+            ...(hostedResults || []),
+            ...((topicOwnedSingleResults || []).filter((single: any) =>
+                !(hostedResults || []).some((r: any) => r.id === single.id)
+            ))
+        ];
 
         // 1. Process Finished Sessions
         (hostedSessions || []).forEach((session: any) => {
@@ -310,7 +383,7 @@ const navigate = useNavigate();
         });
 
         // 2. Process Results
-        (hostedResults || []).forEach((r: any) => {
+        (mergedResults || []).forEach((r: any) => {
             const sessionId = r.session_id || r.sessionId || r.id;
             if (!map.has(sessionId)) {
                 map.set(sessionId, {
@@ -329,15 +402,80 @@ const navigate = useNavigate();
                 });
             }
             const ch = map.get(sessionId)!;
+            const resultUserId = r.user_id || r.user?.id;
+            const fallbackName = resultUserId
+                ? playerNameBySessionUser.get(`${sessionId}:${resultUserId}`) || playerNameBySessionUser.get(`${r.session?.id}:${resultUserId}`)
+                : undefined;
+            const normalizedResult = {
+                ...r,
+                name: r.name || r.user?.name || fallbackName || "طالب",
+            };
             ch.finishedPlayers += 1;
-            ch.resultsList.push(r);
+            ch.resultsList.push(normalizedResult);
             ch.totalScore += r.percentage || r.score || 0;
             if ((r.score || 0) > ch.topScore) {
                 ch.topScore = r.score || 0;
-                ch.topStudent = r.user?.name || "طالب";
+                ch.topStudent = normalizedResult.name;
             }
             if (ch.finishedPlayers > ch.participants) {
                 ch.participants = ch.finishedPlayers;
+            }
+        });
+
+        // 3. Merge guest/non-member completions from player_sessions
+        (hostedSessions || []).forEach((session: any) => {
+            const sessionId = session.id;
+            if (!map.has(sessionId)) return;
+
+            const ch = map.get(sessionId)!;
+            const resultUserIds = new Set(
+                (ch.resultsList || [])
+                    .map((r: any) => r.user_id || r.user?.id)
+                    .filter((id: any) => !!id)
+            );
+
+            const playerOnlyResults = (session.players || [])
+                .filter((p: any) => !p.is_host)
+                .filter((p: any) => {
+                    const uid = p.user_id || p.user?.id;
+                    if (uid && resultUserIds.has(uid)) return false;
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    const played = ca + wa > 0 || (p.score || 0) > 0;
+                    return played;
+                })
+                .map((p: any) => {
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    const percentage = ca + wa > 0 ? Math.round((ca / (ca + wa)) * 100) : 0;
+                    return {
+                        id: `ps-${p.id}`,
+                        user: null,
+                        name: p.name || "زائر",
+                        user_id: p.user_id || null,
+                        session_id: sessionId,
+                        score: p.score || 0,
+                        correct_answers: ca,
+                        wrong_answers: wa,
+                        percentage,
+                        time_taken: p.time_taken || 0,
+                        question_results: [],
+                    };
+                });
+
+            playerOnlyResults.forEach((guestResult: any) => {
+                ch.finishedPlayers += 1;
+                ch.resultsList.push(guestResult);
+                ch.totalScore += guestResult.percentage || guestResult.score || 0;
+                if ((guestResult.score || 0) > ch.topScore) {
+                    ch.topScore = guestResult.score || 0;
+                    ch.topStudent = guestResult.name || "زائر";
+                }
+            });
+
+            const joinedPlayersCount = (session.players || []).filter((p: any) => !p.is_host).length;
+            if (joinedPlayersCount > ch.participants) {
+                ch.participants = joinedPlayersCount;
             }
         });
 
@@ -347,7 +485,7 @@ const navigate = useNavigate();
                 avgScore: ch.finishedPlayers > 0 ? Math.round(ch.totalScore / ch.finishedPlayers) : 0,
             }))
             .sort((a, b) => b.id.localeCompare(a.id));
-    }, [hostedSessions, hostedResults]);
+    }, [hostedSessions, hostedResults, topicOwnedSingleResults]);
 
     return (
         <Tabs defaultValue="active" className="space-y-6" dir="rtl">
@@ -643,6 +781,13 @@ const navigate = useNavigate();
                                                     }}>
                                                         <Copy className="w-4 h-4 ml-2" />
                                                         نسخ الرابط
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        downloadChallengeQR(link, challenge.pin);
+                                                    }}>
+                                                        <Download className="w-4 h-4 ml-2" />
+                                                        تنزيل QR
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>

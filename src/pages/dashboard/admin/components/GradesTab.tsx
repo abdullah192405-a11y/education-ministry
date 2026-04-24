@@ -411,11 +411,11 @@ const GradesTab = () => {
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="font-cairo" dir="rtl">
+                <DialogContent className="max-w-lg font-cairo" dir="rtl">
                     <DialogHeader>
                         <DialogTitle>{editingGrade ? "تعديل الصف الدراسي" : "إضافة صف دراسي جديد"}</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-3 py-2">
                         <div className="space-y-2">
                             <Label htmlFor="name">اسم الصف</Label>
                             <Input
@@ -425,7 +425,7 @@ const GradesTab = () => {
                                 placeholder="مثلاً: الصف الأول الابتدائي"
                             />
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-2">
                                 <Label htmlFor="level">المرحلة الدراسية</Label>
                                 <Select
@@ -470,7 +470,7 @@ const GradesTab = () => {
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                 placeholder="وصف مختصر للصف"
-                                rows={4}
+                                rows={3}
                             />
                         </div>
                         <div className="space-y-2">
@@ -519,7 +519,7 @@ const GradesTab = () => {
                                 </div>
                             ) : null}
                         </div>
-                        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                        <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                             <div className="space-y-0.5">
                                 <Label htmlFor="is_hidden" className="text-base">
                                     إخفاء الصف

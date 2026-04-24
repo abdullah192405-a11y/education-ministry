@@ -82,11 +82,19 @@ ALTER TABLE exams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exam_results ENABLE ROW LEVEL SECURITY;
 
 -- Allow all authenticated users to read exams (they need the PIN/link anyway)
+DROP POLICY IF EXISTS "Allow read exams" ON exams;
+DROP POLICY IF EXISTS "Allow insert exams" ON exams;
+DROP POLICY IF EXISTS "Allow update exams" ON exams;
+DROP POLICY IF EXISTS "Allow delete exams" ON exams;
 CREATE POLICY "Allow read exams" ON exams FOR SELECT USING (true);
 CREATE POLICY "Allow insert exams" ON exams FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow update exams" ON exams FOR UPDATE USING (true);
 CREATE POLICY "Allow delete exams" ON exams FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow read exam_results" ON exam_results;
+DROP POLICY IF EXISTS "Allow insert exam_results" ON exam_results;
+DROP POLICY IF EXISTS "Allow update exam_results" ON exam_results;
+DROP POLICY IF EXISTS "Allow delete exam_results" ON exam_results;
 CREATE POLICY "Allow read exam_results" ON exam_results FOR SELECT USING (true);
 CREATE POLICY "Allow insert exam_results" ON exam_results FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow update exam_results" ON exam_results FOR UPDATE USING (true);

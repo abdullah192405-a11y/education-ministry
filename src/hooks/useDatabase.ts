@@ -115,7 +115,7 @@ export const useSubject = (id: string, teacherId?: string) => {
             quizQuestions:quiz_questions (*),
             challengeItems:challenge_questions (*),
             challengeSessions:challenge_sessions (*),
-            activities:student_topic_activities (id),
+            activities:student_topic_activities (id, student_id, date),
             ${teacherId 
               ? "_TeacherTopics!inner(A, teacher_profiles(id, user:users(id, name, avatar)))" 
               : "_TeacherTopics(teacher_profiles(id, user:users(id, name, avatar)))"}
@@ -157,7 +157,7 @@ export const useTopic = (id: string) => {
           mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, pdf_base64, sort_order),
           quizQuestions:quiz_questions (*),
           challengeItems:challenge_questions (*),
-          activities:student_topic_activities (id)
+          activities:student_topic_activities (id, student_id, date)
         `)
                 .eq("id", id)
                 .single();
@@ -462,10 +462,12 @@ export const useStudentProfile = (userId: string) => {
           grade:grades (*)
         `)
                 .eq("user_id", userId)
-                .single();
+                .maybeSingle();
 
-            if (error) throw error;
-            return data;
+            if (error) {
+                throw error;
+            }
+            return data || null;
         },
         enabled: !!userId,
     });
@@ -707,6 +709,567 @@ export const useHostedChallengeResults = (teacherId: string, limit = 50) => {
             return data;
         },
         enabled: !!teacherId,
+    });
+};
+
+/**
+ * Single challenge attempts on teacher-owned topics.
+ * This captures direct single links where session host may be the student.
+ */
+export const useTeacherSingleChallengeResults = (teacherProfileId: string, limit = 500) => {
+    return useQuery({
+        queryKey: ["teacher_single_challenge_results", teacherProfileId, limit],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("challenge_results")
+                .select(`
+          *,
+          user:users (*),
+          session:challenge_sessions!inner (
+            *,
+            players:player_sessions(
+              id,
+              user_id,
+              name,
+              avatar,
+              user:users(id, name, avatar)
+            ),
+            topic:topics!inner (
+              *,
+              _TeacherTopics!inner (A)
+            )
+          )
+        `)
+                .eq("session.mode", "SINGLE")
+                .eq("session.topic._TeacherTopics.A", teacherProfileId)
+                .order("created_at", { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+            return data;
+        },
+        enabled: !!teacherProfileId,
+    });
+};
+
+/**
+ * Full content report for one topic (teacher dashboard).
+ * Calculates views + single/group challenge attempts and score metrics.
+ */
+export const useTeacherTopicContentReport = (
+    topicId: string,
+    _teacherUserId: string,
+    _teacherProfileId: string
+) => {
+    return useQuery({
+        queryKey: ["teacher_topic_content_report", topicId],
+        queryFn: async () => {
+            const normalizeSparseMetrics = (m: any) => {
+                const out = { ...m };
+
+                // Guest/sparse flows may only persist aggregates; fill obvious gaps.
+                if (out.totalAttempts > 0) {
+                    if ((out.uniqueSingleParticipants ?? 0) === 0 && (out.singleAttempts ?? 0) > 0) {
+                        out.uniqueSingleParticipants = out.singleAttempts;
+                    }
+                    if ((out.uniqueGroupParticipants ?? 0) === 0 && (out.groupAttempts ?? 0) > 0) {
+                        out.uniqueGroupParticipants = out.groupAttempts;
+                    }
+                    if ((out.uniqueParticipants ?? 0) === 0) {
+                        out.uniqueParticipants = Math.max(
+                            out.uniqueSingleParticipants || 0,
+                            out.uniqueGroupParticipants || 0,
+                            Math.min(out.totalAttempts, 1)
+                        );
+                    }
+
+                    if ((out.medianScore ?? 0) === 0 && (out.averageScoreOverall ?? 0) > 0) {
+                        out.medianScore = out.averageScoreOverall;
+                    }
+                    if ((out.lowestScore ?? 0) === 0 && (out.highestScore ?? 0) > 0) {
+                        out.lowestScore = Math.min(out.highestScore, out.averageScoreOverall || out.highestScore);
+                    }
+
+                    // If no per-attempt timestamps are available, infer minimal activity from lastAttemptAt.
+                    if ((out.attemptsToday ?? 0) === 0 && (out.attemptsLast7Days ?? 0) === 0 && out.lastAttemptAt) {
+                        const ts = new Date(out.lastAttemptAt).getTime();
+                        const now = Date.now();
+                        const startOfToday = new Date();
+                        startOfToday.setHours(0, 0, 0, 0);
+                        if (ts >= startOfToday.getTime()) {
+                            out.attemptsToday = out.totalAttempts;
+                        }
+                        if (ts >= now - (7 * 24 * 60 * 60 * 1000)) {
+                            out.attemptsLast7Days = out.totalAttempts;
+                        }
+                        if (ts >= now - (30 * 24 * 60 * 60 * 1000) && (out.activityDaysLast30Days ?? 0) === 0) {
+                            out.activityDaysLast30Days = 1;
+                        }
+                    }
+                }
+
+                return out;
+            };
+
+            const empty = {
+                viewers: 0,
+                uniqueViewers: 0,
+                totalAttempts: 0,
+                singleAttempts: 0,
+                groupAttempts: 0,
+                uniqueParticipants: 0,
+                uniqueSingleParticipants: 0,
+                uniqueGroupParticipants: 0,
+                averageScoreOverall: 0,
+                averageScoreSingle: 0,
+                averageScoreGroup: 0,
+                highestScore: 0,
+                lowestScore: 0,
+                medianScore: 0,
+                passRate: 0,
+                highPerformersCount: 0,
+                lowPerformersCount: 0,
+                attemptsToday: 0,
+                attemptsLast7Days: 0,
+                activityDaysLast30Days: 0,
+                lastAttemptAt: null as string | null,
+                questionAnalytics: [] as Array<{
+                    questionId: string;
+                    questionText: string;
+                    attempts: number;
+                    correct: number;
+                    wrong: number;
+                    accuracy: number;
+                }>,
+            };
+
+            if (!topicId) return empty;
+
+            const [topicRes, activityRes, sessionsRes, cachedReportRes] = await Promise.all([
+                supabase
+                    .from("topics")
+                    .select("id, views, challengeItems:challenge_questions(id, question)")
+                    .eq("id", topicId)
+                    .maybeSingle(),
+                supabase
+                    .from("student_topic_activities")
+                    .select("id, student_id, date")
+                    .eq("topic_id", topicId),
+                supabase
+                    .from("challenge_sessions")
+                    .select(`
+                        id,
+                        mode,
+                        host_id,
+                        topic_id
+                    `)
+                    .eq("topic_id", topicId)
+                    .in("mode", ["GROUP", "SINGLE"]),
+                supabase
+                    .from("topic_content_reports")
+                    .select("*")
+                    .eq("topic_id", topicId)
+                    .maybeSingle(),
+            ]);
+
+            if (topicRes.error) throw topicRes.error;
+            if (activityRes.error) throw activityRes.error;
+            if (sessionsRes.error) throw sessionsRes.error;
+            if (cachedReportRes.error) throw cachedReportRes.error;
+
+            const topicViews = Number(topicRes.data?.views || 0);
+            const activities = activityRes.data || [];
+            const sessions = sessionsRes.data || [];
+            const cachedReport = cachedReportRes.data;
+            const sessionIds = sessions.map((s: any) => s.id);
+            const sessionModeById = new Map(sessionIds.map((sid: any) => {
+                const session = sessions.find((s: any) => s.id === sid);
+                return [sid, String(session?.mode || "").toUpperCase()];
+            }));
+
+            if (sessionIds.length === 0) {
+                const liveBase = {
+                    ...empty,
+                    viewers: topicViews + activities.length,
+                    uniqueViewers: new Set(activities.map((a: any) => a.student_id).filter((id: any) => !!id)).size,
+                };
+                if (!cachedReport) return normalizeSparseMetrics(liveBase);
+                return normalizeSparseMetrics({
+                    ...liveBase,
+                    totalAttempts: Math.max(liveBase.totalAttempts, Number(cachedReport.total_attempts || 0)),
+                    singleAttempts: Math.max(liveBase.singleAttempts, Number(cachedReport.single_attempts || 0)),
+                    groupAttempts: Math.max(liveBase.groupAttempts, Number(cachedReport.group_attempts || 0)),
+                    uniqueParticipants: Math.max(liveBase.uniqueParticipants, Number(cachedReport.unique_participants || 0)),
+                    uniqueSingleParticipants: Math.max(liveBase.uniqueSingleParticipants, Number(cachedReport.unique_single_participants || 0)),
+                    uniqueGroupParticipants: Math.max(liveBase.uniqueGroupParticipants, Number(cachedReport.unique_group_participants || 0)),
+                    averageScoreOverall: Math.max(liveBase.averageScoreOverall, Number(cachedReport.average_score_overall || 0)),
+                    averageScoreSingle: Math.max(liveBase.averageScoreSingle, Number(cachedReport.average_score_single || 0)),
+                    averageScoreGroup: Math.max(liveBase.averageScoreGroup, Number(cachedReport.average_score_group || 0)),
+                    highestScore: Math.max(liveBase.highestScore, Number(cachedReport.highest_score || 0)),
+                    passRate: Math.max(liveBase.passRate, Number(cachedReport.pass_rate || 0)),
+                    lastAttemptAt: liveBase.lastAttemptAt || cachedReport.last_attempt_at || null,
+                    questionAnalytics: Array.isArray(cachedReport.question_analytics) ? cachedReport.question_analytics : [],
+                });
+            }
+
+            const { data: results, error: resultsError } = await supabase
+                .from("challenge_results")
+                .select("id, session_id, user_id, score, percentage, created_at")
+                .in("session_id", sessionIds);
+
+            if (resultsError) throw resultsError;
+
+            const groupResults = (results || []).filter((r: any) => sessionModeById.get(r.session_id) === "GROUP");
+            const singleResults = (results || []).filter((r: any) => sessionModeById.get(r.session_id) === "SINGLE");
+
+            const groupSessionIds = sessions
+                .filter((s: any) => String(s.mode || "").toUpperCase() === "GROUP")
+                .map((s: any) => s.id);
+            const singleSessionIds = sessions
+                .filter((s: any) => String(s.mode || "").toUpperCase() === "SINGLE")
+                .map((s: any) => s.id);
+
+            const fetchPlayerSessionsForReport = async (
+                targetSessionIds: string[],
+                withJoinedAt: boolean
+            ) => {
+                const detailedCols = withJoinedAt
+                    ? "id, session_id, user_id, name, score, correct_answers, wrong_answers, time_taken, joined_at"
+                    : "id, session_id, user_id, name, score, correct_answers, wrong_answers, time_taken";
+                const baseCols = "id, session_id, user_id, name, score";
+
+                const tryDetailed = await supabase
+                    .from("player_sessions")
+                    .select(detailedCols)
+                    .in("session_id", targetSessionIds)
+                    .eq("is_host", false);
+
+                if (!tryDetailed.error) {
+                    return tryDetailed.data || [];
+                }
+
+                // Some DBs may miss analytics columns; fallback to minimal stable columns.
+                const tryBase = await supabase
+                    .from("player_sessions")
+                    .select(baseCols)
+                    .in("session_id", targetSessionIds)
+                    .eq("is_host", false);
+
+                if (tryBase.error) throw tryBase.error;
+                return tryBase.data || [];
+            };
+
+            let guestPlayers: any[] = [];
+            if (groupSessionIds.length > 0) {
+                guestPlayers = await fetchPlayerSessionsForReport(groupSessionIds, false);
+            }
+
+            let singlePlayers: any[] = [];
+            if (singleSessionIds.length > 0) {
+                singlePlayers = await fetchPlayerSessionsForReport(singleSessionIds, true);
+            }
+
+            const scoreOf = (r: any) => {
+                const v = Number(r?.percentage ?? r?.score ?? 0);
+                return Number.isFinite(v) ? v : 0;
+            };
+
+            const scoreRowsGroup = groupResults.map((r: any) => ({
+                userKey: r.user_id ? `u:${r.user_id}` : null,
+                score: scoreOf(r),
+                createdAt: r.created_at as string | null,
+            }));
+
+            const scoreRowsSingle = singleResults.map((r: any) => ({
+                userKey: r.user_id ? `u:${r.user_id}` : null,
+                score: scoreOf(r),
+                createdAt: r.created_at as string | null,
+            }));
+
+            // Add non-member players who completed group challenge but may not have challenge_results rows
+            const resultUserIdsBySession = new Map<string, Set<string>>();
+            groupResults.forEach((r: any) => {
+                const sid = r.session?.id || r.session_id;
+                const uid = r.user_id;
+                if (!sid || !uid) return;
+                if (!resultUserIdsBySession.has(sid)) resultUserIdsBySession.set(sid, new Set<string>());
+                resultUserIdsBySession.get(sid)!.add(uid);
+            });
+
+            const guestCompletionRows = guestPlayers
+                .filter((p: any) => {
+                    const sid = p.session_id;
+                    const uid = p.user_id;
+                    if (uid && resultUserIdsBySession.get(sid)?.has(uid)) return false;
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    return ca + wa > 0 || (p.score || 0) > 0;
+                })
+                .map((p: any) => {
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    const pct = ca + wa > 0 ? Math.round((ca / (ca + wa)) * 100) : Number(p.score || 0);
+                    return {
+                        userKey: p.user_id ? `u:${p.user_id}` : p.name ? `n:${p.name}` : `g:${p.id}`,
+                        score: Number.isFinite(pct) ? pct : 0,
+                        createdAt: null as string | null,
+                    };
+                });
+
+            // Include single attempts from player_sessions for non-user/guest flows
+            const singleResultUserIdsBySession = new Map<string, Set<string>>();
+            singleResults.forEach((r: any) => {
+                const sid = r.session_id;
+                const uid = r.user_id;
+                if (!sid || !uid) return;
+                if (!singleResultUserIdsBySession.has(sid)) singleResultUserIdsBySession.set(sid, new Set<string>());
+                singleResultUserIdsBySession.get(sid)!.add(uid);
+            });
+
+            const singlePlayerCompletionRows = singlePlayers
+                .filter((p: any) => {
+                    const sid = p.session_id;
+                    const uid = p.user_id;
+                    if (uid && singleResultUserIdsBySession.get(sid)?.has(uid)) return false;
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    return ca + wa > 0 || (p.score || 0) > 0;
+                })
+                .map((p: any) => {
+                    const ca = p.correct_answers || 0;
+                    const wa = p.wrong_answers || 0;
+                    const pct = ca + wa > 0 ? Math.round((ca / (ca + wa)) * 100) : Number(p.score || 0);
+                    return {
+                        userKey: p.user_id ? `u:${p.user_id}` : p.name ? `n:${p.name}` : `g:${p.id}`,
+                        score: Number.isFinite(pct) ? pct : 0,
+                        createdAt: p.joined_at || null,
+                    };
+                });
+
+            const allGroupRows = [...scoreRowsGroup, ...guestCompletionRows];
+            const allSingleRows = [...scoreRowsSingle, ...singlePlayerCompletionRows];
+            const allRows = [...allGroupRows, ...allSingleRows];
+
+            const questionMap = new Map<string, { questionId: string; questionText: string; attempts: number; correct: number; wrong: number }>();
+            const questionTextById = new Map<string, string>(
+                ((topicRes.data as any)?.challengeItems || []).map((q: any) => [String(q.id), q.question || `سؤال ${q.id}`])
+            );
+            const trackQuestionResult = (questionId: any, isCorrect: boolean) => {
+                if (questionId === undefined || questionId === null) return;
+                const qid = String(questionId);
+                const current = questionMap.get(qid) || {
+                    questionId: qid,
+                    questionText: questionTextById.get(qid) || `سؤال ${qid}`,
+                    attempts: 0,
+                    correct: 0,
+                    wrong: 0,
+                };
+                current.attempts += 1;
+                if (isCorrect) current.correct += 1;
+                else current.wrong += 1;
+                questionMap.set(qid, current);
+            };
+
+            (results || []).forEach((r: any) => {
+                const qResults = Array.isArray(r?.question_results) ? r.question_results : [];
+                qResults.forEach((q: any) => {
+                    const qid = q?.questionId ?? q?.question_id ?? q?.id;
+                    const ok = Boolean(q?.correct ?? q?.isCorrect ?? q?.is_correct);
+                    trackQuestionResult(qid, ok);
+                });
+            });
+
+            const questionAnalytics = Array.from(questionMap.values())
+                .map((q) => ({
+                    ...q,
+                    accuracy: q.attempts > 0 ? Math.round((q.correct / q.attempts) * 100) : 0,
+                }))
+                .sort((a, b) => b.attempts - a.attempts);
+
+            const avg = (arr: Array<{ score: number }>) =>
+                arr.length ? Math.round(arr.reduce((a, r) => a + (r.score || 0), 0) / arr.length) : 0;
+
+            const participantsAll = new Set<string>();
+            const participantsSingle = new Set<string>();
+            const participantsGroup = new Set<string>();
+
+            allGroupRows.forEach((r) => { if (r.userKey) participantsGroup.add(r.userKey); if (r.userKey) participantsAll.add(r.userKey); });
+            allSingleRows.forEach((r) => { if (r.userKey) participantsSingle.add(r.userKey); if (r.userKey) participantsAll.add(r.userKey); });
+
+            const latestAttempt = allRows
+                .map((r) => r.createdAt)
+                .filter((d): d is string => !!d)
+                .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+
+            const totalAttempts = allRows.length;
+            const passedCount = allRows.filter((r) => (r.score || 0) >= 70).length;
+            const highestScore = allRows.length ? Math.max(...allRows.map((r) => r.score || 0)) : 0;
+            const lowestScore = allRows.length ? Math.min(...allRows.map((r) => r.score || 0)) : 0;
+            const sortedScores = allRows.map((r) => r.score || 0).sort((a, b) => a - b);
+            const medianScore = sortedScores.length === 0
+                ? 0
+                : sortedScores.length % 2 === 1
+                    ? sortedScores[Math.floor(sortedScores.length / 2)]
+                    : Math.round((sortedScores[sortedScores.length / 2 - 1] + sortedScores[sortedScores.length / 2]) / 2);
+            const highPerformersCount = allRows.filter((r) => (r.score || 0) >= 90).length;
+            const lowPerformersCount = allRows.filter((r) => (r.score || 0) < 50).length;
+
+            const now = Date.now();
+            const startOfToday = new Date();
+            startOfToday.setHours(0, 0, 0, 0);
+            const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+            const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+            const attemptsToday = allRows.filter((r) => r.createdAt && new Date(r.createdAt).getTime() >= startOfToday.getTime()).length;
+            const attemptsLast7Days = allRows.filter((r) => r.createdAt && new Date(r.createdAt).getTime() >= sevenDaysAgo).length;
+            const activityDaysLast30Days = new Set(
+                allRows
+                    .filter((r) => r.createdAt && new Date(r.createdAt).getTime() >= thirtyDaysAgo)
+                    .map((r) => new Date(r.createdAt as string).toISOString().slice(0, 10))
+            ).size;
+
+            const liveMetrics = {
+                viewers: topicViews + activities.length,
+                uniqueViewers: new Set(activities.map((a: any) => a.student_id).filter((id: any) => !!id)).size,
+                totalAttempts,
+                singleAttempts: allSingleRows.length,
+                groupAttempts: allGroupRows.length,
+                uniqueParticipants: participantsAll.size,
+                uniqueSingleParticipants: participantsSingle.size,
+                uniqueGroupParticipants: participantsGroup.size,
+                averageScoreOverall: avg(allRows),
+                averageScoreSingle: avg(allSingleRows),
+                averageScoreGroup: avg(allGroupRows),
+                highestScore,
+                lowestScore,
+                medianScore,
+                passRate: totalAttempts ? Math.round((passedCount / totalAttempts) * 100) : 0,
+                highPerformersCount,
+                lowPerformersCount,
+                attemptsToday,
+                attemptsLast7Days,
+                activityDaysLast30Days,
+                lastAttemptAt: latestAttempt,
+                questionAnalytics,
+            };
+            if (!cachedReport) return normalizeSparseMetrics(liveMetrics);
+
+            const liveQuestionAnalytics = Array.isArray(liveMetrics.questionAnalytics) ? liveMetrics.questionAnalytics : [];
+            const cachedQuestionAnalytics = Array.isArray(cachedReport.question_analytics) ? cachedReport.question_analytics : [];
+            const mergedQuestionMap = new Map<string, any>();
+            cachedQuestionAnalytics.forEach((q: any) => {
+                const qid = String(q?.questionId || q?.question_id || "");
+                if (!qid) return;
+                mergedQuestionMap.set(qid, {
+                    questionId: qid,
+                    questionText: q?.questionText || q?.question_text || `سؤال ${qid}`,
+                    attempts: Number(q?.attempts || 0),
+                    correct: Number(q?.correct || 0),
+                    wrong: Number(q?.wrong || 0),
+                    accuracy: Number(q?.accuracy || 0),
+                });
+            });
+            liveQuestionAnalytics.forEach((q: any) => {
+                const qid = String(q?.questionId || q?.question_id || "");
+                if (!qid) return;
+                const existing = mergedQuestionMap.get(qid) || {
+                    questionId: qid,
+                    questionText: q?.questionText || q?.question_text || `سؤال ${qid}`,
+                    attempts: 0,
+                    correct: 0,
+                    wrong: 0,
+                    accuracy: 0,
+                };
+                existing.attempts += Number(q?.attempts || 0);
+                existing.correct += Number(q?.correct || 0);
+                existing.wrong += Number(q?.wrong || 0);
+                existing.accuracy = existing.attempts > 0
+                    ? Math.round((existing.correct / existing.attempts) * 100)
+                    : 0;
+                mergedQuestionMap.set(qid, existing);
+            });
+            const mergedQuestionAnalytics = Array.from(mergedQuestionMap.values()).sort((a, b) => b.attempts - a.attempts);
+
+            return normalizeSparseMetrics({
+                ...liveMetrics,
+                totalAttempts: Math.max(liveMetrics.totalAttempts, Number(cachedReport.total_attempts || 0)),
+                singleAttempts: Math.max(liveMetrics.singleAttempts, Number(cachedReport.single_attempts || 0)),
+                groupAttempts: Math.max(liveMetrics.groupAttempts, Number(cachedReport.group_attempts || 0)),
+                uniqueParticipants: Math.max(liveMetrics.uniqueParticipants, Number(cachedReport.unique_participants || 0)),
+                uniqueSingleParticipants: Math.max(liveMetrics.uniqueSingleParticipants, Number(cachedReport.unique_single_participants || 0)),
+                uniqueGroupParticipants: Math.max(liveMetrics.uniqueGroupParticipants, Number(cachedReport.unique_group_participants || 0)),
+                averageScoreOverall: Math.max(liveMetrics.averageScoreOverall, Number(cachedReport.average_score_overall || 0)),
+                averageScoreSingle: Math.max(liveMetrics.averageScoreSingle, Number(cachedReport.average_score_single || 0)),
+                averageScoreGroup: Math.max(liveMetrics.averageScoreGroup, Number(cachedReport.average_score_group || 0)),
+                highestScore: Math.max(liveMetrics.highestScore, Number(cachedReport.highest_score || 0)),
+                passRate: Math.max(liveMetrics.passRate, Number(cachedReport.pass_rate || 0)),
+                lastAttemptAt: liveMetrics.lastAttemptAt || cachedReport.last_attempt_at || null,
+                questionAnalytics: mergedQuestionAnalytics,
+            });
+        },
+        enabled: !!topicId,
+    });
+};
+
+/** Read cached report row from topic_content_reports */
+export const useTopicContentReportRow = (topicId: string) => {
+    return useQuery({
+        queryKey: ["topic_content_report_row", topicId],
+        queryFn: async () => {
+            if (!topicId) return null;
+            const { data, error } = await supabase
+                .from("topic_content_reports")
+                .select("*")
+                .eq("topic_id", topicId)
+                .maybeSingle();
+            if (error) throw error;
+            return data;
+        },
+        enabled: !!topicId,
+    });
+};
+
+/** Upsert cached report row in topic_content_reports */
+export const useUpsertTopicContentReportRow = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            topic_id: string;
+            teacher_user_id?: string | null;
+            viewers: number;
+            unique_viewers: number;
+            total_attempts: number;
+            single_attempts: number;
+            group_attempts: number;
+            unique_participants: number;
+            unique_single_participants: number;
+            unique_group_participants: number;
+            average_score_overall: number;
+            average_score_single: number;
+            average_score_group: number;
+            highest_score: number;
+            pass_rate: number;
+            last_attempt_at?: string | null;
+        }) => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("topic_content_reports")
+                .upsert(
+                    {
+                        ...payload,
+                        computed_at: now,
+                        updated_at: now,
+                    },
+                    { onConflict: "topic_id" }
+                )
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_content_report_row", data.topic_id] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topic_content_report", data.topic_id] });
+        },
     });
 };
 

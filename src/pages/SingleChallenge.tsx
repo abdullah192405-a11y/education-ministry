@@ -586,6 +586,111 @@ const SingleChallenge = () => {
             }
 
             if (!hasFullProfile) {
+                // Guest/visitor flow: persist aggregated single-attempt stats so teacher report updates.
+                try {
+                    const { data: existingReport } = await supabase
+                        .from("topic_content_reports")
+                        .select("*")
+                        .eq("topic_id", topicId)
+                        .maybeSingle();
+
+                    const prevSingleAttempts = Number(existingReport?.single_attempts || 0);
+                    const prevTotalAttempts = Number(existingReport?.total_attempts || 0);
+                    const prevSingleAvg = Number(existingReport?.average_score_single || 0);
+                    const prevOverallAvg = Number(existingReport?.average_score_overall || 0);
+                    const prevHigh = Number(existingReport?.highest_score || 0);
+                    const prevPassRate = Number(existingReport?.pass_rate || 0);
+
+                    const nextSingleAttempts = prevSingleAttempts + 1;
+                    const nextTotalAttempts = prevTotalAttempts + 1;
+                    const nextSingleAvg = Math.round(((prevSingleAvg * prevSingleAttempts) + results.percentage) / Math.max(1, nextSingleAttempts));
+                    const nextOverallAvg = Math.round(((prevOverallAvg * prevTotalAttempts) + results.percentage) / Math.max(1, nextTotalAttempts));
+                    const nextHighest = Math.max(prevHigh, results.percentage);
+                    // Approximate pass-rate update when only aggregate exists
+                    const prevPassedApprox = Math.round((prevPassRate / 100) * prevTotalAttempts);
+                    const nextPassed = prevPassedApprox + (results.percentage >= 70 ? 1 : 0);
+                    const nextPassRate = Math.round((nextPassed / Math.max(1, nextTotalAttempts)) * 100);
+
+                    const prevQuestionAnalytics = Array.isArray(existingReport?.question_analytics)
+                        ? existingReport.question_analytics
+                        : [];
+                    const qaMap = new Map<string, {
+                        questionId: string;
+                        questionText: string;
+                        attempts: number;
+                        correct: number;
+                        wrong: number;
+                        accuracy: number;
+                    }>();
+                    prevQuestionAnalytics.forEach((q: any) => {
+                        const qid = String(q?.questionId || q?.question_id || "");
+                        if (!qid) return;
+                        qaMap.set(qid, {
+                            questionId: qid,
+                            questionText: q?.questionText || q?.question_text || `سؤال ${qid}`,
+                            attempts: Number(q?.attempts || 0),
+                            correct: Number(q?.correct || 0),
+                            wrong: Number(q?.wrong || 0),
+                            accuracy: Number(q?.accuracy || 0),
+                        });
+                    });
+                    results.questionResults.forEach((qr: any, idx: number) => {
+                        const qid = String(qr?.questionId || questions[idx]?.id || idx);
+                        const existingQ = qaMap.get(qid) || {
+                            questionId: qid,
+                            questionText: questions[idx]?.question || `سؤال ${idx + 1}`,
+                            attempts: 0,
+                            correct: 0,
+                            wrong: 0,
+                            accuracy: 0,
+                        };
+                        existingQ.attempts += 1;
+                        if (qr?.correct) existingQ.correct += 1;
+                        else existingQ.wrong += 1;
+                        existingQ.accuracy = existingQ.attempts > 0
+                            ? Math.round((existingQ.correct / existingQ.attempts) * 100)
+                            : 0;
+                        qaMap.set(qid, existingQ);
+                    });
+                    const mergedQuestionAnalytics = Array.from(qaMap.values()).sort((a, b) => b.attempts - a.attempts);
+
+                    const { error: reportUpsertError } = await supabase
+                        .from("topic_content_reports")
+                        .upsert(
+                            {
+                                topic_id: topicId,
+                                viewers: Number(existingReport?.viewers || 0),
+                                unique_viewers: Number(existingReport?.unique_viewers || 0),
+                                total_attempts: nextTotalAttempts,
+                                single_attempts: nextSingleAttempts,
+                                group_attempts: Number(existingReport?.group_attempts || 0),
+                                unique_participants: Number(existingReport?.unique_participants || 0),
+                                unique_single_participants: Number(existingReport?.unique_single_participants || 0),
+                                unique_group_participants: Number(existingReport?.unique_group_participants || 0),
+                                average_score_overall: nextOverallAvg,
+                                average_score_single: nextSingleAvg,
+                                average_score_group: Number(existingReport?.average_score_group || 0),
+                                highest_score: nextHighest,
+                                pass_rate: nextPassRate,
+                                question_analytics: mergedQuestionAnalytics,
+                                last_attempt_at: new Date().toISOString(),
+                                computed_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString(),
+                            },
+                            { onConflict: "topic_id" }
+                        );
+                    if (reportUpsertError) {
+                        throw reportUpsertError;
+                    }
+                } catch (e) {
+                    console.error("[Save] Guest topic_content_reports upsert failed:", e);
+                    toast({
+                        variant: "destructive",
+                        title: "تعذر تحديث إحصائيات المعلم",
+                        description: "فشل حفظ بيانات التقرير من وضع الزائر. راجع صلاحيات قاعدة البيانات (RLS/GRANT).",
+                    });
+                }
+
                 setResultsSaved(true);
                 stop("background");
                 play("achievement");
