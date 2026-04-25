@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -121,8 +121,14 @@ const SingleChallenge = () => {
     // Music control
     const [musicEnabled, setMusicEnabled] = useState(true);
 
+    const soundOverrides = useMemo(() => ({
+        correct: content?.correct_sound_url?.trim() || undefined,
+        wrong: content?.wrong_sound_url?.trim() || undefined,
+        background: content?.answering_background_sound_url?.trim() || undefined,
+    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url]);
+
     // Initialize sound system
-    const { play, stop } = useSound(musicEnabled);
+    const { play, stop } = useSound(true, soundOverrides);
 
     // Initialize game
     // Initialize game
@@ -161,6 +167,14 @@ const SingleChallenge = () => {
 
     const currentQuestion = questions[currentIndex];
 
+    useEffect(() => {
+        if (gameState === "playing" && musicEnabled) {
+            play("background");
+            return;
+        }
+        stop("background");
+    }, [gameState, musicEnabled, play, stop]);
+
     const handleStartGame = () => {
         setGameState("playing");
         setCurrentIndex(0);
@@ -170,9 +184,6 @@ const SingleChallenge = () => {
         setQuestionResults([]);
         setTotalTime(0);
         setResultsSaved(false);
-
-        // Start background music
-        play('background');
 
         startQuestion(0);
     };
@@ -293,6 +304,7 @@ const SingleChallenge = () => {
         const isCorrect = orderItems.every((item, index) => item === correctOrder[index]);
 
         setSelectedAnswer(isCorrect ? "correct" : "wrong");
+        play(isCorrect ? "correct" : "wrong");
         processAnswer(isCorrect, timeTaken);
     };
 
@@ -320,6 +332,7 @@ const SingleChallenge = () => {
                 setTotalTime(prev => prev + timeTaken);
                 setShowResult(true);
                 setSelectedAnswer("correct");
+                play("correct");
                 processAnswer(true, timeTaken);
             }
         }
@@ -398,6 +411,7 @@ const SingleChallenge = () => {
         setShowResult(true);
 
         const isCorrect = answerIdx === wheelSubQuestion.correctAnswer;
+        play(isCorrect ? "correct" : "wrong");
 
         let pointsEarned = 0;
         if (isCorrect) {
@@ -434,10 +448,12 @@ const SingleChallenge = () => {
             // User says they know - they need to verify
             // Just show the answer and give points if correct
             setShowResult(true);
+            play("correct");
             processAnswer(true, timeTaken);
         } else {
             // User says they don't know
             setShowResult(true);
+            play("wrong");
             processAnswer(false, timeTaken);
         }
     };
@@ -457,6 +473,7 @@ const SingleChallenge = () => {
         const isCorrect = user === correct || (correct && user.includes(correct)) || (correct && correct.includes(user));
 
         setSelectedAnswer(isCorrect ? "correct" : "wrong");
+        play(isCorrect ? "correct" : "wrong");
         processAnswer(isCorrect, timeTaken);
     };
 
@@ -2063,12 +2080,7 @@ const SingleChallenge = () => {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => {
-                    setMusicEnabled(!musicEnabled);
-                    if (!musicEnabled) {
-                        play('background');
-                    } else {
-                        stop('background');
-                    }
+                    setMusicEnabled(prev => !prev);
                 }}
                 className="fixed top-24 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all"
             >

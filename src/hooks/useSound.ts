@@ -20,12 +20,19 @@ const SOUNDS: Record<SoundType, string> = {
     background: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3'
 };
 
-export const useSound = (enabled: boolean = true) => {
+type SoundOverrides = Partial<Record<SoundType, string>>;
+
+export const useSound = (enabled: boolean = true, overrides: SoundOverrides = {}) => {
     const audioRefs = useRef<Record<SoundType, HTMLAudioElement>>({} as Record<SoundType, HTMLAudioElement>);
 
     useEffect(() => {
+        const mergedSounds: Record<SoundType, string> = {
+            ...SOUNDS,
+            ...overrides,
+        };
+
         // Preload all sounds
-        Object.entries(SOUNDS).forEach(([type, url]) => {
+        Object.entries(mergedSounds).forEach(([type, url]) => {
             const audio = new Audio(url);
             audio.preload = 'auto';
             if (type === 'background') {
@@ -44,7 +51,7 @@ export const useSound = (enabled: boolean = true) => {
                 audio.src = '';
             });
         };
-    }, []);
+    }, [overrides]);
 
     const play = useCallback((type: SoundType) => {
         if (!enabled) return;

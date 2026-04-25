@@ -78,6 +78,9 @@ interface ExtendedTopic {
     thumbnail: string;
     views: number;
     duration?: string;
+    correct_sound_url?: string | null;
+    wrong_sound_url?: string | null;
+    answering_background_sound_url?: string | null;
     createdAt: string;
     media?: any[];
     quiz?: any[];
@@ -433,6 +436,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         description: topicData.description,
                         thumbnail: topicData.thumbnail,
                         duration: topicData.duration,
+                        correct_sound_url: topicData.correctSoundUrl || null,
+                        wrong_sound_url: topicData.wrongSoundUrl || null,
+                        answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
                     }
                 });
 
@@ -461,6 +467,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
                     duration: topicData.duration,
+                    correct_sound_url: topicData.correctSoundUrl || null,
+                    wrong_sound_url: topicData.wrongSoundUrl || null,
+                    answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
                     views: 0
                 });
 
@@ -598,6 +607,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         media: editingTopic.media || [],
                         quiz: editingTopic.quiz || [],
                         challengeItems: editingTopic.challengeItems || [],
+                        correctSoundUrl: editingTopic.correct_sound_url || "",
+                        wrongSoundUrl: editingTopic.wrong_sound_url || "",
+                        answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
                         views: editingTopic.views,
                         createdAt: editingTopic.createdAt
                     } : undefined}

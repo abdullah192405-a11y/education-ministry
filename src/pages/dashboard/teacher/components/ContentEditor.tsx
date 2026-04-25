@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,8 @@ import {
     type ImagePromptLanguageMode,
 } from "@/lib/educationalImageGeneration";
 
+type SoundOption = { label: string; url: string };
+
 function normalizeExternalUrl(raw: string): string {
     const t = raw.trim();
     if (!t) return "";
@@ -67,6 +69,36 @@ const targetAudienceOptions = [
     { value: "adults", label: "للكبار" },
 ];
 
+const CORRECT_SOUND_PRESETS: SoundOption[] = [
+    { label: "نجاح 1", url: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
+    { label: "نجاح 2", url: "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" },
+    { label: "نجاح 3", url: "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" },
+    { label: "نجاح 4", url: "https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3" },
+    { label: "نجاح 5", url: "https://assets.mixkit.co/active_storage/sfx/218/218-preview.mp3" },
+    { label: "نجاح 6", url: "https://assets.mixkit.co/active_storage/sfx/1114/1114-preview.mp3" },
+    { label: "نجاح 7", url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
+];
+
+const WRONG_SOUND_PRESETS: SoundOption[] = [
+    { label: "خطأ 1", url: "https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3" },
+    { label: "خطأ 2", url: "https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3" },
+    { label: "خطأ 3", url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
+    { label: "خطأ 4", url: "https://assets.mixkit.co/active_storage/sfx/1118/1118-preview.mp3" },
+    { label: "خطأ 5", url: "https://assets.mixkit.co/active_storage/sfx/1018/1018-preview.mp3" },
+    { label: "خطأ 6", url: "https://assets.mixkit.co/active_storage/sfx/2876/2876-preview.mp3" },
+    { label: "خطأ 7", url: "https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3" },
+];
+
+const BACKGROUND_SOUND_PRESETS: SoundOption[] = [
+    { label: "خلفية 1", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
+    { label: "خلفية 2", url: "https://assets.mixkit.co/music/preview/mixkit-games-worldbeat-466.mp3" },
+    { label: "خلفية 3", url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
+    { label: "خلفية 4", url: "https://assets.mixkit.co/music/preview/mixkit-arcade-retro-game-over-213.mp3" },
+    { label: "خلفية 5", url: "https://assets.mixkit.co/music/preview/mixkit-game-level-music-689.mp3" },
+    { label: "خلفية 6", url: "https://assets.mixkit.co/music/preview/mixkit-valley-sunset-127.mp3" },
+    { label: "خلفية 7", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
+];
+
 const isYouTubeUrl = (url?: string): boolean => Boolean(url && getYouTubeId(url));
 
 const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
@@ -76,6 +108,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const correctUploadInputRef = useRef<HTMLInputElement | null>(null);
+    const wrongUploadInputRef = useRef<HTMLInputElement | null>(null);
+    const backgroundUploadInputRef = useRef<HTMLInputElement | null>(null);
 
     const handleImageUpload = async (file: File, onComplete: (url: string) => void, setIsUploading: (val: boolean) => void) => {
         if (!file || !user) {
@@ -114,6 +150,18 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [thumbnail, setThumbnail] = useState(content?.thumbnail || "");
     const [targetAudience, setTargetAudience] = useState<"all" | "children" | "adults">(content?.targetAudience || "all");
     const [duration, setDuration] = useState(content?.duration || "");
+    const [correctSoundUrl, setCorrectSoundUrl] = useState(content?.correctSoundUrl || "");
+    const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
+    const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
+    const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>(
+        content?.correctSoundUrl ? [{ label: "مخصص محفوظ", url: content.correctSoundUrl }] : []
+    );
+    const [customWrongSoundOptions, setCustomWrongSoundOptions] = useState<SoundOption[]>(
+        content?.wrongSoundUrl ? [{ label: "مخصص محفوظ", url: content.wrongSoundUrl }] : []
+    );
+    const [customBackgroundSoundOptions, setCustomBackgroundSoundOptions] = useState<SoundOption[]>(
+        content?.answeringBackgroundSoundUrl ? [{ label: "مخصص محفوظ", url: content.answeringBackgroundSoundUrl }] : []
+    );
 
     // Media
     const [mediaList, setMediaList] = useState<ContentMedia[]>(content?.media || []);
@@ -146,6 +194,93 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         useState<ImagePromptLanguageMode>("auto");
     /** Narrows what to read from PDF/images for the prompt (e.g. unit 1 of 7, topic). */
     const [aiImageContentFocus, setAiImageContentFocus] = useState("");
+
+    const audioMediaOptions = mediaList.filter((m) => m.type === "audio" && m.url?.trim());
+    const uploadedAudioOptions: SoundOption[] = audioMediaOptions.map((media, idx) => ({
+        label: `مرفوع: ${media.caption || media.fileName || `ملف صوتي ${idx + 1}`}`,
+        url: media.url as string,
+    }));
+
+    const getMergedSoundOptions = (preset: SoundOption[], custom: SoundOption[]) => {
+        const seen = new Set<string>();
+        const merged = [...preset, ...uploadedAudioOptions, ...custom];
+        return merged.filter((option) => {
+            if (!option.url || seen.has(option.url)) return false;
+            seen.add(option.url);
+            return true;
+        });
+    };
+
+    const stopPreview = () => {
+        if (previewAudioRef.current) {
+            previewAudioRef.current.pause();
+            previewAudioRef.current.currentTime = 0;
+        }
+    };
+
+    const playPreview = (url?: string) => {
+        if (!url || url === "__default__") {
+            toast({ title: "تنبيه", description: "اختر صوتاً أولاً لمعاينته." });
+            return;
+        }
+        try {
+            stopPreview();
+            const audio = new Audio(url);
+            previewAudioRef.current = audio;
+            audio.volume = 0.6;
+            void audio.play();
+        } catch (error) {
+            console.error("Preview play error:", error);
+            toast({ title: "خطأ", description: "تعذر تشغيل المعاينة", variant: "destructive" });
+        }
+    };
+
+    const uploadSoundOption = async (
+        type: "correct" | "wrong" | "background",
+        file: File
+    ) => {
+        if (!file || !user) {
+            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الملف الصوتي 25 ميجابايت", variant: "destructive" });
+            return;
+        }
+
+        setIsUploadingMedia(true);
+        try {
+            const fileExt = file.name.split(".").pop() || "mp3";
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/content/${fileName}`;
+            const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
+            const option: SoundOption = { label: `مرفوع مباشر: ${file.name}`, url: data.publicUrl };
+
+            if (type === "correct") {
+                setCustomCorrectSoundOptions((prev) => [...prev, option]);
+                setCorrectSoundUrl(option.url);
+            } else if (type === "wrong") {
+                setCustomWrongSoundOptions((prev) => [...prev, option]);
+                setWrongSoundUrl(option.url);
+            } else {
+                setCustomBackgroundSoundOptions((prev) => [...prev, option]);
+                setAnsweringBackgroundSoundUrl(option.url);
+            }
+
+            toast({ title: "تم الرفع", description: "تم رفع الصوت وإضافته إلى القائمة" });
+        } catch (error: any) {
+            console.error("Custom sound upload error:", error);
+            toast({
+                title: "خطأ في الرفع",
+                description: error.message || "حدث خطأ أثناء رفع الملف الصوتي.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingMedia(false);
+        }
+    };
 
     // Handle PDF file upload - stores as base64 for later AI analysis
     // Handle PDF file upload - stores in Supabase Storage and optionally base64 for AI analysis
@@ -358,6 +493,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 thumbnail,
                 targetAudience,
                 duration,
+                correctSoundUrl: correctSoundUrl || null,
+                wrongSoundUrl: wrongSoundUrl || null,
+                answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
                 media: mediaList,
                 quiz: [], // Legacy - keeping for compatibility
                 views: content?.views || 0,
@@ -545,6 +683,133 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                     placeholder="مثال: 10 دقائق"
                                 />
                             </div>
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-4">
+                            <h3 className="text-sm font-semibold">إعدادات أصوات التفاعل</h3>
+                            <p className="text-xs text-muted-foreground">
+                                يمكن تخصيص صوت الإجابة الصحيحة والخاطئة وصوت الخلفية أثناء الإجابة لكل درس.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium block">صوت الإجابة الصحيحة</label>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={correctSoundUrl || "__default__"}
+                                            onChange={(e) => setCorrectSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
+                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        >
+                                            <option value="__default__">الافتراضي</option>
+                                            {getMergedSoundOptions(CORRECT_SOUND_PRESETS, customCorrectSoundOptions).map((preset) => (
+                                                <option key={`correct-preset-${preset.url}`} value={preset.url}>
+                                                    {preset.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(correctSoundUrl)}>
+                                            <Play className="w-4 h-4" />
+                                        </Button>
+                                        <input
+                                            ref={correctUploadInputRef}
+                                            type="file"
+                                            accept="audio/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) void uploadSoundOption("correct", file);
+                                                e.currentTarget.value = "";
+                                            }}
+                                        />
+                                        <Button type="button" variant="outline" size="icon" disabled={isUploadingMedia} onClick={() => correctUploadInputRef.current?.click()}>
+                                            {isUploadingMedia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium block">صوت الإجابة الخاطئة</label>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={wrongSoundUrl || "__default__"}
+                                            onChange={(e) => setWrongSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
+                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        >
+                                            <option value="__default__">الافتراضي</option>
+                                            {getMergedSoundOptions(WRONG_SOUND_PRESETS, customWrongSoundOptions).map((preset) => (
+                                                <option key={`wrong-preset-${preset.url}`} value={preset.url}>
+                                                    {preset.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(wrongSoundUrl)}>
+                                            <Play className="w-4 h-4" />
+                                        </Button>
+                                        <input
+                                            ref={wrongUploadInputRef}
+                                            type="file"
+                                            accept="audio/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) void uploadSoundOption("wrong", file);
+                                                e.currentTarget.value = "";
+                                            }}
+                                        />
+                                        <Button type="button" variant="outline" size="icon" disabled={isUploadingMedia} onClick={() => wrongUploadInputRef.current?.click()}>
+                                            {isUploadingMedia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium block">صوت الخلفية أثناء الإجابة</label>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={answeringBackgroundSoundUrl || "__default__"}
+                                            onChange={(e) => setAnsweringBackgroundSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
+                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        >
+                                            <option value="__default__">الافتراضي</option>
+                                            {getMergedSoundOptions(BACKGROUND_SOUND_PRESETS, customBackgroundSoundOptions).map((preset) => (
+                                                <option key={`bg-preset-${preset.url}`} value={preset.url}>
+                                                    {preset.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(answeringBackgroundSoundUrl)}>
+                                            <Play className="w-4 h-4" />
+                                        </Button>
+                                        <input
+                                            ref={backgroundUploadInputRef}
+                                            type="file"
+                                            accept="audio/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) void uploadSoundOption("background", file);
+                                                e.currentTarget.value = "";
+                                            }}
+                                        />
+                                        <Button type="button" variant="outline" size="icon" disabled={isUploadingMedia} onClick={() => backgroundUploadInputRef.current?.click()}>
+                                            {isUploadingMedia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end">
+                                <Button type="button" variant="ghost" size="sm" onClick={stopPreview} className="gap-2">
+                                    <XCircle className="w-4 h-4" />
+                                    إيقاف المعاينة
+                                </Button>
+                            </div>
+
+                            {audioMediaOptions.length === 0 && (
+                                <p className="text-xs text-amber-600">
+                                    لا توجد ملفات صوتية مرفوعة بعد. أضف وسائط من نوع "صوت" في تبويب الوسائط لتخصيص الأصوات.
+                                </p>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

@@ -112,7 +112,13 @@ const GroupChallenge = () => {
     const updateSessionMutation = useUpdateChallengeSession();
     const updatePlayerMutation = useUpdatePlayerSession();
 
-    const { play, stop } = useSound(musicEnabled);
+    const soundOverrides = useMemo(() => ({
+        correct: content?.correct_sound_url?.trim() || undefined,
+        wrong: content?.wrong_sound_url?.trim() || undefined,
+        background: content?.answering_background_sound_url?.trim() || undefined,
+    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url]);
+
+    const { play, stop } = useSound(true, soundOverrides);
 
     // Mutation hooks for saving results
     const saveResultMutation = useSaveChallengeResult();
@@ -383,6 +389,14 @@ const GroupChallenge = () => {
         }
     }, [timeLeft, phase, showQuestionResult, isSpinning, play, handleTimeout]);
 
+    useEffect(() => {
+        if ((phase === "playing" || phase === "countdown") && musicEnabled) {
+            play("background");
+            return;
+        }
+        stop("background");
+    }, [phase, musicEnabled, play, stop]);
+
     // Countdown Effect
     useEffect(() => {
         if (phase === "countdown" && countdown > 0) {
@@ -477,8 +491,7 @@ const GroupChallenge = () => {
         // Use loose equality to handle string/number comparison from DB
         const isCorrect = answer == currentQuestion.correctAnswer;
 
-        // Play sound effect (Just selection sound)
-        play('click');
+        play(isCorrect ? "correct" : "wrong");
 
         processAnswer(isCorrect, undefined, answer);
     };
@@ -497,6 +510,7 @@ const GroupChallenge = () => {
         if (isHost) return;
         const isCorrect = orderItems.every((item, i) => item === currentQuestion.orderItems?.[i]);
         setSelectedAnswer(isCorrect ? "correct" : "wrong");
+        play(isCorrect ? "correct" : "wrong");
         processAnswer(isCorrect, undefined, orderItems.join(" -> "));
     };
 
@@ -516,6 +530,7 @@ const GroupChallenge = () => {
             setMatchedPairs(newPairs);
             if (newPairs.length === currentQuestion.pairs?.length) {
                 setSelectedAnswer("complete");
+                play("correct");
                 processAnswer(true, undefined, "جميع الأربطة صحيحة");
             }
         }
@@ -583,6 +598,7 @@ const GroupChallenge = () => {
         if (showQuestionResult || !wheelSubQuestion || isHost) return;
         setSelectedAnswer(answerIdx);
         const isCorrect = answerIdx === wheelSubQuestion.correctAnswer;
+        play(isCorrect ? "correct" : "wrong");
         processAnswer(isCorrect, isCorrect ? wheelPoints : 0, answerIdx);
     };
 
@@ -594,9 +610,11 @@ const GroupChallenge = () => {
 
         if (knows) {
             // User says they know - they need to verify
+            play("correct");
             processAnswer(true, undefined, "أعرف");
         } else {
             // User says they don't know
+            play("wrong");
             processAnswer(false, undefined, "لا أعرف");
         }
     };
@@ -1408,6 +1426,7 @@ const GroupChallenge = () => {
                             if (!userAnswer.trim()) return;
                             const isCorrect = userAnswer.trim().toLowerCase() === String(currentQuestion.correctAnswer || "").trim().toLowerCase();
                             setSelectedAnswer(userAnswer);
+                            play(isCorrect ? "correct" : "wrong");
                             processAnswer(isCorrect, undefined, userAnswer);
                         }}
                         className="w-full h-14 text-lg shadow-lg"
@@ -2942,12 +2961,7 @@ const GroupChallenge = () => {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => {
-                    setMusicEnabled(!musicEnabled);
-                    if (!musicEnabled) {
-                        play('background');
-                    } else {
-                        stop('background');
-                    }
+                    setMusicEnabled(prev => !prev);
                 }}
                 className="fixed top-24 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all"
             >

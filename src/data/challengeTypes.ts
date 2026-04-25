@@ -19,6 +19,9 @@ export interface EducationalContent {
     targetAudience: "all" | "children" | "adults";
     duration: string;
     media: ContentMedia[];
+    correctSoundUrl?: string;
+    wrongSoundUrl?: string;
+    answeringBackgroundSoundUrl?: string;
     quiz?: any[]; // Keep for compatibility if needed
     views: number;
     createdAt: string;
