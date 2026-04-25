@@ -24,6 +24,7 @@ import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard,
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
+import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           <Route path="/" element={<Index />} />
 
