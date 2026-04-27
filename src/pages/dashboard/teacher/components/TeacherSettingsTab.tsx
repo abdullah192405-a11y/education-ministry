@@ -6,18 +6,27 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Save, Bell, User, Lock, Globe, Loader2, Info } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useUser, useUpdateUser } from "@/hooks/useDatabase";
+import {
+    STUDENT_PUBLIC_DISCUSSIONS_ENABLED_KEY,
+    usePlatformSettings,
+    useUpsertPlatformSetting,
+    useUser,
+    useUpdateUser
+} from "@/hooks/useDatabase";
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 
 const TeacherSettingsTab = () => {
     const { data: user } = useUser();
-    const { mutate: updateUser, isPending: isUpdatingUser } = useUpdateUser();
+    const { data: platformSettings } = usePlatformSettings();
+    const { mutateAsync: updateUser, isPending: isUpdatingUser } = useUpdateUser();
+    const { mutateAsync: upsertPlatformSetting, isPending: isSavingClassPreferences } = useUpsertPlatformSetting();
     const { toast } = useToast();
 
     const [name, setName] = useState("");
     const [avatar, setAvatar] = useState("");
+    const [discussionsEnabled, setDiscussionsEnabled] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,6 +36,11 @@ const TeacherSettingsTab = () => {
             setAvatar(user.avatar || "");
         }
     }, [user]);
+
+    useEffect(() => {
+        const raw = platformSettings?.[STUDENT_PUBLIC_DISCUSSIONS_ENABLED_KEY];
+        setDiscussionsEnabled(raw == null ? true : String(raw).toLowerCase() === "true");
+    }, [platformSettings]);
 
     const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -74,31 +88,50 @@ const TeacherSettingsTab = () => {
         }
     };
 
-    const handleSaveChanges = () => {
+    const handleSaveChanges = async () => {
         if (!user) return;
-
-        updateUser({
-            userId: user.id,
-            updates: { name, avatar }
-        }, {
-            onSuccess: () => {
-                toast({
-                    title: "تم حفظ التغييرات",
-                    description: "تم تحديث معلوماتك الشخصية بنجاح",
-                });
-            },
-            onError: (err) => {
-                console.error("User update error:", err);
-                toast({
-                    title: "خطأ",
-                    description: "فشل تحديث المعلومات الشخصية",
-                    variant: "destructive"
-                });
-            }
-        });
+        try {
+            await updateUser({
+                userId: user.id,
+                updates: { name, avatar }
+            });
+            toast({
+                title: "تم حفظ التغييرات",
+                description: "تم تحديث معلوماتك الشخصية بنجاح",
+            });
+        } catch (err) {
+            console.error("User update error:", err);
+            toast({
+                title: "خطأ",
+                description: "فشل تحديث المعلومات الشخصية",
+                variant: "destructive"
+            });
+        }
     };
 
-    const isUpdating = isUpdatingUser;
+    const handleSaveClassPreferences = async () => {
+        try {
+            await upsertPlatformSetting({
+                key: STUDENT_PUBLIC_DISCUSSIONS_ENABLED_KEY,
+                value: String(discussionsEnabled),
+                type: "boolean",
+                label: "تفعيل ساحة النقاش للطلاب",
+            });
+            toast({
+                title: "تم حفظ إعدادات الفصل",
+                description: "تم تحديث إعدادات المناقشات العامة بنجاح",
+            });
+        } catch (err) {
+            console.error("Failed to save class preferences:", err);
+            toast({
+                title: "خطأ",
+                description: "فشل حفظ إعدادات الفصل",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const isUpdating = isUpdatingUser || isSavingClassPreferences;
 
     return (
         <Tabs defaultValue="profile" className="w-full" dir="rtl">
@@ -223,7 +256,7 @@ const TeacherSettingsTab = () => {
                                     <p className="text-sm text-muted-foreground">تفعيل ساحة النقاش للطلاب</p>
                                 </div>
                             </div>
-                            <Switch />
+                            <Switch checked={discussionsEnabled} onCheckedChange={setDiscussionsEnabled} />
                         </div>
                     </CardContent>
                 </Card>
@@ -232,7 +265,9 @@ const TeacherSettingsTab = () => {
             <div className="flex justify-end pt-4">
                 <Button
                     className="gap-2 bg-purple-600 hover:bg-purple-700"
-                    onClick={handleSaveChanges}
+                    onClick={async () => {
+                        await Promise.all([handleSaveChanges(), handleSaveClassPreferences()]);
+                    }}
                     disabled={isUpdating}
                 >
                     <Save className="w-4 h-4" />

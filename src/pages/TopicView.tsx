@@ -6,29 +6,82 @@ import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
     ChevronLeft, ChevronRight, Play, Eye, Clock,
-    Trophy, BookOpen, Gamepad2, Users, Zap,
+    BookOpen, Gamepad2,
     FileText, Image as ImageIcon, AlignLeft, Video,
-    Headphones, Link2, ExternalLink
+    Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
 } from "lucide-react";
-import { useTopic, useUpdateTopic } from "@/hooks/useDatabase";
+import {
+    useCreateTopicDiscussion,
+    useCreateTopicDiscussionReply,
+    useTopicLiveSessions,
+    useUpsertTopicRating,
+    useToggleDiscussionReaction,
+    useTopic,
+    useTopicDiscussions,
+    useTopicRatings,
+    useUpdateTopic,
+    useUser
+} from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
 
 
 const TopicView = () => {
     const { topicId } = useParams();
     const navigate = useNavigate();
+    const { toast } = useToast();
     const { data: topic, isLoading, error } = useTopic(topicId || "");
+    const { data: user } = useUser();
+    const { data: discussions = [], isLoading: discussionsLoading } = useTopicDiscussions(topicId || "");
+    const { data: topicLiveSessions = [] } = useTopicLiveSessions(topicId || "");
+    const { data: topicRatings = [] } = useTopicRatings(topicId || "");
+    const createDiscussionMutation = useCreateTopicDiscussion();
+    const createReplyMutation = useCreateTopicDiscussionReply();
+    const toggleReactionMutation = useToggleDiscussionReaction();
+    const upsertTopicRatingMutation = useUpsertTopicRating();
     const subject = topic?.subject;
     const grade = subject?.grade;
 
     const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
     const [hasViewedAllMedia, setHasViewedAllMedia] = useState(false);
+    const [discussionContent, setDiscussionContent] = useState("");
+    const [isDiscussionComposerOpen, setIsDiscussionComposerOpen] = useState(false);
+    const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+    const [discussionSticker, setDiscussionSticker] = useState<string>("");
+    const [replyStickers, setReplyStickers] = useState<Record<string, string>>({});
+    const [discussionAttachment, setDiscussionAttachment] = useState<{
+        url: string;
+        name: string;
+        type: string;
+    } | null>(null);
+    const [replyAttachments, setReplyAttachments] = useState<Record<string, {
+        url: string;
+        name: string;
+        type: string;
+    } | null>>({});
+    const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
     const hasIncrementedView = useRef(false);
+    const discussionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+    const replyAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
     const updateTopicMutation = useUpdateTopic();
+    const publicDiscussionsEnabled = topic?.discussions_enabled !== false;
+    const canParticipateInDiscussions = user?.role === "STUDENT" || user?.role === "TEACHER";
+    const discussionStarterPrompts = [
+        "ما الفكرة التي لم أفهمها في هذا الدرس؟",
+        "كيف أطبق هذا المفهوم في الحياة اليومية؟",
+        "اشرحوا لي هذا الجزء بطريقة أبسط",
+        "من يشارك مثالًا سريعًا على هذا الدرس؟",
+    ];
+    const stickerChoices = ["😀", "😍", "🤩", "😂", "👏", "🔥", "🎉", "💡", "📚", "👍"];
+    const reactionChoices = ["👍", "❤️", "😂", "😮", "👏", "🔥"];
 
     useEffect(() => {
         if (topic && !hasIncrementedView.current) {
@@ -89,6 +142,18 @@ const TopicView = () => {
         }
     }, [currentMediaIndex, media]);
 
+    const activeLiveSession = useMemo(() => {
+        const now = Date.now();
+        const liveNow = topicLiveSessions
+            .filter((session: any) => {
+                const start = new Date(session.starts_at).getTime();
+                const end = new Date(session.ends_at).getTime();
+                return session.is_active && Number.isFinite(start) && Number.isFinite(end) && start <= now && now <= end;
+            })
+            .sort((a: any, b: any) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+        return liveNow[0] || null;
+    }, [topicLiveSessions]);
+
     if (isLoading) {
         return (
             <div className="min-h-screen font-cairo" dir="rtl">
@@ -126,6 +191,241 @@ const TopicView = () => {
 
     const handleJoinChallenge = () => {
         navigate(`/grade/${grade.slug}/subject/${subject.id}/topic/${topic.id}/challenge`);
+    };
+
+    const formatRelativeArabicTime = (iso: string) => {
+        const ms = Date.now() - new Date(iso).getTime();
+        const minutes = Math.floor(ms / (1000 * 60));
+        if (minutes < 1) return "الآن";
+        if (minutes < 60) return `منذ ${minutes} دقيقة`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `منذ ${hours} ساعة`;
+        const days = Math.floor(hours / 24);
+        return `منذ ${days} يوم`;
+    };
+
+    const getStudentClassLabel = (discussionUser: any) => {
+        if (discussionUser?.role === "TEACHER") return null;
+        const gradeName = discussionUser?.student_profiles?.[0]?.grade?.name;
+        if (gradeName) return gradeName;
+        if (discussionUser?.details) return discussionUser.details;
+        return "الصف غير محدد";
+    };
+
+    const getUserRoleLabel = (discussionUser: any) => {
+        if (discussionUser?.role === "TEACHER") return "معلم";
+        if (discussionUser?.role === "ADMIN") return "مشرف";
+        return "طالب";
+    };
+
+    const getRoleDefaultAvatar = (discussionUser: any) => {
+        const seed = discussionUser?.id || discussionUser?.name || "user";
+        if (discussionUser?.role === "TEACHER") {
+            return `https://api.dicebear.com/7.x/adventurer/svg?seed=teacher-${encodeURIComponent(seed)}`;
+        }
+        return `https://api.dicebear.com/7.x/fun-emoji/svg?seed=student-${encodeURIComponent(seed)}`;
+    };
+
+    const getUserAvatarSrc = (discussionUser: any) => {
+        return discussionUser?.avatar || getRoleDefaultAvatar(discussionUser);
+    };
+
+    const fileToDataUrl = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(new Error("تعذر قراءة الملف"));
+            reader.readAsDataURL(file);
+        });
+
+    const currentUserId = user?.id &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)
+        ? user.id
+        : null;
+    const ratingsList = Array.isArray(topicRatings) ? topicRatings : [];
+    const ratingsTotal = ratingsList.length;
+    const ratingsAvg =
+        ratingsTotal > 0
+            ? ratingsList.reduce((sum: number, r: any) => sum + Number(r.rating || 0), 0) / ratingsTotal
+            : 0;
+    const myRating =
+        Number(
+            (ratingsList.find((r: any) => currentUserId && r.user_id === currentUserId)?.rating) || 0
+        ) || 0;
+
+    const isUuid = (value?: string | null) => {
+        if (!value) return false;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    };
+
+    const resolveDiscussionUserId = async () => {
+        if (isUuid(user?.id)) return user!.id as string;
+        if (user?.email) {
+            const { data, error } = await supabase
+                .from("users")
+                .select("id")
+                .eq("email", user.email)
+                .maybeSingle();
+            if (error) throw error;
+            if (isUuid(data?.id)) return data.id as string;
+        }
+        throw new Error("تعذر تحديد معرف الطالب في قاعدة البيانات.");
+    };
+
+    const handleAddDiscussion = async () => {
+        const trimmed = discussionContent.trim();
+        if (!user?.id || !canParticipateInDiscussions) {
+            toast({
+                title: "التعليق غير متاح لحسابك",
+                description: "التعليقات متاحة للطلاب والمعلمين فقط.",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (!trimmed && !discussionSticker && !discussionAttachment) return;
+        try {
+            const validUserId = await resolveDiscussionUserId();
+            await createDiscussionMutation.mutateAsync({
+                topicId: topic.id,
+                userId: validUserId,
+                content: trimmed || " ",
+                sticker: discussionSticker || null,
+                attachmentUrl: discussionAttachment?.url || null,
+                attachmentName: discussionAttachment?.name || null,
+                attachmentType: discussionAttachment?.type || null,
+            });
+            setDiscussionContent("");
+            setDiscussionSticker("");
+            setDiscussionAttachment(null);
+            setIsDiscussionComposerOpen(false);
+            toast({ title: "تم نشر مشاركتك بنجاح" });
+        } catch (err: unknown) {
+            console.error("Failed to add discussion:", err);
+            const message = err instanceof Error ? err.message : "تعذر نشر المشاركة. حاول مرة أخرى.";
+            toast({
+                title: "خطأ",
+                description: message,
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleAddReply = async (discussionId: string) => {
+        const trimmed = (replyDrafts[discussionId] || "").trim();
+        if (!user?.id || !canParticipateInDiscussions) {
+            toast({
+                title: "التعليق غير متاح لحسابك",
+                description: "التعليقات متاحة للطلاب والمعلمين فقط.",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (!trimmed && !replyStickers[discussionId] && !replyAttachments[discussionId]) return;
+        try {
+            const validUserId = await resolveDiscussionUserId();
+            await createReplyMutation.mutateAsync({
+                topicId: topic.id,
+                discussionId,
+                userId: validUserId,
+                content: trimmed || " ",
+                sticker: replyStickers[discussionId] || null,
+                attachmentUrl: replyAttachments[discussionId]?.url || null,
+                attachmentName: replyAttachments[discussionId]?.name || null,
+                attachmentType: replyAttachments[discussionId]?.type || null,
+            });
+            setReplyDrafts((prev) => ({ ...prev, [discussionId]: "" }));
+            setReplyStickers((prev) => ({ ...prev, [discussionId]: "" }));
+            setReplyAttachments((prev) => ({ ...prev, [discussionId]: null }));
+        } catch (err: unknown) {
+            console.error("Failed to add reply:", err);
+            const message = err instanceof Error ? err.message : "تعذر إضافة الرد حاليًا.";
+            toast({
+                title: "خطأ",
+                description: message,
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleSelectDiscussionAttachment = async (file?: File | null) => {
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "الحد الأقصى 5MB", variant: "destructive" });
+            return;
+        }
+        try {
+            const url = await fileToDataUrl(file);
+            setDiscussionAttachment({ url, name: file.name, type: file.type || "application/octet-stream" });
+        } catch (e) {
+            console.error(e);
+            toast({ title: "خطأ", description: "تعذر تجهيز الملف", variant: "destructive" });
+        }
+    };
+
+    const handleSelectReplyAttachment = async (discussionId: string, file?: File | null) => {
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            toast({ title: "حجم الملف كبير", description: "الحد الأقصى 5MB", variant: "destructive" });
+            return;
+        }
+        try {
+            const url = await fileToDataUrl(file);
+            setReplyAttachments((prev) => ({
+                ...prev,
+                [discussionId]: { url, name: file.name, type: file.type || "application/octet-stream" },
+            }));
+        } catch (e) {
+            console.error(e);
+            toast({ title: "خطأ", description: "تعذر تجهيز الملف", variant: "destructive" });
+        }
+    };
+
+    const handleToggleReaction = async (payload: { discussionId?: string; replyId?: string; emoji: string }) => {
+        if (!currentUserId) {
+            toast({ title: "سجّل الدخول أولًا", description: "يلزم تسجيل الدخول للتفاعل." });
+            return;
+        }
+        try {
+            await toggleReactionMutation.mutateAsync({
+                topicId: topic.id,
+                userId: currentUserId,
+                emoji: payload.emoji,
+                discussionId: payload.discussionId,
+                replyId: payload.replyId,
+            });
+        } catch (e) {
+            console.error(e);
+            toast({ title: "خطأ", description: "تعذر حفظ التفاعل", variant: "destructive" });
+        }
+    };
+
+    const handleRateTopic = async (value: number) => {
+        if (!currentUserId) {
+            toast({ title: "سجّل الدخول أولًا", description: "يلزم تسجيل الدخول للتقييم." });
+            return;
+        }
+        try {
+            await upsertTopicRatingMutation.mutateAsync({
+                topicId: topic.id,
+                userId: currentUserId,
+                rating: value,
+            });
+        } catch (e) {
+            console.error(e);
+            toast({ title: "خطأ", description: "تعذر حفظ التقييم", variant: "destructive" });
+        }
+    };
+
+    const isRepliesExpanded = (discussionId: string, repliesCount: number) => {
+        if (expandedReplies[discussionId] !== undefined) return expandedReplies[discussionId];
+        return repliesCount <= 2;
+    };
+
+    const toggleReplies = (discussionId: string, current: boolean) => {
+        setExpandedReplies((prev) => ({
+            ...prev,
+            [discussionId]: !current,
+        }));
     };
 
     const getMediaIcon = (type: string) => {
@@ -409,6 +709,40 @@ const TopicView = () => {
                         <h1 className="text-3xl md:text-4xl font-black mb-3">{topic.title}</h1>
                         <p className="text-lg text-muted-foreground">{topic.description}</p>
                     </motion.div>
+                    {activeLiveSession && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mb-6 max-w-4xl mx-auto"
+                        >
+                            <Card className="border-red-500/30 bg-red-500/5">
+                                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-500 text-white text-xs font-bold">
+                                            <Radio className="w-3.5 h-3.5 animate-pulse" />
+                                            مباشر الآن
+                                        </span>
+                                        <div>
+                                            <p className="font-bold">{activeLiveSession.title || "حصة مباشرة جارية"}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {activeLiveSession.provider === "GOOGLE_MEET"
+                                                    ? "Google Meet"
+                                                    : activeLiveSession.provider === "ZOOM"
+                                                        ? "Zoom"
+                                                        : "رابط مباشر"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button asChild className="gap-2">
+                                        <a href={activeLiveSession.meeting_url} target="_blank" rel="noopener noreferrer">
+                                            انضم الآن
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    )}
 
                     {/* Main Content Area */}
                     <div className="space-y-6">
@@ -498,53 +832,432 @@ const TopicView = () => {
                             </div>
                         )}
 
-                        {/* Challenge CTA Card */}
-                        {currentMediaIndex === totalMedia - 1 && (
+                        {/* Public Discussion Arena */}
+                        {publicDiscussionsEnabled && (
                             <motion.div
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.3 }}
-                                className="max-w-2xl mx-auto mt-8"
+                                transition={{ delay: 0.4 }}
+                                className="max-w-4xl mx-auto mt-8"
                             >
-                                <Card className="p-6 md:p-8 bg-gradient-to-br from-primary/10 via-secondary/10 to-primary/5 border-primary/20">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center mb-4">
-                                            <Trophy className="w-8 h-8 text-white" />
+                                <Card className="border-primary/30 shadow-sm bg-gradient-to-b from-primary/[0.05] via-background to-background">
+                                    <CardContent className="p-6 md:p-8 space-y-7">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <MessageCircle className="w-5 h-5 text-primary" />
+                                                <h3 className="text-xl font-bold">المناقشات العامة</h3>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
+                                                    {discussions.length} مشاركة
+                                                </span>
+                                                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 font-medium">
+                                                    {discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0)} رد
+                                                </span>
+                                            </div>
                                         </div>
-                                        <h3 className="text-2xl font-bold mb-3">🎮 انضم للتحدي</h3>
-                                        <p className="text-muted-foreground mb-6">
-                                            اختبر معلوماتك بطريقة ممتعة! يمكنك اللعب بمفردك أو مع أصدقائك
+                                        <p className="text-sm text-muted-foreground">
+                                            مساحة آمنة للطلاب لطرح الأسئلة وتبادل الفهم حول هذا الدرس.
                                         </p>
+                                        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                                            التعليقات مفعلة لهذا المحتوى بواسطة المعلم.
+                                        </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                                            <div className="p-4 rounded-xl bg-background/50 border">
-                                                <Users className="w-6 h-6 mx-auto mb-2 text-purple-500" />
-                                                <div className="font-medium">تحدي جماعي</div>
-                                                <div className="text-xs text-muted-foreground">نافس أصدقاءك</div>
+                                        <div className="rounded-xl border bg-background p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-sm font-bold">تقييم الدرس</h4>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {ratingsTotal} تقييم - المتوسط {ratingsAvg.toFixed(1)} / 5
+                                                </span>
                                             </div>
-                                            <div className="p-4 rounded-xl bg-background/50 border">
-                                                <Zap className="w-6 h-6 mx-auto mb-2 text-amber-500" />
-                                                <div className="font-medium">تحدي فردي</div>
-                                                <div className="text-xs text-muted-foreground">اختبر نفسك</div>
+                                            <div className="flex items-center gap-1">
+                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                    <button
+                                                        key={star}
+                                                        type="button"
+                                                        onClick={() => handleRateTopic(star)}
+                                                        className="p-1 rounded hover:bg-muted transition"
+                                                        aria-label={`تقييم ${star}`}
+                                                    >
+                                                        <Star
+                                                            className={`w-5 h-5 ${star <= myRating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`}
+                                                        />
+                                                    </button>
+                                                ))}
+                                                <span className="text-xs text-muted-foreground mr-2">تقييمك: {myRating || "—"}</span>
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mb-6">
-                                            <span className="px-3 py-1 rounded-full bg-muted">💡 أنشطة تفاعلية</span>
-                                            <span className="px-3 py-1 rounded-full bg-muted">🎮 ألعاب تعليمية</span>
-                                            <span className="px-3 py-1 rounded-full bg-muted">🏆 شارات ومكافآت</span>
+                                        <div className="rounded-2xl border bg-background p-4 md:p-5">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h4 className="text-sm font-bold">اكتب مشاركة جديدة</h4>
+                                                    <span className="text-[11px] text-muted-foreground">سؤال - فكرة - توضيح</span>
+                                                </div>
+                                                <Button
+                                                    onClick={() => setIsDiscussionComposerOpen(true)}
+                                                    disabled={!canParticipateInDiscussions}
+                                                >
+                                                    اكتب مشاركة جديدة
+                                                </Button>
+                                            </div>
                                         </div>
 
-                                        <Button
-                                            onClick={handleJoinChallenge}
-                                            size="lg"
-                                            variant="hero"
-                                            className="gap-2 text-lg h-14 px-8"
-                                        >
-                                            <Gamepad2 className="w-5 h-5" />
-                                            ابدأ التحدي الآن
-                                        </Button>
-                                    </div>
+                                        <Dialog open={isDiscussionComposerOpen} onOpenChange={setIsDiscussionComposerOpen}>
+                                            <DialogContent dir="rtl" className="sm:max-w-2xl">
+                                                <DialogHeader>
+                                                    <DialogTitle>اكتب مشاركة جديدة</DialogTitle>
+                                                </DialogHeader>
+                                                <div className="space-y-3">
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {discussionStarterPrompts.map((prompt) => (
+                                                            <button
+                                                                key={prompt}
+                                                                type="button"
+                                                                onClick={() => setDiscussionContent(prompt)}
+                                                                className="text-xs px-3 py-1.5 rounded-full border bg-muted/40 hover:bg-primary/5 hover:border-primary/40 transition"
+                                                            >
+                                                                {prompt}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <Textarea
+                                                        value={discussionContent}
+                                                        onChange={(e) => setDiscussionContent(e.target.value)}
+                                                        placeholder={canParticipateInDiscussions ? "اكتب سؤالك أو رأيك حول الدرس..." : "تسجيل الدخول بحساب طالب أو معلم مطلوب للمشاركة"}
+                                                        rows={5}
+                                                        disabled={!canParticipateInDiscussions}
+                                                        className="bg-background"
+                                                    />
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {stickerChoices.map((sticker) => (
+                                                            <button
+                                                                key={`s-${sticker}`}
+                                                                type="button"
+                                                                onClick={() => setDiscussionSticker(sticker)}
+                                                                className={`h-8 w-8 rounded-full border text-lg ${discussionSticker === sticker ? "bg-primary/10 border-primary" : "bg-background"}`}
+                                                            >
+                                                                {sticker}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {discussionSticker ? (
+                                                        <div className="text-2xl">{discussionSticker}</div>
+                                                    ) : null}
+                                                    {discussionAttachment ? (
+                                                        <div className="rounded-lg border bg-muted/20 p-2 text-xs flex items-center justify-between gap-2">
+                                                            <span className="truncate">{discussionAttachment.name}</span>
+                                                            <Button size="sm" variant="ghost" onClick={() => setDiscussionAttachment(null)}>حذف</Button>
+                                                        </div>
+                                                    ) : null}
+                                                    <input
+                                                        ref={discussionAttachmentInputRef}
+                                                        type="file"
+                                                        className="hidden"
+                                                        onChange={(e) => {
+                                                            void handleSelectDiscussionAttachment(e.target.files?.[0] || null);
+                                                            e.currentTarget.value = "";
+                                                        }}
+                                                    />
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {discussionContent.trim().length}/300
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => discussionAttachmentInputRef.current?.click()}
+                                                            >
+                                                                <Paperclip className="w-4 h-4 ml-1" />
+                                                                ملف
+                                                            </Button>
+                                                            <Button
+                                                                onClick={handleAddDiscussion}
+                                                                disabled={
+                                                                    !canParticipateInDiscussions ||
+                                                                    createDiscussionMutation.isPending ||
+                                                                    (!discussionContent.trim() && !discussionSticker && !discussionAttachment) ||
+                                                                    discussionContent.trim().length > 300
+                                                                }
+                                                            >
+                                                                نشر المشاركة
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </DialogContent>
+                                        </Dialog>
+
+                                        <div className="space-y-4 rounded-xl border bg-background p-4">
+                                            <div className="flex items-center justify-between border-b pb-2">
+                                                <h4 className="text-sm font-bold">ساحة المشاركات</h4>
+                                                <span className="text-xs text-muted-foreground">مرتبة من الأحدث إلى الأقدم</span>
+                                            </div>
+                                            {discussionsLoading ? (
+                                                <Skeleton className="h-24 w-full" />
+                                            ) : discussions.length === 0 ? (
+                                                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+                                                    لا توجد مشاركات بعد. كن أول من يبدأ النقاش بفكرة ملهمة.
+                                                </div>
+                                            ) : (
+                                                discussions.map((discussion: any) => (
+                                                    <div key={discussion.id} className="rounded-2xl border-2 border-muted/60 p-4 md:p-5 space-y-4 bg-background">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex items-start gap-3 min-w-0">
+                                                                <Avatar className="h-10 w-10 border">
+                                                                    <AvatarImage
+                                                                        src={getUserAvatarSrc(discussion.user)}
+                                                                        alt={discussion.user?.name || "مستخدم"}
+                                                                    />
+                                                                    <AvatarFallback>
+                                                                        <img
+                                                                            src={getRoleDefaultAvatar(discussion.user)}
+                                                                            alt="profile"
+                                                                            className="h-full w-full object-cover"
+                                                                        />
+                                                                    </AvatarFallback>
+                                                                </Avatar>
+                                                                <div className="min-w-0">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <p className="font-semibold truncate">{discussion.user?.name || "طالب"}</p>
+                                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                                                        {getUserRoleLabel(discussion.user)}
+                                                                    </span>
+                                                                    {getStudentClassLabel(discussion.user) ? (
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/20 text-secondary-foreground">
+                                                                            {getStudentClassLabel(discussion.user)}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                                    <p className="text-xs text-muted-foreground mt-1">{formatRelativeArabicTime(discussion.created_at)}</p>
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                                                                {discussion.replies?.length || 0} رد
+                                                            </span>
+                                                        </div>
+                                                        <p className="leading-7 whitespace-pre-wrap text-[15px]">{discussion.content.trim()}</p>
+                                                        {discussion.sticker ? <div className="text-3xl">{discussion.sticker}</div> : null}
+                                                        {discussion.attachment_url ? (
+                                                            <div className="rounded-lg border p-2 bg-muted/20">
+                                                                {String(discussion.attachment_type || "").startsWith("image/") ? (
+                                                                    <img
+                                                                        src={discussion.attachment_url}
+                                                                        alt={discussion.attachment_name || "attachment"}
+                                                                        className="max-h-56 rounded-md object-contain"
+                                                                    />
+                                                                ) : (
+                                                                    <a
+                                                                        href={discussion.attachment_url}
+                                                                        download={discussion.attachment_name || "file"}
+                                                                        className="text-sm text-primary underline"
+                                                                    >
+                                                                        {discussion.attachment_name || "تحميل ملف مرفق"}
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                        ) : null}
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {reactionChoices.map((emoji) => {
+                                                                const reactions = discussion.reactions || [];
+                                                                const count = reactions.filter((r: any) => r.emoji === emoji).length;
+                                                                const active = currentUserId ? reactions.some((r: any) => r.emoji === emoji && r.user_id === currentUserId) : false;
+                                                                return (
+                                                                    <button
+                                                                        key={`${discussion.id}-${emoji}`}
+                                                                        type="button"
+                                                                        onClick={() => void handleToggleReaction({ discussionId: discussion.id, emoji })}
+                                                                        className={`px-2 py-1 rounded-full border text-xs ${active ? "bg-primary/10 border-primary" : "bg-background"}`}
+                                                                    >
+                                                                        {emoji} {count > 0 ? count : ""}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        <div className="space-y-3 border-t border-dashed pt-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="text-xs font-semibold text-muted-foreground">الردود</p>
+                                                                {(discussion.replies?.length || 0) > 0 ? (
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-xs"
+                                                                        onClick={() =>
+                                                                            toggleReplies(
+                                                                                discussion.id,
+                                                                                isRepliesExpanded(discussion.id, discussion.replies?.length || 0)
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        {isRepliesExpanded(discussion.id, discussion.replies?.length || 0)
+                                                                            ? "إخفاء الردود"
+                                                                            : `إظهار الردود (${discussion.replies?.length || 0})`}
+                                                                    </Button>
+                                                                ) : null}
+                                                            </div>
+                                                            {isRepliesExpanded(discussion.id, discussion.replies?.length || 0)
+                                                                ? (discussion.replies || []).map((reply: any) => (
+                                                                    <div key={reply.id} className="rounded-xl bg-muted/35 border p-3">
+                                                                        <div className="flex items-start gap-2.5">
+                                                                            <Avatar className="h-8 w-8 border">
+                                                                                <AvatarImage
+                                                                                    src={getUserAvatarSrc(reply.user)}
+                                                                                    alt={reply.user?.name || "مستخدم"}
+                                                                                />
+                                                                                <AvatarFallback>
+                                                                                    <img
+                                                                                        src={getRoleDefaultAvatar(reply.user)}
+                                                                                        alt="profile"
+                                                                                        className="h-full w-full object-cover"
+                                                                                    />
+                                                                                </AvatarFallback>
+                                                                            </Avatar>
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                                                    <p className="text-sm font-medium truncate">{reply.user?.name || "طالب"}</p>
+                                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                                                                {getUserRoleLabel(reply.user)}
+                                                                            </span>
+                                                                            {getStudentClassLabel(reply.user) ? (
+                                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/20 text-secondary-foreground">
+                                                                                    {getStudentClassLabel(reply.user)}
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                                <p className="text-sm whitespace-pre-wrap leading-6">{reply.content.trim()}</p>
+                                                                                {reply.sticker ? <div className="text-2xl mt-1">{reply.sticker}</div> : null}
+                                                                                {reply.attachment_url ? (
+                                                                                    <div className="rounded-lg border p-2 bg-background/70 mt-2">
+                                                                                        {String(reply.attachment_type || "").startsWith("image/") ? (
+                                                                                            <img
+                                                                                                src={reply.attachment_url}
+                                                                                                alt={reply.attachment_name || "attachment"}
+                                                                                                className="max-h-44 rounded-md object-contain"
+                                                                                            />
+                                                                                        ) : (
+                                                                                            <a
+                                                                                                href={reply.attachment_url}
+                                                                                                download={reply.attachment_name || "file"}
+                                                                                                className="text-xs text-primary underline"
+                                                                                            >
+                                                                                                {reply.attachment_name || "تحميل ملف"}
+                                                                                            </a>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ) : null}
+                                                                                <div className="flex flex-wrap gap-1 mt-2">
+                                                                                    {reactionChoices.map((emoji) => {
+                                                                                        const reactions = reply.reactions || [];
+                                                                                        const count = reactions.filter((r: any) => r.emoji === emoji).length;
+                                                                                        const active = currentUserId ? reactions.some((r: any) => r.emoji === emoji && r.user_id === currentUserId) : false;
+                                                                                        return (
+                                                                                            <button
+                                                                                                key={`${reply.id}-${emoji}`}
+                                                                                                type="button"
+                                                                                                onClick={() => void handleToggleReaction({ replyId: reply.id, emoji })}
+                                                                                                className={`px-2 py-1 rounded-full border text-xs ${active ? "bg-primary/10 border-primary" : "bg-background"}`}
+                                                                                            >
+                                                                                                {emoji} {count > 0 ? count : ""}
+                                                                                            </button>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                                : null}
+                                                            <div className="space-y-2 rounded-xl bg-muted/20 p-3 border">
+                                                                <Textarea
+                                                                    value={replyDrafts[discussion.id] || ""}
+                                                                    onChange={(e) =>
+                                                                        setReplyDrafts((prev) => ({
+                                                                            ...prev,
+                                                                            [discussion.id]: e.target.value,
+                                                                        }))
+                                                                    }
+                                                                    rows={2}
+                                                                    placeholder="أضف ردًا..."
+                                                                    disabled={!canParticipateInDiscussions}
+                                                                    className="bg-background"
+                                                                />
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {stickerChoices.map((sticker) => (
+                                                                        <button
+                                                                            key={`${discussion.id}-${sticker}`}
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setReplyStickers((prev) => ({ ...prev, [discussion.id]: sticker }))
+                                                                            }
+                                                                            className={`h-7 w-7 rounded-full border text-sm ${replyStickers[discussion.id] === sticker ? "bg-primary/10 border-primary" : "bg-background"}`}
+                                                                        >
+                                                                            {sticker}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                {replyStickers[discussion.id] ? (
+                                                                    <div className="text-xl">{replyStickers[discussion.id]}</div>
+                                                                ) : null}
+                                                                {replyAttachments[discussion.id] ? (
+                                                                    <div className="rounded-lg border bg-background p-2 text-xs flex items-center justify-between gap-2">
+                                                                        <span className="truncate">{replyAttachments[discussion.id]?.name}</span>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="ghost"
+                                                                            onClick={() =>
+                                                                                setReplyAttachments((prev) => ({ ...prev, [discussion.id]: null }))
+                                                                            }
+                                                                        >
+                                                                            حذف
+                                                                        </Button>
+                                                                    </div>
+                                                                ) : null}
+                                                                <input
+                                                                    ref={(el) => {
+                                                                        replyAttachmentInputRefs.current[discussion.id] = el;
+                                                                    }}
+                                                                    type="file"
+                                                                    className="hidden"
+                                                                    onChange={(e) => {
+                                                                        void handleSelectReplyAttachment(discussion.id, e.target.files?.[0] || null);
+                                                                        e.currentTarget.value = "";
+                                                                    }}
+                                                                />
+                                                                <div className="flex justify-end">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        onClick={() => replyAttachmentInputRefs.current[discussion.id]?.click()}
+                                                                    >
+                                                                        <Paperclip className="w-4 h-4 ml-1" />
+                                                                        ملف
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        onClick={() => handleAddReply(discussion.id)}
+                                                                        disabled={
+                                                                            !canParticipateInDiscussions ||
+                                                                            createReplyMutation.isPending ||
+                                                                            (!(replyDrafts[discussion.id] || "").trim() &&
+                                                                                !replyStickers[discussion.id] &&
+                                                                                !replyAttachments[discussion.id])
+                                                                        }
+                                                                    >
+                                                                        إضافة رد
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </CardContent>
                                 </Card>
                             </motion.div>
                         )}

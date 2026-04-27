@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import {
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
     BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp,
-    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight
+    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight, Loader2
 } from "lucide-react";
 import {
     useUser,
@@ -31,6 +31,7 @@ import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { useStudentExams, examCategoryLabels } from "@/hooks/useExams";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const StudentDashboard = () => {
     const navigate = useNavigate();
@@ -41,7 +42,10 @@ const StudentDashboard = () => {
     const [activeTab, setActiveTab] = useState("overview");
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [avatar, setAvatar] = useState("");
+    const [isUploading, setIsUploading] = useState(false);
     const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const { data: user, isLoading: isLoadingUser } = useUser();
 
@@ -74,15 +78,62 @@ const StudentDashboard = () => {
         if (user) {
             setName(user.name || "");
             setEmail(user.email || "");
+            setAvatar(user.avatar || "");
         }
     }, [user]);
+
+    const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !user) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            toast({
+                title: "حجم الملف كبير",
+                description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split(".").pop();
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `${user.id}/avatars/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from("teacher-content")
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage
+                .from("teacher-content")
+                .getPublicUrl(filePath);
+
+            setAvatar(data.publicUrl);
+            toast({
+                title: "تم رفع الصورة",
+                description: "تم تحديث صورتك الرمزية بنجاح",
+            });
+        } catch (error: any) {
+            console.error("Error uploading avatar:", error);
+            toast({
+                title: "خطأ",
+                description: error.message || "حدث خطأ أثناء رفع الصورة. الرجاء التأكد من إعدادات Supabase Storage.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     const handleUpdateProfile = async () => {
         if (!user?.id) return;
         try {
             await updateUserMutation.mutateAsync({
                 userId: user.id,
-                updates: { name, email }
+                updates: { name, email, avatar }
             });
             toast({
                 title: "تم التحديث بنجاح",
@@ -263,7 +314,7 @@ const StudentDashboard = () => {
             </header>
 
             <div className="container mx-auto px-4 py-8">
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     {/* Sidebar */}
                     <motion.div
                         initial={{ opacity: 0, x: -20 }}
@@ -271,40 +322,40 @@ const StudentDashboard = () => {
                         className="lg:col-span-1"
                     >
                         <Card className="sticky top-24">
-                            <CardContent className="p-6">
+                            <CardContent className="p-4">
                                 {/* Student Profile Summary */}
-                                <div className="text-center mb-6">
-                                    <div className="relative inline-block mb-4">
+                                <div className="text-center mb-4 pb-4 border-b">
+                                    <div className="relative inline-block mb-3">
                                         {isLoading ? (
-                                            <Skeleton className="w-24 h-24 rounded-2xl" />
+                                            <Skeleton className="w-16 h-16 rounded-xl" />
                                         ) : (
                                             <img
                                                 src={student.avatar}
                                                 alt="Avatar"
-                                                className="w-24 h-24 rounded-2xl border-4 border-primary/20"
+                                                className="w-16 h-16 rounded-xl border-4 border-primary/20"
                                             />
                                         )}
-                                        <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-                                            <Crown className="w-4 h-4 text-white" />
+                                        <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
+                                            <Crown className="w-3 h-3 text-white" />
                                         </div>
                                     </div>
                                     {isLoading ? (
                                         <>
-                                            <Skeleton className="h-6 w-32 mx-auto mb-2" />
-                                            <Skeleton className="h-4 w-40 mx-auto mb-1" />
-                                            <Skeleton className="h-3 w-28 mx-auto mb-4" />
+                                            <Skeleton className="h-4 w-24 mx-auto mb-2" />
+                                            <Skeleton className="h-3 w-32 mx-auto mb-1" />
+                                            <Skeleton className="h-3 w-24 mx-auto mb-3" />
                                         </>
                                     ) : (
                                         <>
-                                            <h2 className="text-xl font-bold mb-1">{student.name}</h2>
-                                            <p className="text-sm text-muted-foreground mb-1">{currentGrade?.name || ""}</p>
+                                            <h2 className="font-bold text-sm mb-1">{student.name}</h2>
+                                            <p className="text-xs text-muted-foreground mb-1">{currentGrade?.name || ""}</p>
                                             {student.stats.rank > 0 && (
-                                                <p className="text-xs text-muted-foreground mb-4">
+                                                <p className="text-[11px] text-muted-foreground mb-3">
                                                     المرتبة #{student.stats.rank} في الصف
                                                 </p>
                                             )}
-                                            <div className="flex items-center justify-center gap-2 text-sm">
-                                                <Flame className="w-4 h-4 text-orange-500" />
+                                            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                                                <Flame className="w-3 h-3 text-orange-500" />
                                                 <span>سلسلة: {student.stats.currentStreak} أيام</span>
                                             </div>
                                         </>
@@ -312,29 +363,29 @@ const StudentDashboard = () => {
                                 </div>
 
                                 {/* Quick Stats */}
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    <div className="p-3 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 text-center">
-                                        <Trophy className="w-5 h-5 mx-auto mb-1 text-primary" />
+                                <div className="grid grid-cols-2 gap-2 mb-4">
+                                    <div className="p-2 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 text-center">
+                                        <Trophy className="w-4 h-4 mx-auto mb-1 text-primary" />
                                         {isLoading ? (
-                                            <Skeleton className="h-6 w-12 mx-auto mb-1" />
+                                            <Skeleton className="h-5 w-10 mx-auto mb-1" />
                                         ) : (
-                                            <div className="text-lg font-bold">{student.stats.totalPoints.toLocaleString()}</div>
+                                            <div className="text-sm font-bold">{student.stats.totalPoints.toLocaleString()}</div>
                                         )}
-                                        <div className="text-xs text-muted-foreground">نقطة</div>
+                                        <div className="text-[10px] text-muted-foreground">نقطة</div>
                                     </div>
-                                    <div className="p-3 rounded-xl bg-gradient-to-br from-secondary/10 to-secondary/5 text-center">
-                                        <Medal className="w-5 h-5 mx-auto mb-1 text-secondary" />
+                                    <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/10 to-secondary/5 text-center">
+                                        <Medal className="w-4 h-4 mx-auto mb-1 text-secondary" />
                                         {isLoadingUserBadges ? (
-                                            <Skeleton className="h-6 w-8 mx-auto mb-1" />
+                                            <Skeleton className="h-5 w-7 mx-auto mb-1" />
                                         ) : (
-                                            <div className="text-lg font-bold">{student.stats.badges}</div>
+                                            <div className="text-sm font-bold">{student.stats.badges}</div>
                                         )}
-                                        <div className="text-xs text-muted-foreground">شارة</div>
+                                        <div className="text-[10px] text-muted-foreground">شارة</div>
                                     </div>
                                 </div>
 
                                 {/* Navigation */}
-                                <nav className="space-y-2">
+                                <nav className="space-y-1">
                                     {[
                                         { id: "overview", icon: BarChart3, label: "نظرة عامة" },
                                         { id: "exams", icon: ClipboardList, label: "الاختبارات", count: pendingExamsCount },
@@ -346,13 +397,13 @@ const StudentDashboard = () => {
                                         <button
                                             key={item.id}
                                             onClick={() => setActiveTab(item.id)}
-                                            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === item.id
-                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all ${activeTab === item.id
+                                                ? "bg-primary text-primary-foreground"
                                                 : "hover:bg-muted"
                                                 }`}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <item.icon className="w-5 h-5" />
+                                                <item.icon className="w-4 h-4" />
                                                 <span>{item.label}</span>
                                             </div>
                                             {(item as any).count > 0 && (
@@ -364,9 +415,10 @@ const StudentDashboard = () => {
                                     ))}
                                 </nav>
 
-                                <div className="mt-6 pt-6 border-t">
+                                <div className="mt-4 pt-4 border-t">
                                     <Button
                                         variant="ghost"
+                                        size="sm"
                                         className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2"
                                         onClick={handleLogout}
                                     >
@@ -383,7 +435,7 @@ const StudentDashboard = () => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="lg:col-span-3 space-y-6"
+                        className="lg:col-span-4 space-y-6"
                     >
                         <AnimatePresence mode="wait">
                             {/* Overview Tab */}
@@ -1168,6 +1220,28 @@ const StudentDashboard = () => {
                                             <CardTitle>معلومات الحساب</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
+                                            <div className="flex items-center gap-4">
+                                                <Avatar className="w-16 h-16 border-2 border-muted">
+                                                    <AvatarImage src={avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${user?.id}`} />
+                                                    <AvatarFallback>{name?.[0] || "S"}</AvatarFallback>
+                                                </Avatar>
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    className="hidden"
+                                                    accept="image/*"
+                                                    onChange={handleAvatarUpload}
+                                                />
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    disabled={isUploading}
+                                                >
+                                                    {isUploading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : null}
+                                                    {isUploading ? "جاري الرفع..." : "تغيير الصورة"}
+                                                </Button>
+                                            </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="text-sm font-medium mb-2 block">الاسم</label>

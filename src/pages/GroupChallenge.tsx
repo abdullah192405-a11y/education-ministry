@@ -1782,6 +1782,9 @@ const GroupChallenge = () => {
                         {/* Decorative background for student */}
                         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl" />
                         <div className="absolute bottom-0 left-0 w-32 h-32 bg-secondary/5 rounded-full -ml-16 -mb-16 blur-2xl" />
+                        <div className="relative z-10 flex justify-center mb-6">
+                            <img src="/logo.png" alt="Lab4" className="w-16 h-16 rounded-xl object-contain bg-background p-1 shadow-sm border" />
+                        </div>
 
                         {!currentPlayer ? (
                             <div className="py-12 flex flex-col items-center">
@@ -1892,6 +1895,9 @@ const GroupChallenge = () => {
                 className="max-w-2xl mx-auto text-center px-4"
             >
                 <Card className="p-8 md:p-12">
+                    <div className="flex justify-center mb-5">
+                        <img src="/logo.png" alt="Lab4" className="w-16 h-16 rounded-xl object-contain bg-background p-1 shadow-sm border" />
+                    </div>
                     <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}

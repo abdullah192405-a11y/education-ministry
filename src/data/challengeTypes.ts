@@ -22,6 +22,7 @@ export interface EducationalContent {
     correctSoundUrl?: string;
     wrongSoundUrl?: string;
     answeringBackgroundSoundUrl?: string;
+    discussionsEnabled?: boolean;
     quiz?: any[]; // Keep for compatibility if needed
     views: number;
     createdAt: string;

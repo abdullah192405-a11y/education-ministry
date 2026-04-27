@@ -81,6 +81,7 @@ interface ExtendedTopic {
     correct_sound_url?: string | null;
     wrong_sound_url?: string | null;
     answering_background_sound_url?: string | null;
+    discussions_enabled?: boolean;
     createdAt: string;
     media?: any[];
     quiz?: any[];
@@ -436,6 +437,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         description: topicData.description,
                         thumbnail: topicData.thumbnail,
                         duration: topicData.duration,
+                        discussions_enabled: topicData.discussionsEnabled ?? true,
                         correct_sound_url: topicData.correctSoundUrl || null,
                         wrong_sound_url: topicData.wrongSoundUrl || null,
                         answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -467,6 +469,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
                     duration: topicData.duration,
+                    discussions_enabled: topicData.discussionsEnabled ?? true,
                     correct_sound_url: topicData.correctSoundUrl || null,
                     wrong_sound_url: topicData.wrongSoundUrl || null,
                     answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -610,6 +613,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         correctSoundUrl: editingTopic.correct_sound_url || "",
                         wrongSoundUrl: editingTopic.wrong_sound_url || "",
                         answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
+                        discussionsEnabled: editingTopic.discussions_enabled ?? true,
                         views: editingTopic.views,
                         createdAt: editingTopic.createdAt
                     } : undefined}

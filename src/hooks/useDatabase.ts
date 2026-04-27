@@ -270,6 +270,7 @@ export const useChallengeSession = (
 };
 
 // --- Platform Settings ---
+export const STUDENT_PUBLIC_DISCUSSIONS_ENABLED_KEY = "student_public_discussions_enabled";
 
 export const usePlatformSettings = () => {
     return useQuery({
@@ -287,6 +288,353 @@ export const usePlatformSettings = () => {
                 settings[s.key] = s.value;
             });
             return settings;
+        },
+    });
+};
+
+// --- Public Topic Discussions ---
+
+export const useTopicDiscussions = (topicId: string) => {
+    return useQuery({
+        queryKey: ["topic_discussions", topicId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("topic_discussions")
+                .select(`
+                    *,
+                    user:users(
+                        id,
+                        name,
+                        avatar,
+                        role,
+                        details,
+                        student_profiles(
+                            grade:grades(name)
+                        )
+                    ),
+                    replies:topic_discussion_replies(
+                        *,
+                        user:users(
+                            id,
+                            name,
+                            avatar,
+                            role,
+                            details,
+                            student_profiles(
+                                grade:grades(name)
+                            )
+                        ),
+                        reactions:topic_discussion_reactions(
+                            id,
+                            user_id,
+                            emoji
+                        )
+                    ),
+                    reactions:topic_discussion_reactions(
+                        id,
+                        user_id,
+                        emoji
+                    )
+                `)
+                .eq("topic_id", topicId)
+                .order("is_pinned", { ascending: false })
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            return (data || []).map((discussion: any) => ({
+                ...discussion,
+                replies: (discussion.replies || []).sort(
+                    (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                ),
+            }));
+        },
+        enabled: !!topicId,
+    });
+};
+
+export const useCreateTopicDiscussion = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            topicId: string;
+            userId: string;
+            content: string;
+            attachmentUrl?: string | null;
+            attachmentName?: string | null;
+            attachmentType?: string | null;
+            sticker?: string | null;
+        }) => {
+            const { data, error } = await supabase
+                .from("topic_discussions")
+                .insert([{
+                    topic_id: payload.topicId,
+                    user_id: payload.userId,
+                    content: payload.content.trim(),
+                    attachment_url: payload.attachmentUrl || null,
+                    attachment_name: payload.attachmentName || null,
+                    attachment_type: payload.attachmentType || null,
+                    sticker: payload.sticker || null,
+                }])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_discussions", variables.topicId] });
+        },
+    });
+};
+
+export const useCreateTopicDiscussionReply = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            topicId: string;
+            discussionId: string;
+            userId: string;
+            content: string;
+            attachmentUrl?: string | null;
+            attachmentName?: string | null;
+            attachmentType?: string | null;
+            sticker?: string | null;
+        }) => {
+            const { data, error } = await supabase
+                .from("topic_discussion_replies")
+                .insert([{
+                    discussion_id: payload.discussionId,
+                    user_id: payload.userId,
+                    content: payload.content.trim(),
+                    attachment_url: payload.attachmentUrl || null,
+                    attachment_name: payload.attachmentName || null,
+                    attachment_type: payload.attachmentType || null,
+                    sticker: payload.sticker || null,
+                }])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_discussions", variables.topicId] });
+        },
+    });
+};
+
+export const useToggleDiscussionReaction = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            topicId: string;
+            userId: string;
+            emoji: string;
+            discussionId?: string;
+            replyId?: string;
+        }) => {
+            const base = {
+                user_id: payload.userId,
+                emoji: payload.emoji,
+                discussion_id: payload.discussionId || null,
+                reply_id: payload.replyId || null,
+            };
+
+            const query = supabase
+                .from("topic_discussion_reactions")
+                .select("id")
+                .eq("user_id", payload.userId)
+                .eq("emoji", payload.emoji);
+
+            const { data: existing, error: existingError } = await (payload.discussionId
+                ? query.eq("discussion_id", payload.discussionId).is("reply_id", null).maybeSingle()
+                : query.eq("reply_id", payload.replyId || "").is("discussion_id", null).maybeSingle());
+
+            if (existingError) throw existingError;
+
+            if (existing?.id) {
+                const { error: deleteError } = await supabase
+                    .from("topic_discussion_reactions")
+                    .delete()
+                    .eq("id", existing.id);
+                if (deleteError) throw deleteError;
+                return { removed: true };
+            }
+
+            const { error: insertError } = await supabase
+                .from("topic_discussion_reactions")
+                .insert([base]);
+            if (insertError) throw insertError;
+            return { removed: false };
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_discussions", variables.topicId] });
+        },
+    });
+};
+
+export const useTopicRatings = (topicId: string) => {
+    return useQuery({
+        queryKey: ["topic_ratings", topicId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("topic_ratings")
+                .select("id, user_id, rating, comment, created_at")
+                .eq("topic_id", topicId)
+                .order("created_at", { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        enabled: !!topicId,
+    });
+};
+
+export const useUpsertTopicRating = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: { topicId: string; userId: string; rating: number; comment?: string | null }) => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("topic_ratings")
+                .upsert(
+                    {
+                        topic_id: payload.topicId,
+                        user_id: payload.userId,
+                        rating: payload.rating,
+                        comment: payload.comment || null,
+                        updated_at: now,
+                    },
+                    { onConflict: "topic_id,user_id" }
+                )
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_ratings", variables.topicId] });
+        },
+    });
+};
+
+// --- Topic Live Sessions ---
+
+export const useTopicLiveSessions = (topicId: string) => {
+    return useQuery({
+        queryKey: ["topic_live_sessions", topicId],
+        queryFn: async () => {
+            const nowIso = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("topic_live_sessions")
+                .select(`
+                    *,
+                    host:teacher_profiles(
+                        id,
+                        user:users(id, name, avatar)
+                    )
+                `)
+                .eq("topic_id", topicId)
+                .eq("is_active", true)
+                .gte("ends_at", nowIso)
+                .order("starts_at", { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        enabled: !!topicId,
+        refetchInterval: 30_000,
+    });
+};
+
+export const useTeacherLiveSessions = (teacherId: string) => {
+    return useQuery({
+        queryKey: ["teacher_live_sessions", teacherId],
+        queryFn: async () => {
+            if (!teacherId) return [];
+            const { data, error } = await supabase
+                .from("topic_live_sessions")
+                .select(`
+                    *,
+                    topic:topics(
+                        id,
+                        title,
+                        subject:subjects(
+                            id,
+                            name,
+                            grade:grades(
+                                id,
+                                slug,
+                                name
+                            )
+                        )
+                    )
+                `)
+                .eq("teacher_id", teacherId)
+                .order("starts_at", { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        enabled: !!teacherId,
+        refetchInterval: 30_000,
+    });
+};
+
+export const useCreateTopicLiveSession = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            topicId: string;
+            teacherId: string;
+            provider: "GOOGLE_MEET" | "ZOOM" | "CUSTOM";
+            meetingUrl: string;
+            title?: string | null;
+            startsAt: string;
+            endsAt: string;
+            notes?: string | null;
+        }) => {
+            const { data, error } = await supabase
+                .from("topic_live_sessions")
+                .insert([{
+                    topic_id: payload.topicId,
+                    teacher_id: payload.teacherId,
+                    provider: payload.provider,
+                    meeting_url: payload.meetingUrl.trim(),
+                    title: payload.title?.trim() || null,
+                    starts_at: payload.startsAt,
+                    ends_at: payload.endsAt,
+                    notes: payload.notes?.trim() || null,
+                    is_active: true,
+                }])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions", variables.topicId] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_live_sessions", variables.teacherId] });
+        },
+    });
+};
+
+export const useUpdateTopicLiveSession = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            id: string;
+            updates: Record<string, any>;
+            topicId?: string;
+            teacherId?: string;
+        }) => {
+            const { data, error } = await supabase
+                .from("topic_live_sessions")
+                .update(payload.updates)
+                .eq("id", payload.id)
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (data, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions", variables.topicId || data.topic_id] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_live_sessions", variables.teacherId || data.teacher_id] });
         },
     });
 };

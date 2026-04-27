@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Radio } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import TeacherStudentsTab from "./components/TeacherStudentsTab";
 import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
 import TeacherExamsTab from "./components/TeacherExamsTab";
+import TeacherLiveTab from "./components/TeacherLiveTab";
 
 
 import {
@@ -514,6 +515,7 @@ const TeacherDashboard = () => {
                                         { id: "overview", icon: LayoutDashboard, label: "نظرة عامة" },
                                         { id: "topics", icon: Library, label: "الدروس" },
                                         { id: "challenges", icon: Gamepad2, label: "التحديات" },
+                                        { id: "live", icon: Radio, label: "البث المباشر" },
                                         { id: "exams", icon: ClipboardList, label: "اختبارات" },
                                         { id: "students", icon: Users, label: "الطلاب" },
                                         { id: "analytics", icon: ChartBar, label: "الإحصائيات" },
@@ -942,6 +944,9 @@ const TeacherDashboard = () => {
                                                 toast({ title: "تم النسخ", description: text });
                                             }}
                                         />
+                                    )}
+                                    {activeTab === "live" && (
+                                        <TeacherLiveTab teacherProfileId={profile?.id} />
                                     )}
 
                                     {activeTab === "exams" && <TeacherExamsTab />}

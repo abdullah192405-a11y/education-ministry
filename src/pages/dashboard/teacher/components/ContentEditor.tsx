@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Select,
     SelectContent,
@@ -101,6 +103,25 @@ const BACKGROUND_SOUND_PRESETS: SoundOption[] = [
 
 const isYouTubeUrl = (url?: string): boolean => Boolean(url && getYouTubeId(url));
 
+const getMediaTypeArabicLabel = (type: ContentMedia["type"]): string => {
+    if (type === "video") return "فيديو";
+    if (type === "image") return "صورة";
+    if (type === "text") return "نص";
+    if (type === "pdf") return "PDF";
+    if (type === "audio") return "صوت";
+    return "رابط";
+};
+
+const getMediaOptionLabel = (media: ContentMedia, index: number): string => {
+    const raw =
+        media.caption?.trim() ||
+        media.fileName?.trim() ||
+        (media.type === "text" ? media.content?.trim() : media.url?.trim()) ||
+        `${getMediaTypeArabicLabel(media.type)} ${index + 1}`;
+    const short = raw.length > 48 ? `${raw.slice(0, 48)}…` : raw;
+    return `${getMediaTypeArabicLabel(media.type)} — ${short}`;
+};
+
 const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const { data: user } = useUser();
     const [activeTab, setActiveTab] = useState<"info" | "media" | "questions">("info");
@@ -153,6 +174,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [correctSoundUrl, setCorrectSoundUrl] = useState(content?.correctSoundUrl || "");
     const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
     const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
+    const [discussionsEnabled, setDiscussionsEnabled] = useState(content?.discussionsEnabled ?? true);
     const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>(
         content?.correctSoundUrl ? [{ label: "مخصص محفوظ", url: content.correctSoundUrl }] : []
     );
@@ -194,6 +216,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         useState<ImagePromptLanguageMode>("auto");
     /** Narrows what to read from PDF/images for the prompt (e.g. unit 1 of 7, topic). */
     const [aiImageContentFocus, setAiImageContentFocus] = useState("");
+    /** Selected source media indices for analysis (multi-select). */
+    const [aiImageSourceSelections, setAiImageSourceSelections] = useState<string[]>(
+        () => (content?.media || []).map((_, index) => String(index))
+    );
 
     const audioMediaOptions = mediaList.filter((m) => m.type === "audio" && m.url?.trim());
     const uploadedAudioOptions: SoundOption[] = audioMediaOptions.map((media, idx) => ({
@@ -391,9 +417,29 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
             return;
         }
+        if (aiImageSourceSelections.length === 0) {
+            toast({
+                title: "اختر المورد أولاً",
+                description: "حدد موردًا واحدًا على الأقل لتحليل المحتوى وصياغة وصف الصورة.",
+                variant: "destructive",
+            });
+            return;
+        }
         setIsGeneratingAiImage(true);
         setAiImageProgress("");
         try {
+            const selectedResources =
+                aiImageSourceSelections.map((index) => mediaList[Number(index)]).filter(
+                    (item): item is ContentMedia => Boolean(item)
+                );
+            if (selectedResources.length === 0) {
+                toast({
+                    title: "الموارد المختارة غير متاحة",
+                    description: "أعد تحديد الموارد ثم حاول مرة أخرى.",
+                    variant: "destructive",
+                });
+                return;
+            }
             const preferences: ImagePromptPreferences = {
                 audience: aiImageAudience,
                 visualTheme: aiImageVisualTheme,
@@ -403,7 +449,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             };
             const prompt = await generateImagePromptFromAnalyzedResources(
                 apiKey,
-                mediaList,
+                selectedResources,
                 title,
                 description,
                 preferences,
@@ -496,6 +542,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 correctSoundUrl: correctSoundUrl || null,
                 wrongSoundUrl: wrongSoundUrl || null,
                 answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
+                discussionsEnabled,
                 media: mediaList,
                 quiz: [], // Legacy - keeping for compatibility
                 views: content?.views || 0,
@@ -811,6 +858,21 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 </p>
                             )}
                         </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold">ساحة النقاش لهذا الدرس</h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        اسمح للطلاب بالتعليق والمناقشة داخل صفحة هذا الدرس.
+                                    </p>
+                                </div>
+                                <Switch checked={discussionsEnabled} onCheckedChange={setDiscussionsEnabled} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                الوضع الافتراضي عند إنشاء درس جديد: <span className="font-semibold">مفعّل</span>
+                            </p>
+                        </div>
                     </CardContent>
                 </Card>
             )}
@@ -928,13 +990,24 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             </div>
 
                                         ) : newMedia.type === "image" ? (
-                                            <div className="space-y-3">
+                                            <div className="space-y-3 text-right" dir="rtl">
+                                                <div className="rounded-md border border-primary/20 bg-primary/5 p-2">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        يمكنك إضافة الصورة بطريقتين: رفع صورة مباشرة، أو استخدام الذكاء الاصطناعي لتوليد صورة من موارد الدرس.
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-medium">1) رفع صورة يدويًا</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        ألصق رابط الصورة أو ارفع ملف صورة من جهازك.
+                                                    </p>
+                                                </div>
                                                 <div className="flex gap-2">
                                                     <Input
                                                         value={newMedia.url || ""}
                                                         onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
                                                         placeholder="رابط الصورة"
-                                                        className="flex-1"
+                                                        className="flex-1 text-right"
                                                     />
                                                     <div className="relative">
                                                         <input
@@ -968,7 +1041,36 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                         </Button>
                                                     </div>
                                                 </div>
+                                                {newMedia.url && (
+                                                    <div className="rounded-md border bg-background p-2 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-xs font-medium">معاينة الصورة</p>
+                                                            {newMedia.imageBase64 && (
+                                                                <span className="text-[11px] text-primary">
+                                                                    تم توليدها بالذكاء الاصطناعي
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <img
+                                                            src={newMedia.url}
+                                                            alt="معاينة الصورة"
+                                                            className="w-full max-h-64 rounded-md object-contain bg-muted/30"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className="relative py-1">
+                                                    <div className="border-t" />
+                                                    <span className="absolute right-1/2 top-1/2 -translate-y-1/2 translate-x-1/2 bg-background px-2 text-[11px] text-muted-foreground">
+                                                        أو
+                                                    </span>
+                                                </div>
                                                 <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                                                    <div className="space-y-1">
+                                                        <p className="text-sm font-medium">2) توليد صورة بالذكاء الاصطناعي</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            اختر إعدادات التوليد ثم حلّل الموارد لإنشاء وصف الصورة.
+                                                        </p>
+                                                    </div>
                                                     <p className="text-sm font-medium">خيارات الصورة (قبل التحليل)</p>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
@@ -983,10 +1085,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                             }
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
                                                         >
-                                                            <SelectTrigger className="h-9 text-right">
+                                                            <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                 <SelectValue placeholder="اختر" />
                                                             </SelectTrigger>
-                                                            <SelectContent>
+                                                            <SelectContent dir="rtl" className="text-right">
                                                                 <SelectItem value="auto">
                                                                     تلقائي — عربي إن كانت المواد عربية
                                                                 </SelectItem>
@@ -997,6 +1099,112 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     </div>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
+                                                            المورد المعتمد للتحليل
+                                                        </Label>
+                                                        <div className="rounded-md border bg-background p-2 space-y-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {aiImageSourceSelections.length} من {mediaList.length} مورد محدد
+                                                                </p>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-xs"
+                                                                        disabled={
+                                                                            mediaList.length === 0 ||
+                                                                            isGeneratingAiImage ||
+                                                                            isRenderingAiImage
+                                                                        }
+                                                                        onClick={() =>
+                                                                            setAiImageSourceSelections(
+                                                                                mediaList.map((_, index) => String(index))
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        تحديد الكل
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-xs"
+                                                                        disabled={
+                                                                            aiImageSourceSelections.length === 0 ||
+                                                                            isGeneratingAiImage ||
+                                                                            isRenderingAiImage
+                                                                        }
+                                                                        onClick={() => setAiImageSourceSelections([])}
+                                                                    >
+                                                                        إلغاء الكل
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[11px] text-muted-foreground">
+                                                                اختر موردًا واحدًا أو أكثر. سيتم تحليل الموارد المحددة فقط.
+                                                            </p>
+                                                            <label className="flex items-center justify-between gap-2 text-sm">
+                                                                <span>كل الموارد المتاحة</span>
+                                                                <Checkbox
+                                                                    checked={
+                                                                        mediaList.length > 0 &&
+                                                                        aiImageSourceSelections.length === mediaList.length
+                                                                    }
+                                                                    disabled={
+                                                                        mediaList.length === 0 ||
+                                                                        isGeneratingAiImage ||
+                                                                        isRenderingAiImage
+                                                                    }
+                                                                    onCheckedChange={(checked) => {
+                                                                        if (checked === true) {
+                                                                            setAiImageSourceSelections(
+                                                                                mediaList.map((_, index) => String(index))
+                                                                            );
+                                                                        } else {
+                                                                            setAiImageSourceSelections([]);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </label>
+                                                            <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
+                                                                {mediaList.map((media, index) => {
+                                                                    const value = String(index);
+                                                                    const checked = aiImageSourceSelections.includes(value);
+                                                                    return (
+                                                                        <label
+                                                                            key={media.id ? `${media.id}-${index}` : `media-${index}`}
+                                                                            className="flex items-center justify-between gap-2 text-sm"
+                                                                        >
+                                                                            <span className="truncate">
+                                                                                {getMediaOptionLabel(media, index)}
+                                                                            </span>
+                                                                            <Checkbox
+                                                                                checked={checked}
+                                                                                disabled={isGeneratingAiImage || isRenderingAiImage}
+                                                                                onCheckedChange={(nextChecked) => {
+                                                                                    setAiImageSourceSelections((prev) => {
+                                                                                        if (nextChecked === true) {
+                                                                                            if (prev.includes(value)) return prev;
+                                                                                            return [...prev, value];
+                                                                                        }
+                                                                                        return prev.filter((item) => item !== value);
+                                                                                    });
+                                                                                }}
+                                                                            />
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                                {mediaList.length === 0 && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        لا توجد موارد مضافة بعد.
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs text-muted-foreground">
                                                             نطاق المحتوى من الموارد (اختياري) — أي جزء يُحلَّل لصياغة الوصف
                                                         </Label>
                                                         <Textarea
@@ -1004,7 +1212,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                             onChange={(e) => setAiImageContentFocus(e.target.value)}
                                                             placeholder="مثال: الملف فيه 7 وحدات — اعتمد الوحدة الأولى فقط. الموضوع: التركيب الضوئي…"
                                                             rows={3}
-                                                            className="text-sm resize-y min-h-[72px]"
+                                                            className="text-sm text-right resize-y min-h-[72px]"
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
                                                         />
                                                     </div>
@@ -1018,10 +1226,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 }
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
-                                                                <SelectTrigger className="h-9 text-right">
+                                                                <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder="اختر" />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                            <SelectContent dir="rtl" className="text-right">
                                                                     <SelectItem value="kids">أطفال</SelectItem>
                                                                     <SelectItem value="teens">مراهقون / ثانوي</SelectItem>
                                                                     <SelectItem value="adults">بالغون</SelectItem>
@@ -1041,10 +1249,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 }
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
-                                                                <SelectTrigger className="h-9 text-right">
+                                                                <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder="اختر" />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                            <SelectContent dir="rtl" className="text-right">
                                                                     <SelectItem value="infographic">إنفوجرافيك</SelectItem>
                                                                     <SelectItem value="poster">ملصق / بوستر</SelectItem>
                                                                     <SelectItem value="storybook">قصة مصورة</SelectItem>
@@ -1063,10 +1271,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 }
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
-                                                                <SelectTrigger className="h-9 text-right">
+                                                                <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder="اختر" />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                            <SelectContent dir="rtl" className="text-right">
                                                                     <SelectItem value="playful">مرح</SelectItem>
                                                                     <SelectItem value="friendly">ودّي</SelectItem>
                                                                     <SelectItem value="formal">رسمي</SelectItem>
@@ -1086,10 +1294,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 }
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
-                                                                <SelectTrigger className="h-9 text-right">
+                                                                <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder="اختر" />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                            <SelectContent dir="rtl" className="text-right">
                                                                     <SelectItem value="bright">زاهية</SelectItem>
                                                                     <SelectItem value="pastel">باستيل</SelectItem>
                                                                     <SelectItem value="dark">داكن (نص فاتح)</SelectItem>
@@ -1108,7 +1316,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                             onChange={(e) => setAiImageExtraNotes(e.target.value)}
                                                             placeholder="مثال: استخدم مصطلحات بالعربية للعناوين الرئيسية فقط…"
                                                             rows={2}
-                                                            className="text-sm resize-y min-h-[60px]"
+                                                            className="text-sm text-right resize-y min-h-[60px]"
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
                                                         />
                                                     </div>
