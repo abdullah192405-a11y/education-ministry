@@ -8,6 +8,7 @@ import {
     VISITOR_GRADE_CLASS_MODE_KEY,
     parseVisitorGradeClassMode,
 } from "@/lib/contentVisibility";
+import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -154,6 +155,7 @@ export const useTopic = (id: string) => {
                 .select(`
           *,
           subject:subjects (*, grade:grades (*), topics(id)),
+          _TeacherTopics(teacher_profiles(user_id)),
           mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, pdf_base64, sort_order),
           quizQuestions:quiz_questions (*),
           challengeItems:challenge_questions (*),
@@ -2295,7 +2297,9 @@ export const useSaveChallengeResult = () => {
     return useMutation({
         mutationFn: async (result: {
             sessionId: string;
-            userId: string;
+            userId?: string | null;
+            participantDisplayName?: string | null;
+            participantExtra?: string | null;
             totalQuestions: number;
             correctAnswers: number;
             wrongAnswers: number;
@@ -2314,7 +2318,9 @@ export const useSaveChallengeResult = () => {
                 .from("challenge_results")
                 .insert([{
                     session_id: result.sessionId,
-                    user_id: result.userId,
+                    user_id: result.userId ?? null,
+                    participant_display_name: result.participantDisplayName ?? null,
+                    participant_extra: result.participantExtra ?? null,
                     total_questions: result.totalQuestions,
                     correct_answers: result.correctAnswers,
                     wrong_answers: result.wrongAnswers,
@@ -2335,9 +2341,12 @@ export const useSaveChallengeResult = () => {
             return data;
         },
         onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ["recent_challenge_results", variables.userId] });
+            if (variables.userId) {
+                queryClient.invalidateQueries({ queryKey: ["recent_challenge_results", variables.userId] });
+            }
             queryClient.invalidateQueries({ queryKey: ["hosted_challenge_results"] });
             queryClient.invalidateQueries({ queryKey: ["session_results", variables.sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_single_challenge_results"] });
         }
     });
 };
@@ -2546,6 +2555,418 @@ export const useSaveAnswers = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["challenge_answers"] });
         }
+    });
+};
+
+// --- Support tickets (student → teacher by grade, teacher → admin, escalation) ---
+
+const parseAttachmentUrls = (raw: unknown): string[] => {
+    if (Array.isArray(raw)) return raw.filter((u): u is string => typeof u === "string");
+    return [];
+};
+
+export const mapSupportTicket = (r: any) => ({
+    id: r.id,
+    authorUserId: r.author_user_id ?? r.authorUserId,
+    authorNameSnapshot: r.author_name_snapshot ?? r.authorNameSnapshot ?? null,
+    gradeId: r.grade_id ?? r.gradeId,
+    scope: r.scope,
+    ticketType: r.ticket_type ?? r.ticketType ?? "OTHER",
+    subject: r.subject,
+    body: r.body,
+    attachmentUrls: parseAttachmentUrls(r.attachment_urls ?? r.attachmentUrls),
+    status: r.status,
+    parentTicketId: r.parent_ticket_id ?? r.parentTicketId,
+    teacherEscalationNote: r.teacher_escalation_note ?? r.teacherEscalationNote,
+    resolvedAt: r.resolved_at ?? r.resolvedAt,
+    createdAt: r.created_at ?? r.createdAt,
+    updatedAt: r.updated_at ?? r.updatedAt,
+    author: r.author,
+    grade: r.grade,
+    parent: r.parent ? mapSupportTicket(r.parent) : undefined,
+});
+
+/** Load user rows for ticket authors; SECURITY DEFINER RPC bypasses RLS on `users`; merges with direct select for any gaps. */
+async function fetchSupportTicketAuthorsByIds(ids: string[]): Promise<
+    Map<string, { id: string; name: string; email?: string | null }>
+> {
+    const map = new Map<string, { id: string; name: string; email?: string | null }>();
+    const unique = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))];
+    if (!unique.length) return map;
+
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("support_ticket_resolve_authors", {
+        p_ids: unique,
+    });
+    if (!rpcErr && Array.isArray(rpcData)) {
+        for (const row of rpcData as { author_id: string; name: string; email: string | null }[]) {
+            if (row.author_id) {
+                map.set(row.author_id, { id: row.author_id, name: row.name, email: row.email });
+            }
+        }
+    }
+
+    const missing = unique.filter((id) => !map.has(id));
+    if (missing.length > 0) {
+        const { data: users } = await supabase.from("users").select("id, name, email").in("id", missing);
+        (users || []).forEach((u: { id: string; name: string; email?: string | null }) => map.set(u.id, u));
+    }
+
+    return map;
+}
+
+function buildStudentAuthorFromParent(
+    parentRow: { author_user_id?: string; author_name_snapshot?: string | null },
+    byId: Map<string, { id: string; name: string; email?: string | null }>
+): { name?: string; email?: string | null } {
+    const uid = parentRow.author_user_id as string;
+    const fetched = uid ? byId.get(uid) : undefined;
+    const snap = (parentRow.author_name_snapshot ?? "").trim();
+    const name = snap || fetched?.name || undefined;
+    return {
+        name,
+        email: fetched?.email ?? undefined,
+    };
+}
+
+export const useMyStudentSupportTickets = (userId: string) => {
+    return useQuery({
+        queryKey: ["support_tickets", "student", userId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .select(`
+          *,
+          grade:grades (id, name, slug)
+        `)
+                .eq("author_user_id", userId)
+                .eq("scope", "STUDENT_TO_TEACHER")
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            return (data || []).map(mapSupportTicket);
+        },
+        enabled: !!userId,
+    });
+};
+
+export const useTeacherIncomingStudentTickets = (teacherGradeId: string | undefined) => {
+    return useQuery({
+        queryKey: ["support_tickets", "teacher_incoming", teacherGradeId],
+        queryFn: async () => {
+            if (!teacherGradeId) return [];
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .select(`
+          *,
+          author:users!author_user_id (id, name, email, avatar),
+          grade:grades (id, name, slug)
+        `)
+                .eq("scope", "STUDENT_TO_TEACHER")
+                .eq("grade_id", teacherGradeId)
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            return (data || []).map(mapSupportTicket);
+        },
+        enabled: !!teacherGradeId,
+    });
+};
+
+export const useTeacherAdminSupportTickets = (teacherUserId: string) => {
+    return useQuery({
+        queryKey: ["support_tickets", "teacher_admin_outbound", teacherUserId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .select(`
+          *,
+          parent:support_tickets!parent_ticket_id (
+            id,
+            subject,
+            body,
+            author_user_id,
+            ticket_type,
+            attachment_urls,
+            author_name_snapshot
+          )
+        `)
+                .eq("scope", "TEACHER_TO_ADMIN")
+                .eq("author_user_id", teacherUserId)
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            const rows = data || [];
+            const studentAuthorIds = [
+                ...new Set(
+                    rows
+                        .map((r: { parent?: unknown }) => {
+                            const p = r.parent as { author_user_id?: string } | { author_user_id?: string }[] | null | undefined;
+                            const row = Array.isArray(p) ? p[0] : p;
+                            return row?.author_user_id;
+                        })
+                        .filter((id: string | undefined): id is string => typeof id === "string" && !!id)
+                ),
+            ];
+
+            const studentById = await fetchSupportTicketAuthorsByIds(studentAuthorIds);
+
+            return rows.map((row: any) => {
+                const rawParent = row.parent;
+                const parentRow = Array.isArray(rawParent) ? rawParent[0] : rawParent;
+                return {
+                    ...mapSupportTicket(row),
+                    parent: parentRow
+                        ? {
+                              ...mapSupportTicket(parentRow),
+                              studentAuthor: buildStudentAuthorFromParent(parentRow, studentById),
+                          }
+                        : undefined,
+                };
+            });
+        },
+        enabled: !!teacherUserId,
+    });
+};
+
+export const useAdminSupportTickets = () => {
+    return useQuery({
+        queryKey: ["support_tickets", "admin"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .select(`
+          *,
+          author:users!author_user_id (id, name, email, avatar, role),
+          grade:grades (id, name, slug),
+          parent:support_tickets!parent_ticket_id (
+            id,
+            subject,
+            body,
+            scope,
+            author_user_id,
+            ticket_type,
+            attachment_urls,
+            author_name_snapshot
+          )
+        `)
+                .eq("scope", "TEACHER_TO_ADMIN")
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            const rows = data || [];
+            const studentAuthorIds = [
+                ...new Set(
+                    rows
+                        .map((r: { parent?: unknown }) => {
+                            const p = r.parent as { author_user_id?: string } | { author_user_id?: string }[] | null | undefined;
+                            const row = Array.isArray(p) ? p[0] : p;
+                            return row?.author_user_id;
+                        })
+                        .filter((id: string | undefined): id is string => typeof id === "string" && !!id)
+                ),
+            ];
+
+            const studentById = await fetchSupportTicketAuthorsByIds(studentAuthorIds);
+
+            return rows.map((row: any) => {
+                const rawParent = row.parent;
+                const parentRow = Array.isArray(rawParent) ? rawParent[0] : rawParent;
+                return {
+                    ...mapSupportTicket(row),
+                    author: row.author,
+                    grade: row.grade,
+                    parent: parentRow
+                        ? {
+                              ...mapSupportTicket(parentRow),
+                              studentAuthor: buildStudentAuthorFromParent(parentRow, studentById),
+                          }
+                        : undefined,
+                };
+            });
+        },
+    });
+};
+
+const SUPPORT_BUCKET = "support-tickets";
+
+async function uploadSupportTicketImages(ticketId: string, files: File[]): Promise<string[]> {
+    const urls: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+        const safeName = files[i].name.replace(/[^\w.\-]/g, "_");
+        const path = `${ticketId}/${i}_${safeName}`;
+        const { error: upErr } = await supabase.storage.from(SUPPORT_BUCKET).upload(path, files[i], {
+            cacheControl: "3600",
+            upsert: true,
+        });
+        if (upErr) throw upErr;
+        const { data } = supabase.storage.from(SUPPORT_BUCKET).getPublicUrl(path);
+        urls.push(data.publicUrl);
+    }
+    return urls;
+}
+
+export const useCreateStudentSupportTicket = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            authorUserId: string;
+            gradeId: string;
+            ticketType: string;
+            body: string;
+            authorName?: string | null;
+            files?: File[];
+        }) => {
+            const subjectLine = getSupportTicketTypeLabel(payload.ticketType);
+            const snap = (payload.authorName ?? "").trim();
+            const { data: row, error } = await supabase
+                .from("support_tickets")
+                .insert({
+                    author_user_id: payload.authorUserId,
+                    author_name_snapshot: snap || null,
+                    grade_id: payload.gradeId,
+                    scope: "STUDENT_TO_TEACHER",
+                    ticket_type: payload.ticketType,
+                    subject: subjectLine,
+                    body: payload.body.trim(),
+                    attachment_urls: [],
+                    status: "OPEN",
+                })
+                .select()
+                .single();
+            if (error) throw error;
+
+            const ticketId = row.id as string;
+            try {
+                if (payload.files?.length) {
+                    const urls = await uploadSupportTicketImages(ticketId, payload.files);
+                    const { data: updated, error: uErr } = await supabase
+                        .from("support_tickets")
+                        .update({
+                            attachment_urls: urls,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", ticketId)
+                        .select()
+                        .single();
+                    if (uErr) throw uErr;
+                    return mapSupportTicket(updated);
+                }
+            } catch (e) {
+                await supabase.from("support_tickets").delete().eq("id", ticketId);
+                throw e;
+            }
+
+            return mapSupportTicket(row);
+        },
+        onSuccess: (_, v) => {
+            queryClient.invalidateQueries({ queryKey: ["support_tickets", "student", v.authorUserId] });
+            queryClient.invalidateQueries({ queryKey: ["support_tickets", "teacher_incoming"] });
+        },
+    });
+};
+
+export const useCreateTeacherAdminSupportTicket = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            authorUserId: string;
+            subject: string;
+            body: string;
+            gradeId?: string | null;
+        }) => {
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .insert({
+                    author_user_id: payload.authorUserId,
+                    grade_id: payload.gradeId || null,
+                    scope: "TEACHER_TO_ADMIN",
+                    ticket_type: "TEACHER_ADMIN",
+                    subject: payload.subject.trim(),
+                    body: payload.body.trim(),
+                    attachment_urls: [],
+                    status: "OPEN",
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            return mapSupportTicket(data);
+        },
+        onSuccess: (_, v) => {
+            queryClient.invalidateQueries({ queryKey: ["support_tickets", "teacher_admin_outbound", v.authorUserId] });
+            queryClient.invalidateQueries({ queryKey: ["support_tickets", "admin"] });
+        },
+    });
+};
+
+export const useEscalateStudentSupportTicket = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            studentTicketId: string;
+            teacherUserId: string;
+            subject: string;
+            originalBody: string;
+            note: string;
+            studentTicketType?: string;
+            parentAttachmentUrls?: string[];
+        }) => {
+            const { data: adminRow, error: insErr } = await supabase
+                .from("support_tickets")
+                .insert({
+                    author_user_id: payload.teacherUserId,
+                    grade_id: null,
+                    scope: "TEACHER_TO_ADMIN",
+                    ticket_type: payload.studentTicketType || "OTHER",
+                    subject: payload.subject,
+                    body: payload.originalBody,
+                    attachment_urls: payload.parentAttachmentUrls ?? [],
+                    status: "OPEN",
+                    parent_ticket_id: payload.studentTicketId,
+                    teacher_escalation_note: payload.note.trim(),
+                })
+                .select()
+                .single();
+            if (insErr) throw insErr;
+
+            const { error: upErr } = await supabase
+                .from("support_tickets")
+                .update({ status: "ESCALATED", updated_at: new Date().toISOString() })
+                .eq("id", payload.studentTicketId);
+            if (upErr) throw upErr;
+
+            return mapSupportTicket(adminRow);
+        },
+        onSuccess: (_, v) => {
+            queryClient.invalidateQueries({ queryKey: ["support_tickets"] });
+        },
+    });
+};
+
+export const useUpdateSupportTicketStatus = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: { id: string; status: string; resolved?: boolean }) => {
+            const patch: Record<string, unknown> = {
+                status: payload.status,
+                updated_at: new Date().toISOString(),
+            };
+            if (payload.status === "RESOLVED" || payload.resolved) {
+                patch.resolved_at = new Date().toISOString();
+            }
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .update(patch)
+                .eq("id", payload.id)
+                .select()
+                .single();
+            if (error) throw error;
+            return mapSupportTicket(data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["support_tickets"] });
+        },
     });
 };
 

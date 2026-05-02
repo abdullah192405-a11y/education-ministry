@@ -12,7 +12,8 @@ import {
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
     BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp,
-    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight, Loader2
+    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight, Loader2,
+    LifeBuoy
 } from "lucide-react";
 import {
     useUser,
@@ -32,6 +33,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { useStudentExams, examCategoryLabels } from "@/hooks/useExams";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import StudentSupportTab from "./components/StudentSupportTab";
 
 const StudentDashboard = () => {
     const navigate = useNavigate();
@@ -392,6 +394,7 @@ const StudentDashboard = () => {
                                         { id: "subjects", icon: BookOpen, label: "المواد الدراسية" },
                                         { id: "history", icon: History, label: "سجل الدروس" },
                                         { id: "badges", icon: Award, label: "الشارات" },
+                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
                                         { id: "settings", icon: Settings, label: "الإعدادات" }
                                     ].map(item => (
                                         <button
@@ -1198,6 +1201,23 @@ const StudentDashboard = () => {
                                             </CardContent>
                                         </Card>
                                     )}
+                                </motion.div>
+                            )}
+
+                            {activeTab === "support" && (
+                                <motion.div
+                                    key="support"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    className="space-y-6"
+                                >
+                                    <StudentSupportTab
+                                        userId={user?.id || ""}
+                                        gradeId={profile?.grade_id}
+                                        gradeName={currentGrade?.name}
+                                        authorName={user?.name}
+                                    />
                                 </motion.div>
                             )}
 

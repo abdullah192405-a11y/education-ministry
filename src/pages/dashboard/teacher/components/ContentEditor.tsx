@@ -175,6 +175,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
     const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
     const [discussionsEnabled, setDiscussionsEnabled] = useState(content?.discussionsEnabled ?? true);
+    const [collectSingleChallengeParticipantData, setCollectSingleChallengeParticipantData] = useState(
+        content?.collectSingleChallengeParticipantData ?? false
+    );
     const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>(
         content?.correctSoundUrl ? [{ label: "مخصص محفوظ", url: content.correctSoundUrl }] : []
     );
@@ -543,6 +546,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 wrongSoundUrl: wrongSoundUrl || null,
                 answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
                 discussionsEnabled,
+                collectSingleChallengeParticipantData,
                 media: mediaList,
                 quiz: [], // Legacy - keeping for compatibility
                 views: content?.views || 0,
@@ -872,6 +876,25 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                             <p className="text-xs text-muted-foreground">
                                 الوضع الافتراضي عند إنشاء درس جديد: <span className="font-semibold">مفعّل</span>
                             </p>
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                            <div className="flex items-start gap-3">
+                                <Checkbox
+                                    id="collect-single-participants"
+                                    checked={collectSingleChallengeParticipantData}
+                                    onCheckedChange={(v) => setCollectSingleChallengeParticipantData(v === true)}
+                                    className="mt-1"
+                                />
+                                <div className="space-y-1 flex-1">
+                                    <label htmlFor="collect-single-participants" className="text-sm font-semibold cursor-pointer">
+                                        جمع بيانات مشاركي التحدي الفردي
+                                    </label>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        عند التفعيل، يُطلب من الزائر إدخال الاسم (وتفاصيل اختيارية) قبل بدء التحدي الفردي، وتُحفظ النتيجة مرتبطة بهذا الاسم في تقاريرك. إذا لم يُفعَّل، يمكن إكمال التحدي دون ذكر الهوية (كما هو الآن).
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

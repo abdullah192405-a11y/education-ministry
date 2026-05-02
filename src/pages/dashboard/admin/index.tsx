@@ -10,7 +10,7 @@ import {
     BarChart3, Activity, Plus, Edit,
     Users, GraduationCap, BookOpen, LayoutDashboard,
     School, UserCheck, Trophy, Sparkles, Target,
-    Clock, Eye, Gamepad2, FileText, ChartBar
+    Clock, Eye, Gamepad2, FileText, ChartBar, LifeBuoy
 } from "lucide-react";
 import { useUser, useAdminStats, useAllUsers, useGrades, useRecentAuditLogs } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +23,7 @@ import StudentsTab from "./components/StudentsTab";
 import SubjectsTab from "./components/SubjectsTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import SettingsTab from "./components/SettingsTab";
+import AdminSupportTab from "./components/AdminSupportTab";
 
 // Action type icons/colors for audit logs
 const auditActionMeta: Record<string, { icon: any; color: string }> = {
@@ -199,6 +200,7 @@ const AdminDashboard = () => {
                                         { id: "grades", icon: School, label: "الصفوف الدراسية" },
                                         { id: "teachers", icon: UserCheck, label: "المعلمين" },
                                         { id: "students", icon: GraduationCap, label: "الطلاب" },
+                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
                                         { id: "subjects", icon: BookOpen, label: "المواد الدراسية" },
                                         { id: "analytics", icon: ChartBar, label: "تقارير شاملة" },
                                         { id: "settings", icon: Settings, label: "إعدادات" }
@@ -537,6 +539,7 @@ const AdminDashboard = () => {
                                     {activeTab === "grades" && <GradesTab />}
                                     {activeTab === "teachers" && <TeachersTab />}
                                     {activeTab === "students" && <StudentsTab />}
+                                    {activeTab === "support" && <AdminSupportTab />}
                                     {activeTab === "subjects" && <SubjectsTab />}
                                     {activeTab === "analytics" && <AnalyticsTab />}
                                     {activeTab === "settings" && <SettingsTab />}

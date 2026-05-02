@@ -61,7 +61,7 @@ model User {
   notifications    Notification[]
   hostedExams      Exam[]      @relation("HostedExams")
   examResults      ExamResult[]
-
+  supportTicketsAuthored SupportTicket[] @relation("SupportTicketAuthor")
 
 
   @@map("users")
@@ -150,6 +150,7 @@ model Grade {
   teacherProfiles TeacherProfile[]
   enrollments     StudentEnrollment[]
   exams           Exam[]
+  supportTickets  SupportTicket[]
 
   @@map("grades")
 }
@@ -188,6 +189,8 @@ model Topic {
   duration    String? // e.g., "25 دقيقة"
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
+  /// When true, guests must enter name/extra info before single-player challenge; results stored for teacher.
+  collectSingleChallengeParticipantData Boolean @default(false) @map("collect_single_challenge_participant_data")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -364,7 +367,7 @@ model ChallengeSession {
   showLeaderboard Boolean @default(true) @map("show_leaderboard")
   allowLateJoin   Boolean @default(true) @map("allow_late_join")
   musicEnabled    Boolean @default(true) @map("music_enabled")
-  maxPlayers      Int     @default(30) @map("max_players")
+  maxPlayers      Int     @default(300) @map("max_players")
 
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
@@ -429,7 +432,7 @@ model PlayerSession {
 model ChallengeResult {
   id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sessionId              String   @map("session_id") @db.Uuid
-  userId                 String   @map("user_id") @db.Uuid
+  userId                 String?  @map("user_id") @db.Uuid
   totalQuestions         Int      @map("total_questions")
   correctAnswers         Int      @map("correct_answers")
   wrongAnswers           Int      @map("wrong_answers")
@@ -442,11 +445,13 @@ model ChallengeResult {
   accuracy               Float
   level                  String // e.g., "أسطورة", "خبير"
   questionResults        Json     @map("question_results") // [{questionId, correct, timeTaken, pointsEarned}]
+  participantDisplayName String?  @map("participant_display_name")
+  participantExtra       String?  @map("participant_extra")
   createdAt              DateTime @default(now()) @map("created_at")
 
   // Relations
   session      ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user         User             @relation(fields: [userId], references: [id])
+  user         User?            @relation(fields: [userId], references: [id])
   resultBadges ResultBadge[]
   answers      ChallengeAnswer[]
 
@@ -635,6 +640,42 @@ model Notification {
 
   @@index([userId, isRead])
   @@map("notifications")
+}
+
+/// Support tickets: student→teacher (by grade), teacher→admin, or escalated student issues
+model SupportTicket {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authorUserId          String    @map("author_user_id") @db.Uuid
+  /// Cached author display name at creation (student name); avoids users RLS on readers
+  authorNameSnapshot    String?   @map("author_name_snapshot")
+  /// Class context for student→teacher tickets; optional for teacher→admin
+  gradeId               String?   @map("grade_id") @db.Uuid
+  /// STUDENT_TO_TEACHER | TEACHER_TO_ADMIN
+  scope                 String
+  /// TECHNICAL | CONTENT | ACCOUNT | OTHER | TEACHER_ADMIN (teacher→admin direct)
+  ticketType            String    @default("OTHER") @map("ticket_type")
+  subject               String
+  body                  String    @db.Text
+  /// Public URLs of uploaded images (max 5), stored after insert
+  attachmentUrls        Json      @default(dbgenerated("'[]'::jsonb")) @map("attachment_urls")
+  /// OPEN | IN_PROGRESS | RESOLVED | ESCALATED
+  status                String    @default("OPEN")
+  /// Set when a teacher escalates a student ticket to the admin (child row links to parent)
+  parentTicketId        String?   @map("parent_ticket_id") @db.Uuid
+  teacherEscalationNote String?   @map("teacher_escalation_note") @db.Text
+  resolvedAt            DateTime? @map("resolved_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  author   User            @relation("SupportTicketAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  grade    Grade?          @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  parent   SupportTicket?  @relation("SupportTicketEscalation", fields: [parentTicketId], references: [id], onDelete: SetNull)
+  children SupportTicket[] @relation("SupportTicketEscalation")
+
+  @@index([authorUserId])
+  @@index([gradeId, scope, status])
+  @@index([scope, status])
+  @@map("support_tickets")
 }
 
 /// Announcements (system-wide, from admin)

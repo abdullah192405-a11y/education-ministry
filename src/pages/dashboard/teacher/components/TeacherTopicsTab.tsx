@@ -5,12 +5,15 @@ import {
     Eye, Gamepad2, MoreVertical, Edit,
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
-    FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download
+    FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download,
+    Users, Trophy, ChevronRight, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     DropdownMenu,
@@ -107,6 +110,19 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const effectiveTeacherProfileId = teacherProfileId || currentTeacherProfile?.id || "";
     const { data: hostedResults } = useHostedChallengeResults(currentUser?.id || "", 1000);
     const { data: singleResults } = useTeacherSingleChallengeResults(effectiveTeacherProfileId, 1000);
+
+    /** Single-player challenge rows grouped by lesson (topic), for showing names on each درس card */
+    const singleResultsByTopicId = useMemo(() => {
+        const m = new Map<string, any[]>();
+        (singleResults || []).forEach((r: any) => {
+            const tid = String(r.session?.topic_id ?? r.session?.topic?.id ?? "");
+            if (!tid) return;
+            if (!m.has(tid)) m.set(tid, []);
+            m.get(tid)!.push(r);
+        });
+        return m;
+    }, [singleResults]);
+
     const { data: topicReport } = useTeacherTopicContentReport(
         selectedTopicStats ? String(selectedTopicStats.id) : "",
         currentUser?.id || "",
@@ -171,6 +187,25 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const [searchQuery, setSearchQuery] = useState("");
     const [singleShareDialogTopic, setSingleShareDialogTopic] = useState<ExtendedTopic | null>(null);
     const [singleShareCategory, setSingleShareCategory] = useState<SingleShareCategory>("mixed");
+    const [singleChallengeResultsTopic, setSingleChallengeResultsTopic] = useState<ExtendedTopic | null>(null);
+
+    const sortedSingleResultsForDialog = useMemo(() => {
+        if (!singleChallengeResultsTopic) return [];
+        const raw = singleResultsByTopicId.get(String(singleChallengeResultsTopic.id)) || [];
+        return [...raw].sort(
+            (a, b) =>
+                new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+    }, [singleChallengeResultsTopic, singleResultsByTopicId]);
+
+    const singleResultsDialogSummary = useMemo(() => {
+        const list = sortedSingleResultsForDialog;
+        if (!list.length) return null;
+        const pcts = list.map((r: any) => Number(r.percentage ?? 0));
+        const avg = Math.round(pcts.reduce((s, x) => s + x, 0) / pcts.length);
+        const best = Math.max(...pcts);
+        return { count: list.length, avg, best };
+    }, [sortedSingleResultsForDialog]);
 
     const buildSingleShareLink = (topicId: string, category: SingleShareCategory) => {
         const gradeSegment = currentGrade?.slug || selectedGradeId;
@@ -379,7 +414,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             const row = ensure(topicId);
             row.singleAttempts += 1;
             row.challengeAttempts += 1;
-            const participantKey = addParticipant(topicId, result.user_id || result.user?.id, result.user?.name || result.name);
+            const participantKey = addParticipant(
+                topicId,
+                result.user_id || result.user?.id,
+                result.user?.name || result.name || result.participant_display_name
+            );
             markAttempt(topicId, result, "single", participantKey || null);
         });
 
@@ -438,6 +477,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         thumbnail: topicData.thumbnail,
                         duration: topicData.duration,
                         discussions_enabled: topicData.discussionsEnabled ?? true,
+                        collect_single_challenge_participant_data: topicData.collectSingleChallengeParticipantData === true,
                         correct_sound_url: topicData.correctSoundUrl || null,
                         wrong_sound_url: topicData.wrongSoundUrl || null,
                         answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -470,6 +510,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     thumbnail: topicData.thumbnail,
                     duration: topicData.duration,
                     discussions_enabled: topicData.discussionsEnabled ?? true,
+                    collect_single_challenge_participant_data: topicData.collectSingleChallengeParticipantData === true,
                     correct_sound_url: topicData.correctSoundUrl || null,
                     wrong_sound_url: topicData.wrongSoundUrl || null,
                     answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -614,6 +655,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         wrongSoundUrl: editingTopic.wrong_sound_url || "",
                         answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
                         discussionsEnabled: editingTopic.discussions_enabled ?? true,
+                        collectSingleChallengeParticipantData: editingTopic.collect_single_challenge_participant_data === true,
                         views: editingTopic.views,
                         createdAt: editingTopic.createdAt
                     } : undefined}
@@ -962,6 +1004,40 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </DropdownMenu>
                                                 </div>
                                             </div>
+
+                                            {(singleResultsByTopicId.get(String(topic.id))?.length ?? 0) > 0 && (
+                                                <div className="mt-4 pt-4 border-t border-dashed border-primary/20">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        dir="rtl"
+                                                        className="group relative h-auto w-full overflow-hidden rounded-2xl border-primary/25 bg-gradient-to-br from-primary/[0.09] via-primary/[0.02] to-transparent py-4 px-4 shadow-sm transition-all hover:border-primary/45 hover:shadow-md hover:from-primary/[0.12] sm:max-w-md"
+                                                        onClick={() => setSingleChallengeResultsTopic(topic)}
+                                                    >
+                                                        <span className="flex w-full items-center justify-between gap-3">
+                                                            <span className="flex min-w-0 flex-1 items-center gap-3">
+                                                                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-inner ring-1 ring-primary/15">
+                                                                    <Trophy className="h-6 w-6" />
+                                                                </span>
+                                                                <span className="flex min-w-0 flex-col gap-0.5 text-start">
+                                                                    <span className="font-bold leading-tight text-foreground">
+                                                                        نتائج التحدي الفردي
+                                                                    </span>
+                                                                    <span className="text-xs font-normal text-muted-foreground">
+                                                                        أسماء المحاولات والدرجات — الأحدث أولاً
+                                                                    </span>
+                                                                </span>
+                                                            </span>
+                                                            <span className="flex shrink-0 items-center gap-2">
+                                                                <Badge className="h-7 min-w-[1.75rem] justify-center rounded-full bg-primary px-2.5 text-xs font-bold text-primary-foreground shadow-sm">
+                                                                    {singleResultsByTopicId.get(String(topic.id))!.length}
+                                                                </Badge>
+                                                                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                                                            </span>
+                                                        </span>
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1349,6 +1425,170 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     )}
                 </DialogContent>
             </Dialog>
+
+            <Dialog
+                open={!!singleChallengeResultsTopic}
+                onOpenChange={(open) => !open && setSingleChallengeResultsTopic(null)}
+            >
+                <DialogContent
+                    dir="rtl"
+                    className="gap-0 overflow-hidden p-0 sm:max-w-xl max-h-[88vh] flex flex-col"
+                >
+                    <DialogHeader className="relative shrink-0 space-y-0 border-0 bg-gradient-to-bl from-primary/[0.12] via-primary/[0.04] to-transparent px-6 pb-5 pt-6 text-start">
+                        <div className="flex items-start gap-4">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-background/90 text-primary shadow-md ring-1 ring-primary/10">
+                                <Trophy className="h-7 w-7" />
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-1">
+                                <DialogTitle className="text-xl font-black leading-snug sm:text-2xl">
+                                    نتائج التحدي الفردي
+                                </DialogTitle>
+                                {singleChallengeResultsTopic && (
+                                    <p className="truncate text-sm font-semibold text-primary">
+                                        {singleChallengeResultsTopic.title}
+                                    </p>
+                                )}
+                                <DialogDescription className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                                    قائمة بجميع المحاولات عبر رابط التحدي الفردي للدرس. الأحدث أولاً. للتحليل التفصيلي للأسئلة
+                                    استخدم «التحديات» ← «سجل التحديات».
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    {singleChallengeResultsTopic && singleResultsDialogSummary && (
+                        <>
+                            <div className="grid grid-cols-3 gap-2 border-b bg-muted/30 px-4 py-4 sm:gap-3 sm:px-6">
+                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
+                                    <Users className="mx-auto mb-1 h-4 w-4 text-primary opacity-80" />
+                                    <div className="text-lg font-black tabular-nums text-foreground">
+                                        {singleResultsDialogSummary.count}
+                                    </div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                        محاولات
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
+                                    <TrendingUp className="mx-auto mb-1 h-4 w-4 text-emerald-600 opacity-90" />
+                                    <div className="text-lg font-black tabular-nums text-emerald-700">
+                                        {singleResultsDialogSummary.avg}%
+                                    </div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                        متوسط
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
+                                    <Trophy className="mx-auto mb-1 h-4 w-4 text-amber-600 opacity-90" />
+                                    <div className="text-lg font-black tabular-nums text-amber-700">
+                                        {singleResultsDialogSummary.best}%
+                                    </div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                        الأفضل
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            <ScrollArea dir="rtl" className="max-h-[min(52vh,28rem)] flex-1">
+                                <div className="border-b bg-muted/20 px-4 py-2 sm:px-6">
+                                    <p className="text-sm font-bold text-foreground">قائمة المشاركين</p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        الترتيب من الأحدث؛ المحتوى من اليمين إلى اليسار.
+                                    </p>
+                                </div>
+                                <ul dir="rtl" className="space-y-2 p-4 sm:p-6">
+                                    {sortedSingleResultsForDialog.map((r: any, index: number) => {
+                                        const label =
+                                            r.user?.name || r.participant_display_name || "زائر";
+                                        const pct = Math.round(Number(r.percentage ?? 0));
+                                        const initial =
+                                            label.replace(/\s/g, "").charAt(0) || "?";
+                                        const scoreClass =
+                                            pct >= 75
+                                                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                                : pct >= 50
+                                                  ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
+                                                  : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
+                                        return (
+                                            <li
+                                                key={r.id}
+                                                dir="rtl"
+                                                className="flex flex-row items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/30 sm:gap-4 sm:p-4"
+                                            >
+                                                {/* RTL: أول عنصر = يمين — الصورة الرمزية والترتيب */}
+                                                <div className="flex shrink-0 flex-col items-center gap-1">
+                                                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-base font-black text-primary ring-1 ring-primary/15">
+                                                        {initial}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">
+                                                        #{index + 1}
+                                                    </span>
+                                                </div>
+
+                                                <div className="min-w-0 flex-1 space-y-1.5 text-start">
+                                                    <p className="truncate text-base font-bold leading-tight text-foreground">
+                                                        {label}
+                                                    </p>
+                                                    {r.participant_extra ? (
+                                                        <p className="line-clamp-2 text-start text-xs leading-snug text-muted-foreground">
+                                                            {r.participant_extra}
+                                                        </p>
+                                                    ) : null}
+                                                    <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            <Clock className="h-3.5 w-3.5 shrink-0" />
+                                                            <span className="tabular-nums">
+                                                                {r.created_at
+                                                                    ? new Date(r.created_at).toLocaleString(
+                                                                          "ar-SA",
+                                                                          {
+                                                                              weekday: "short",
+                                                                              day: "numeric",
+                                                                              month: "short",
+                                                                              hour: "2-digit",
+                                                                              minute: "2-digit",
+                                                                          }
+                                                                      )
+                                                                    : "—"}
+                                                            </span>
+                                                        </span>
+                                                        {!r.user?.id && (
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="h-5 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+                                                            >
+                                                                زائر
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* RTL: آخر عنصر = يسار — النسبة */}
+                                                <div
+                                                    className={`flex min-w-[4.25rem] shrink-0 flex-col items-center justify-center rounded-xl border px-2.5 py-2 text-center ${scoreClass}`}
+                                                >
+                                                    <span className="text-xl font-black tabular-nums leading-none">
+                                                        {pct}
+                                                        <span className="ms-0.5 text-xs font-bold opacity-80">%</span>
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </ScrollArea>
+                        </>
+                    )}
+
+                    {singleChallengeResultsTopic && !singleResultsDialogSummary && (
+                        <div className="px-6 py-14 text-center text-sm text-muted-foreground">
+                            لا توجد محاولات مسجّلة لهذا الدرس.
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={!!singleShareDialogTopic} onOpenChange={(open) => !open && setSingleShareDialogTopic(null)}>
                 <DialogContent dir="rtl" className="sm:max-w-xl">
                     <DialogHeader>

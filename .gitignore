@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 /generated/prisma
+
+# Local env and Supabase CLI cache
+.env
+supabase/.temp/

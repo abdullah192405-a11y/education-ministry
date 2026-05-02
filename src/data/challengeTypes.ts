@@ -23,6 +23,8 @@ export interface EducationalContent {
     wrongSoundUrl?: string;
     answeringBackgroundSoundUrl?: string;
     discussionsEnabled?: boolean;
+    /** When true, guests must enter a name (and optional details) before the single challenge; results are stored for the teacher. */
+    collectSingleChallengeParticipantData?: boolean;
     quiz?: any[]; // Keep for compatibility if needed
     views: number;
     createdAt: string;

@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "load-test:challenge": "tsx scripts/load-test-concurrent-challenge.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -54,6 +55,8 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
     "js-md5": "^0.8.3",
+    "jspdf": "^4.2.1",
+    "jspdf-rtl-support": "^0.2.12",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "pdfjs-dist": "^3.11.174",

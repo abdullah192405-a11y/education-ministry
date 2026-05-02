@@ -59,6 +59,15 @@ const SingleChallenge = () => {
     const { toast } = useToast();
     const { data: topic, isLoading } = useTopic(topicId || "");
     const content = topic;
+
+    const collectParticipantData = useMemo(
+        () => Boolean((topic as any)?.collect_single_challenge_participant_data),
+        [topic]
+    );
+    const teacherHostUserId = useMemo(() => {
+        const id = (topic as any)?._TeacherTopics?.[0]?.teacher_profiles?.user_id;
+        return typeof id === "string" && id.length > 0 ? id : undefined;
+    }, [topic]);
     const { focus } = useContentVisibilityFocus();
 
     const pinLooksLikeSession = typeof pin === "string" && /^\d{6}$/.test(pin);
@@ -85,6 +94,13 @@ const SingleChallenge = () => {
     const saveAnswersMutation = useSaveAnswers();
     const updatePlayerSessionMutation = useUpdatePlayerSession();
     const [resultsSaved, setResultsSaved] = useState(false);
+    const [guestDisplayName, setGuestDisplayName] = useState("");
+    const [guestExtra, setGuestExtra] = useState("");
+
+    useEffect(() => {
+        const n = joinDisplayName?.trim();
+        if (n) setGuestDisplayName(n);
+    }, [joinDisplayName]);
 
     const [gameState, setGameState] = useState<GameState>("intro");
     const [questions, setQuestions] = useState<ChallengeQuestion[]>([]);
@@ -176,6 +192,28 @@ const SingleChallenge = () => {
     }, [gameState, musicEnabled, play, stop]);
 
     const handleStartGame = () => {
+        const hasFullProfile = !!currentUser?.id && !!studentProfile?.id;
+        const needsGuestIdentity =
+            collectParticipantData && !hasFullProfile;
+        if (needsGuestIdentity) {
+            if (!teacherHostUserId) {
+                toast({
+                    variant: "destructive",
+                    title: "تعذّر المتابعة",
+                    description: "لا يمكن ربط هذا الدرس بحساب المعلّم لتسجيل البيانات. تواصل مع الدعم أو جرّب لاحقاً.",
+                });
+                return;
+            }
+            if (!guestDisplayName.trim()) {
+                toast({
+                    variant: "destructive",
+                    title: "الاسم مطلوب",
+                    description: "أدخل اسمك كما طلب المعلّم قبل بدء التحدي.",
+                });
+                return;
+            }
+        }
+
         setGameState("playing");
         setCurrentIndex(0);
         setScore(0);
@@ -602,6 +640,73 @@ const SingleChallenge = () => {
                 return;
             }
 
+            /** زائر قدّم اسماً وبيانات إضافية — يُحفظ صف في challenge_results للمعلّم */
+            if (
+                !hasFullProfile &&
+                collectParticipantData &&
+                guestDisplayName.trim() &&
+                teacherHostUserId
+            ) {
+                setResultsSaved(true);
+                try {
+                    const session = await createSessionMutation.mutateAsync({
+                        topicId: topicId as string,
+                        hostId: teacherHostUserId,
+                        mode: "SINGLE",
+                        category: (category || "mixed").toUpperCase(),
+                    });
+
+                    const savedResult = await saveResultMutation.mutateAsync({
+                        sessionId: session.id,
+                        userId: null,
+                        participantDisplayName: guestDisplayName.trim(),
+                        participantExtra: guestExtra.trim() || null,
+                        totalQuestions: results.totalQuestions,
+                        correctAnswers: results.correctAnswers,
+                        wrongAnswers: results.wrongAnswers,
+                        score: results.score,
+                        maxScore: results.maxScore,
+                        percentage: results.percentage,
+                        timeTaken: results.timeTaken,
+                        averageTimePerQuestion: results.averageTimePerQuestion,
+                        longestStreak: results.longestStreak,
+                        accuracy: results.accuracy,
+                        level: results.level,
+                        questionResults: results.questionResults,
+                    });
+
+                    const answersToSave = results.questionResults.map((qr: any, index: number) => ({
+                        resultId: String(savedResult.id),
+                        questionId: String(questions[index]?.id || qr.questionId),
+                        userAnswer: qr.userAnswer ? String(qr.userAnswer) : null,
+                        isCorrect: !!qr.correct,
+                        timeTaken: Number(qr.timeTaken || 0),
+                        pointsEarned: Number(qr.pointsEarned || 0),
+                    }));
+
+                    if (answersToSave.length > 0) {
+                        await saveAnswersMutation.mutateAsync(answersToSave);
+                    }
+
+                    toast({
+                        title: "تم حفظ النتيجة",
+                        description: "ستظهر للمعلّم مع الاسم والبيانات التي أدخلتها.",
+                    });
+                } catch (error) {
+                    console.error("[Save] Guest identified single challenge failed:", error);
+                    setResultsSaved(false);
+                    toast({
+                        variant: "destructive",
+                        title: "تعذّر الحفظ",
+                        description: "تعذّر ربط النتيجة بحساب المعلّم. يمكنك المحاولة من جديد من صفحة النتائج إن وُجدت.",
+                    });
+                }
+
+                stop("background");
+                play("achievement");
+                return;
+            }
+
             if (!hasFullProfile) {
                 // Guest/visitor flow: persist aggregated single-attempt stats so teacher report updates.
                 try {
@@ -959,6 +1064,12 @@ const SingleChallenge = () => {
         playerSessionIdFromJoin,
         pinLooksLikeSession,
         sessionForVisibilityLoading,
+        collectParticipantData,
+        guestDisplayName,
+        guestExtra,
+        teacherHostUserId,
+        category,
+        questions,
     ]);
 
     // Calculate results
@@ -1554,6 +1665,10 @@ const SingleChallenge = () => {
             </div>
         );
     };
+
+    const hasFullProfileForUi = !!currentUser?.id && !!studentProfile?.id;
+    const showGuestIdentityForm = collectParticipantData && !hasFullProfileForUi;
+
     const renderIntro = () => (
         <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -1571,7 +1686,7 @@ const SingleChallenge = () => {
                 </motion.div>
 
                 <h2 className="text-3xl font-black mb-4">هل أنت مستعد؟</h2>
-                {joinDisplayName && (
+                {joinDisplayName && !showGuestIdentityForm && (
                     <p className="text-base font-bold text-primary mb-3">أهلاً، {joinDisplayName}</p>
                 )}
                 <p className="text-muted-foreground mb-8">
@@ -1579,6 +1694,40 @@ const SingleChallenge = () => {
                     <br />
                     أجب بسرعة للحصول على نقاط إضافية!
                 </p>
+
+                {showGuestIdentityForm && (
+                    <div className="text-right space-y-4 mb-8 border rounded-xl p-4 bg-muted/30">
+                        <p className="text-sm font-semibold text-foreground">
+                            طلب المعلّم تسجيل بياناتك قبل البدء
+                        </p>
+                        {!teacherHostUserId && (
+                            <p className="text-xs text-destructive">
+                                تعذّر تفعيل التسجيل لهذا الدرس تقنياً. يمكنك المتابعة لاحقاً أو التواصل مع المعلّم.
+                            </p>
+                        )}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium block text-right">الاسم الكامل *</label>
+                            <Input
+                                dir="rtl"
+                                value={guestDisplayName}
+                                onChange={(e) => setGuestDisplayName(e.target.value)}
+                                placeholder="اكتب اسمك كما يظهر في السجل"
+                                className="text-right"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium block text-right">تفاصيل إضافية (اختياري)</label>
+                            <Textarea
+                                dir="rtl"
+                                value={guestExtra}
+                                onChange={(e) => setGuestExtra(e.target.value)}
+                                placeholder="مثال: الصف، رقم الجلسة، رقم الهاتف…"
+                                rows={2}
+                                className="text-right resize-none"
+                            />
+                        </div>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-4 mb-8">
                     <div className="p-4 rounded-xl bg-muted/50">
@@ -1600,7 +1749,11 @@ const SingleChallenge = () => {
                     size="lg"
                     variant="hero"
                     className="w-full gap-2 text-lg h-14"
-                    disabled={questions.length === 0}
+                    disabled={
+                        questions.length === 0 ||
+                        (showGuestIdentityForm &&
+                            (!guestDisplayName.trim() || !teacherHostUserId))
+                    }
                 >
                     <Sparkles className="w-5 h-5" />
                     ابدأ التحدي

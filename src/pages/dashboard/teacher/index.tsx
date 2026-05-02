@@ -16,7 +16,7 @@ import {
     Bell, LogOut, ChevronRight, GraduationCap, Award, Search,
     Plus, Trophy, History, Clock, Eye, Star, Info, AlertTriangle,
     CheckCircle, TrendingUp, Zap, Copy, Upload, Share2, MessageCircle, Twitter, Send,
-    ListChecks, Target, Calendar
+    ListChecks, Target, Calendar, LifeBuoy
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { generatePin } from "@/data/challengeTypes";
@@ -35,6 +35,7 @@ import TeacherAnalyticsTab from "./components/TeacherAnalyticsTab";
 import TeacherSettingsTab from "./components/TeacherSettingsTab";
 import TeacherExamsTab from "./components/TeacherExamsTab";
 import TeacherLiveTab from "./components/TeacherLiveTab";
+import TeacherSupportTab from "./components/TeacherSupportTab";
 
 
 import {
@@ -518,6 +519,7 @@ const TeacherDashboard = () => {
                                         { id: "live", icon: Radio, label: "البث المباشر" },
                                         { id: "exams", icon: ClipboardList, label: "اختبارات" },
                                         { id: "students", icon: Users, label: "الطلاب" },
+                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
                                         { id: "analytics", icon: ChartBar, label: "الإحصائيات" },
                                         { id: "settings", icon: Cog, label: "الإعدادات" }
                                     ].map(item => (
@@ -951,6 +953,12 @@ const TeacherDashboard = () => {
 
                                     {activeTab === "exams" && <TeacherExamsTab />}
                                     {activeTab === "students" && <TeacherStudentsTab />}
+                                    {activeTab === "support" && (
+                                        <TeacherSupportTab
+                                            teacherUserId={user?.id || ""}
+                                            teacherGradeId={profile?.grade_id}
+                                        />
+                                    )}
                                     {activeTab === "analytics" && <TeacherAnalyticsTab />}
                                     {activeTab === "settings" && <TeacherSettingsTab />}
                                 </motion.div>

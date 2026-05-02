@@ -2,7 +2,8 @@ import {
     Gamepad2, Zap, Users, Calendar, History,
     Trophy, Clock, Eye, Copy, ArrowRight, Play, Radio,
     Trash2, StopCircle, RefreshCw, BarChart3, PieChart,
-    CheckCircle2, XCircle, Info, ChevronLeft, Share2, MessageCircle, Twitter, Send, Download
+    CheckCircle2, XCircle, Info, ChevronLeft, Share2, MessageCircle, Twitter, Send, Download,
+    Filter, Loader2, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
     useUser,
     useTeacherProfile,
@@ -44,7 +45,86 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { isScheduledTeacherChallenge } from "@/lib/teacherScheduledChallenge";
+import {
+    downloadChallengeResultsCsv,
+    type ChallengeReportCsvOptions,
+} from "@/lib/challengeReportDownload";
+import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
+import { useToast } from "@/hooks/use-toast";
+
+const SINGLE_HISTORY_ALL_MONTHS = "__all_months__";
+const SINGLE_HISTORY_ALL_DAYS = "__all_days__";
+
+function parseSessionDate(s: { endedAt?: string; date?: string; created_at?: string }): Date | null {
+    const raw = s?.endedAt || s?.created_at;
+    if (raw) {
+        const d = new Date(raw);
+        if (!Number.isNaN(d.getTime())) return d;
+    }
+    return null;
+}
+
+/** يدمج كل جلسات الفردي المطابقة للفلتر (شهر/يوم) حتى تظهر كل المحاولات وليس آخر جلسة فقط */
+function buildMergedSessionForFilter(sessions: any[]): any | null {
+    if (!sessions.length) return null;
+    if (sessions.length === 1) return sessions[0];
+
+    const base = { ...sessions[0] };
+    const resultsList: any[] = [];
+    let topScore = 0;
+    let topStudent = "";
+
+    for (const sess of sessions) {
+        const list = sess.resultsList || [];
+        list.forEach((r: any, i: number) => {
+            const uid =
+                r.id != null ? `${sess.id}-${r.id}` : `${sess.id}-row-${i}`;
+            resultsList.push({ ...r, id: uid });
+            if ((r.score || 0) > topScore) {
+                topScore = r.score || 0;
+                topStudent =
+                    r.name ||
+                    r.user?.name ||
+                    r.participant_display_name ||
+                    topStudent;
+            }
+        });
+    }
+
+    const n = resultsList.length;
+    const totalPct = resultsList.reduce(
+        (acc, r) => acc + (r.percentage ?? r.score ?? 0),
+        0
+    );
+    const avgScore = n > 0 ? Math.round(totalPct / n) : 0;
+
+    return {
+        ...base,
+        id: `merged-${sessions[0]?.id ?? "x"}-${sessions.length}`,
+        resultsList,
+        finishedPlayers: n,
+        participants: n,
+        totalScore: totalPct,
+        topScore,
+        topStudent: topStudent || base.topStudent || "",
+        avgScore,
+        sessionCountInView: sessions.length,
+        date:
+            n > 0
+                ? `مجمّع ${sessions.length} جلسة (${n} محاولة)`
+                : base.date,
+        timeLabel: "—",
+    };
+}
 
 interface Challenge {
     id: number;
@@ -75,6 +155,8 @@ interface TeacherChallengesTabProps {
 
 // --- Sub-component for Challenge Details ---
 const ChallengeDetailsContent = ({ session }: { session: any }) => {
+    const { toast } = useToast();
+    const [pdfExporting, setPdfExporting] = useState(false);
     const { data: topic, isLoading: loadingTopic } = useTopic(session?.topicId || "");
     const results = useMemo(() => session?.resultsList || [], [session]);
 
@@ -120,11 +202,100 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
         };
     }, [results]);
 
+    const reportOptions = useMemo((): ChallengeReportCsvOptions => {
+        const questionRows =
+            topic?.challengeItems?.map((q: any, idx: number) => {
+                const qStat = stats?.questionStats.find((s) => s.id === String(q.id)) || {
+                    accuracy: 0,
+                    correct: 0,
+                    total: 0,
+                };
+                return {
+                    questionText: `${idx + 1}. ${String(q.question || "")}`,
+                    accuracy: qStat.accuracy,
+                    correct: qStat.correct,
+                    total: qStat.total,
+                };
+            }) || [];
+
+        return {
+            topicTitle: (topic as any)?.title || session?.topicTitle || "تحدي",
+            sessionDate: session?.date,
+            sessionTime: session?.timeLabel,
+            mergedSessionsNote:
+                typeof session?.sessionCountInView === "number" && session.sessionCountInView > 1
+                    ? `مدموج من ${session.sessionCountInView} جلسة`
+                    : undefined,
+            results: session?.resultsList || [],
+            questionRows: questionRows.length > 0 ? questionRows : undefined,
+        };
+    }, [session, topic, stats]);
+
+    const handleDownloadCsv = useCallback(() => {
+        downloadChallengeResultsCsv(reportOptions);
+        toast({
+            title: "تم التحميل",
+            description: "تم حفظ ملف التقرير (CSV) على جهازك.",
+        });
+    }, [reportOptions, toast]);
+
+    const handleDownloadPdf = useCallback(async () => {
+        setPdfExporting(true);
+        try {
+            await downloadChallengeReportPdf(reportOptions);
+            toast({
+                title: "تم التحميل",
+                description: "تم حفظ التقرير (PDF) على جهازك.",
+            });
+        } catch (e) {
+            console.error(e);
+            toast({
+                title: "تعذر إنشاء PDF",
+                description: "حاول مرة أخرى أو نزّل نسخة CSV.",
+                variant: "destructive",
+            });
+        } finally {
+            setPdfExporting(false);
+        }
+    }, [reportOptions, toast]);
+
     if (loadingTopic) return <div className="p-12 flex justify-center"><RefreshCw className="w-8 h-8 animate-spin text-primary" /></div>;
     if (!session) return null;
 
     return (
-        <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-3 pb-2 border-b shrink-0 bg-muted/10">
+                <span className="text-xs text-muted-foreground">تصدير التقرير</span>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        className="gap-2 shrink-0"
+                        disabled={pdfExporting}
+                        onClick={() => void handleDownloadPdf()}
+                    >
+                        {pdfExporting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <FileText className="w-4 h-4" />
+                        )}
+                        تحميل PDF
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 shrink-0"
+                        disabled={pdfExporting}
+                        onClick={handleDownloadCsv}
+                    >
+                        <Download className="w-4 h-4" />
+                        CSV
+                    </Button>
+                </div>
+            </div>
+        <Tabs defaultValue="overview" dir="rtl" className="flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="px-6 border-b">
                 <TabsList className="bg-transparent h-12 gap-6 p-0 border-none">
                     <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none h-full px-1">
@@ -187,7 +358,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 font-bold text-lg border-r-4 border-primary pr-3 py-1">
+                        <div className="flex items-center gap-2 font-bold text-lg border-s-4 border-primary ps-3 py-1">
                             تفاصيل التحدي
                         </div>
                         <div className="grid grid-cols-2 gap-y-6 text-sm bg-muted/20 p-6 rounded-2xl border border-border/50">
@@ -235,7 +406,9 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                                         {index + 1}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-base group-hover:text-primary transition-colors text-start">{res.user?.name || res.name || "طالب"}</div>
+                                        <div className="font-bold text-base group-hover:text-primary transition-colors text-start">
+                                            {res.user?.name || res.name || res.participant_display_name || "طالب"}
+                                        </div>
                                         <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-2 mt-1">
                                             <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold"><CheckCircle2 className="w-3 h-3" /> {res.correct_answers || 0}</span>
                                             <span className="flex items-center gap-1.5 bg-red-50 text-red-700 px-2 py-0.5 rounded-full border border-red-100 font-bold"><XCircle className="w-3 h-3" /> {res.wrong_answers || 0}</span>
@@ -283,7 +456,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                                         </div>
                                         <div className="relative h-2 w-full bg-background rounded-full overflow-hidden border">
                                             <div
-                                                className={`absolute top-0 right-0 h-full transition-all duration-500 ${qStat.accuracy > 70 ? "bg-emerald-500" : qStat.accuracy > 40 ? "bg-amber-500" : "bg-red-500"}`}
+                                                className={`absolute top-0 start-0 h-full transition-all duration-500 ${qStat.accuracy > 70 ? "bg-emerald-500" : qStat.accuracy > 40 ? "bg-amber-500" : "bg-red-500"}`}
                                                 style={{ width: `${qStat.accuracy}%` }}
                                             />
                                         </div>
@@ -300,12 +473,29 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                 </TabsContent>
             </div>
         </Tabs>
+        </div>
     );
+};
+
+type SingleTopicHistoryGroup = {
+    topicId: string;
+    topicTitle: string;
+    sessions: any[];
+    latestEndedAt?: string;
+    totalAttempts: number;
+    weightedAvg: number;
+    topStudent: string;
+    sessionCount: number;
 };
 
 const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, subjectId, onStartChallenge, onDeleteChallenge }: TeacherChallengesTabProps) => {
 const navigate = useNavigate();
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
+    const [selectedSingleTopicGroup, setSelectedSingleTopicGroup] = useState<SingleTopicHistoryGroup | null>(null);
+    /** YYYY-MM or "" = كل الشهور */
+    const [singleHistoryMonth, setSingleHistoryMonth] = useState("");
+    /** 1–31 أو null = كل الأيام (ضمن الشهر المحدد) */
+    const [singleHistoryDay, setSingleHistoryDay] = useState<number | null>(null);
     const { data: user } = useUser();
     const { data: teacherProfile } = useTeacherProfile(user?.id || "");
     const { data: hostedResults } = useHostedChallengeResults(user?.id || "", 500);
@@ -373,6 +563,7 @@ const navigate = useNavigate();
                 mode: session.mode,
                 date: session.created_at ? new Date(session.created_at).toLocaleDateString('ar-SA') : "—",
                 timeLabel: session.created_at ? new Date(session.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : "—",
+                endedAt: session.finished_at || session.updated_at || session.created_at,
                 participants: session.players?.length || 0,
                 totalScore: 0,
                 topStudent: "",
@@ -384,7 +575,8 @@ const navigate = useNavigate();
 
         // 2. Process Results
         (mergedResults || []).forEach((r: any) => {
-            const sessionId = r.session_id || r.sessionId || r.id;
+            const sessionId = r.session_id || r.sessionId || r.session?.id;
+            if (!sessionId) return;
             if (!map.has(sessionId)) {
                 map.set(sessionId, {
                     id: sessionId,
@@ -393,6 +585,7 @@ const navigate = useNavigate();
                     mode: r.session?.mode || "SINGLE",
                     date: r.created_at ? new Date(r.created_at).toLocaleDateString('ar-SA') : "—",
                     timeLabel: r.created_at ? new Date(r.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : "—",
+                    endedAt: r.created_at,
                     participants: 0,
                     totalScore: 0,
                     topStudent: "",
@@ -402,13 +595,16 @@ const navigate = useNavigate();
                 });
             }
             const ch = map.get(sessionId)!;
+            if (r.created_at && (!ch.endedAt || new Date(r.created_at) > new Date(ch.endedAt))) {
+                ch.endedAt = r.created_at;
+            }
             const resultUserId = r.user_id || r.user?.id;
             const fallbackName = resultUserId
                 ? playerNameBySessionUser.get(`${sessionId}:${resultUserId}`) || playerNameBySessionUser.get(`${r.session?.id}:${resultUserId}`)
                 : undefined;
             const normalizedResult = {
                 ...r,
-                name: r.name || r.user?.name || fallbackName || "طالب",
+                name: r.name || r.user?.name || r.participant_display_name || fallbackName || "طالب",
             };
             ch.finishedPlayers += 1;
             ch.resultsList.push(normalizedResult);
@@ -484,8 +680,159 @@ const navigate = useNavigate();
                 ...ch,
                 avgScore: ch.finishedPlayers > 0 ? Math.round(ch.totalScore / ch.finishedPlayers) : 0,
             }))
-            .sort((a, b) => b.id.localeCompare(a.id));
+            .sort((a, b) => {
+                const tb = new Date(b.endedAt || b.date || 0).getTime();
+                const ta = new Date(a.endedAt || a.date || 0).getTime();
+                return tb - ta;
+            });
     }, [hostedSessions, hostedResults, topicOwnedSingleResults]);
+
+    const isChallengeSingleMode = (mode: unknown) =>
+        String(mode ?? "").toUpperCase() === "SINGLE";
+
+    /** Group sessions stay one row each; all SINGLE sessions for the same topic appear under one row + one detail dialog with per-session tabs. */
+    const { historyGroupChallenges, historySingleTopicGroups } = useMemo(() => {
+        const list = historyChallenges || [];
+        const groupRows = list.filter((ch) => !isChallengeSingleMode(ch.mode));
+        const singles = list.filter((ch) => isChallengeSingleMode(ch.mode));
+
+        const topicMap = new Map<
+            string,
+            { topicId: string; topicTitle: string; sessions: typeof list }
+        >();
+        for (const ch of singles) {
+            const tid = ch.topicId != null ? String(ch.topicId) : "unknown";
+            const cur = topicMap.get(tid);
+            if (!cur) {
+                topicMap.set(tid, {
+                    topicId: tid,
+                    topicTitle: ch.topicTitle || "تحدي فردي",
+                    sessions: [ch],
+                });
+            } else {
+                cur.sessions.push(ch);
+                if (!cur.topicTitle && ch.topicTitle) cur.topicTitle = ch.topicTitle;
+            }
+        }
+
+        const singleTopicGroups = Array.from(topicMap.values())
+            .map((g) => {
+                const sessions = [...g.sessions].sort(
+                    (a, b) =>
+                        new Date(b.endedAt || b.date || 0).getTime() -
+                        new Date(a.endedAt || a.date || 0).getTime()
+                );
+                const latestEndedAt = sessions[0]?.endedAt || sessions[0]?.date;
+                const totalAttempts = sessions.reduce(
+                    (acc, s) => acc + (s.finishedPlayers || s.participants || 0),
+                    0
+                );
+                const weightedAvg =
+                    totalAttempts > 0
+                        ? Math.round(
+                              sessions.reduce(
+                                  (acc, s) =>
+                                      acc +
+                                      (s.avgScore || 0) *
+                                          (s.finishedPlayers || s.participants || 0),
+                                  0
+                              ) / totalAttempts
+                          )
+                        : 0;
+                const topSession = sessions.reduce(
+                    (best, s) =>
+                        (s.topScore || 0) > (best?.topScore || 0) ? s : best,
+                    sessions[0] as (typeof sessions)[0] | undefined
+                );
+                return {
+                    topicId: g.topicId,
+                    topicTitle: g.topicTitle,
+                    sessions,
+                    latestEndedAt,
+                    totalAttempts,
+                    weightedAvg,
+                    topStudent: topSession?.topStudent || "",
+                    sessionCount: sessions.length,
+                };
+            })
+            .sort(
+                (a, b) =>
+                    new Date(b.latestEndedAt || 0).getTime() -
+                    new Date(a.latestEndedAt || 0).getTime()
+            );
+
+        return { historyGroupChallenges: groupRows, historySingleTopicGroups: singleTopicGroups };
+    }, [historyChallenges]);
+
+    const singleTopicMonthOptions = useMemo(() => {
+        if (!selectedSingleTopicGroup) return [] as { value: string; label: string }[];
+        const byKey = new Map<string, string>();
+        for (const s of selectedSingleTopicGroup.sessions) {
+            const d = parseSessionDate(s);
+            if (!d) continue;
+            const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            if (!byKey.has(value)) {
+                byKey.set(
+                    value,
+                    d.toLocaleDateString("ar-SA", { year: "numeric", month: "long" })
+                );
+            }
+        }
+        return [...byKey.entries()]
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([value, label]) => ({ value, label }));
+    }, [selectedSingleTopicGroup]);
+
+    const singleTopicDayOptions = useMemo(() => {
+        if (!selectedSingleTopicGroup || !singleHistoryMonth) return [] as number[];
+        const [y, m] = singleHistoryMonth.split("-").map(Number);
+        const days = new Set<number>();
+        for (const s of selectedSingleTopicGroup.sessions) {
+            const d = parseSessionDate(s);
+            if (!d) continue;
+            if (d.getFullYear() !== y || d.getMonth() + 1 !== m) continue;
+            days.add(d.getDate());
+        }
+        return [...days].sort((a, b) => a - b);
+    }, [selectedSingleTopicGroup, singleHistoryMonth]);
+
+    const filteredSingleTopicSessions = useMemo(() => {
+        if (!selectedSingleTopicGroup) return [];
+        return selectedSingleTopicGroup.sessions
+            .filter((s) => {
+                const d = parseSessionDate(s);
+                if (!d) {
+                    return !singleHistoryMonth && singleHistoryDay == null;
+                }
+                if (singleHistoryMonth) {
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                    if (key !== singleHistoryMonth) return false;
+                }
+                if (singleHistoryDay != null && d.getDate() !== singleHistoryDay) return false;
+                return true;
+            })
+            .sort(
+                (a, b) =>
+                    (parseSessionDate(b)?.getTime() || 0) - (parseSessionDate(a)?.getTime() || 0)
+            );
+    }, [selectedSingleTopicGroup, singleHistoryMonth, singleHistoryDay]);
+
+    /** دمج كل الجلسات المطابقة للفلتر — كل مشارك/محاولة يظهر (وليس آخر جلسة وحدها) */
+    const selectedSingleSession = useMemo(
+        () => buildMergedSessionForFilter(filteredSingleTopicSessions),
+        [filteredSingleTopicSessions]
+    );
+
+    useEffect(() => {
+        if (!singleHistoryMonth) setSingleHistoryDay(null);
+    }, [singleHistoryMonth]);
+
+    useEffect(() => {
+        if (singleHistoryDay == null) return;
+        if (singleHistoryMonth && !singleTopicDayOptions.includes(singleHistoryDay)) {
+            setSingleHistoryDay(null);
+        }
+    }, [singleHistoryMonth, singleTopicDayOptions, singleHistoryDay]);
 
     return (
         <Tabs defaultValue="active" className="space-y-6" dir="rtl">
@@ -509,7 +856,7 @@ const navigate = useNavigate();
             <TabsContent value="active" className="space-y-4">
                 {isLoading ? (
                     Array.from({ length: 2 }).map((_, i) => (
-                        <Card key={i} className="border-r-4 border-r-muted overflow-hidden">
+                        <Card key={i} className="border-s-4 border-s-muted overflow-hidden">
                             <CardContent className="p-0">
                                 <div className="p-5 pb-4">
                                     <div className="flex justify-between items-start mb-4">
@@ -568,7 +915,7 @@ const navigate = useNavigate();
                 {trulyActiveChallenges.length > 0 ? (
                     <div className="grid grid-cols-1 gap-6">
                         {trulyActiveChallenges.map((challenge) => (
-                            <Card key={challenge.id} className="border-r-4 border-r-emerald-500 overflow-hidden group">
+                            <Card key={challenge.id} className="border-s-4 border-s-emerald-500 overflow-hidden group">
                                 <CardContent className="p-0">
                                     {/* Header Section */}
                                     <div className="p-5 pb-4">
@@ -755,7 +1102,7 @@ const navigate = useNavigate();
                                                         const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
                                                         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n\n" + text)}`);
                                                     }}>
-                                                        <MessageCircle className="w-4 h-4 ml-2 text-emerald-500" />
+                                                        <MessageCircle className="w-4 h-4 me-2 text-emerald-500" />
                                                         واتساب
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
@@ -763,7 +1110,7 @@ const navigate = useNavigate();
                                                         const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
                                                         window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
                                                     }}>
-                                                        <Twitter className="w-4 h-4 ml-2 text-blue-400" />
+                                                        <Twitter className="w-4 h-4 me-2 text-blue-400" />
                                                         تويتر / X
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
@@ -771,7 +1118,7 @@ const navigate = useNavigate();
                                                         const text = `انضم إلى تحدي "${challenge.topicTitle}"! رمز الانضمام: ${challenge.pin}`;
                                                         window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
                                                     }}>
-                                                        <Send className="w-4 h-4 ml-2 text-sky-500" />
+                                                        <Send className="w-4 h-4 me-2 text-sky-500" />
                                                         تيليجرام
                                                     </DropdownMenuItem>
                                                     <div className="h-px bg-border my-1" />
@@ -779,14 +1126,14 @@ const navigate = useNavigate();
                                                         const link = `${window.location.origin}/join/${challenge.pin}`;
                                                         onCopyToClipboard(link);
                                                     }}>
-                                                        <Copy className="w-4 h-4 ml-2" />
+                                                        <Copy className="w-4 h-4 me-2" />
                                                         نسخ الرابط
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
                                                         const link = `${window.location.origin}/join/${challenge.pin}`;
                                                         downloadChallengeQR(link, challenge.pin);
                                                     }}>
-                                                        <Download className="w-4 h-4 ml-2" />
+                                                        <Download className="w-4 h-4 me-2" />
                                                         تنزيل QR
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
@@ -823,7 +1170,7 @@ const navigate = useNavigate();
                 ) : scheduledChallenges.length > 0 ? (
                     <div className="grid grid-cols-1 gap-6">
                         {scheduledChallenges.map((challenge) => (
-                            <Card key={challenge.id} className="border-r-4 border-r-blue-500 overflow-hidden group">
+                            <Card key={challenge.id} className="border-s-4 border-s-blue-500 overflow-hidden group">
                                 <CardContent className="p-0">
                                     <div className="p-5 pb-4">
                                         <div className="flex justify-between items-start mb-4">
@@ -831,7 +1178,7 @@ const navigate = useNavigate();
                                                 <h3 className="font-bold text-lg mb-1 group-hover:text-primary transition-colors">{challenge.topicTitle}</h3>
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                     <Badge variant="outline" className="border-blue-500 text-blue-500 bg-blue-50/50">
-                                                        <Calendar className="w-3 h-3 ml-1" />
+                                                        <Calendar className="w-3 h-3 me-1" />
                                                         تحدي مجدول
                                                     </Badge>
                                                     {(() => {
@@ -843,7 +1190,7 @@ const navigate = useNavigate();
                                                         if (isLive) {
                                                             return (
                                                                 <Badge className="bg-emerald-500 border-emerald-500 text-white animate-pulse">
-                                                                    <Play className="w-3 h-3 ml-1" />
+                                                                    <Play className="w-3 h-3 me-1" />
                                                                     متاح للضم حالياً
                                                                 </Badge>
                                                             );
@@ -920,11 +1267,11 @@ const navigate = useNavigate();
                                                     const text = `انضم إلى تحدي "${challenge.topicTitle}" المجدول! يبدأ في: ${new Date(challenge.scheduledStartTime!).toLocaleString("ar-EG")}`;
                                                     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n" + text)}`);
                                                 }}>
-                                                    <MessageCircle className="w-4 h-4 ml-2 text-emerald-500" />
+                                                    <MessageCircle className="w-4 h-4 me-2 text-emerald-500" />
                                                     واتساب
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => onDeleteChallenge && onDeleteChallenge(challenge.pin)} className="text-destructive focus:bg-destructive/5 focus:text-destructive">
-                                                    <Trash2 className="w-4 h-4 ml-2" />
+                                                    <Trash2 className="w-4 h-4 me-2" />
                                                     إلغاء التحدي
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
@@ -948,60 +1295,156 @@ const navigate = useNavigate();
                     Array.from({ length: 3 }).map((_, i) => (
                         <Skeleton key={i} className="h-24 w-full rounded-2xl" />
                     ))
-                ) : historyChallenges.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4">
-                        {historyChallenges.map((challenge) => (
-                            <Card
-                                key={challenge.id}
-                                className="group hover:border-primary/40 hover:shadow-md transition-all cursor-pointer border-border/60 overflow-hidden relative"
-                                onClick={() => setSelectedHistory(challenge)}
-                            >
-                                <div className="absolute inset-y-0 right-0 w-1 bg-primary group-hover:w-1.5 transition-all" />
-                                <CardContent className="p-5 flex flex-col md:flex-row items-center gap-6">
-                                    <div className="w-16 h-16 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center shrink-0 shadow-inner">
-                                        <span className="text-lg font-black text-primary leading-none">{challenge.avgScore}</span>
-                                        <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter mt-0.5">الدقة</span>
-                                    </div>
+                ) : historyGroupChallenges.length > 0 || historySingleTopicGroups.length > 0 ? (
+                    <Tabs defaultValue="group" className="space-y-4" dir="rtl">
+                        <TabsList className="h-auto flex-wrap gap-1 bg-muted/40 p-1">
+                            <TabsTrigger value="group" className="gap-2 data-[state=active]:bg-background">
+                                <Users className="w-4 h-4" />
+                                تحديات جماعية
+                                <Badge variant="secondary" className="px-1.5 h-5 min-w-[1.25rem]">
+                                    {historyGroupChallenges.length}
+                                </Badge>
+                            </TabsTrigger>
+                            <TabsTrigger value="single" className="gap-2 data-[state=active]:bg-background">
+                                <Gamepad2 className="w-4 h-4" />
+                                تحديات فردية
+                                <span className="text-[11px] text-muted-foreground hidden sm:inline">(كل درس في تبويب واحد)</span>
+                                <Badge variant="secondary" className="px-1.5 h-5 min-w-[1.25rem]">
+                                    {historySingleTopicGroups.length}
+                                </Badge>
+                            </TabsTrigger>
+                        </TabsList>
 
-                                    <div className="flex-1 text-center md:text-start">
-                                        <h3 className="font-bold text-lg mb-1.5 group-hover:text-primary transition-colors">{challenge.topicTitle}</h3>
-                                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[11px] font-bold text-muted-foreground/70">
-                                            <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
-                                                <Calendar className="w-3 h-3 text-primary" />
-                                                {challenge.date}
-                                            </span>
-                                            <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
-                                                <Clock className="w-3 h-3 text-primary" />
-                                                {challenge.timeLabel}
-                                            </span>
-                                            <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
-                                                <Users className="w-3 h-3 text-primary" />
-                                                {challenge.participants} مشارك
-                                            </span>
-                                            <Badge variant="outline" className="rounded-md border-primary/20 bg-primary/5 text-[9px] h-6 px-2">
-                                                {challenge.mode === "SINGLE" ? "فردي" : "جماعي"}
-                                            </Badge>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-5 w-full md:w-auto pt-4 md:pt-0 border-t md:border-0 justify-between md:justify-end">
-                                        {challenge.topStudent && (
-                                            <div className="text-start">
-                                                <p className="text-[10px] font-black text-muted-foreground uppercase opacity-60">الأول</p>
-                                                <div className="flex items-center gap-2 font-black text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 shadow-sm">
-                                                    <Trophy className="w-3.5 h-3.5" />
-                                                    {challenge.topStudent}
+                        <TabsContent value="group" className="space-y-4 mt-4">
+                            {historyGroupChallenges.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {historyGroupChallenges.map((challenge) => (
+                                        <Card
+                                            key={challenge.id}
+                                            className="group hover:border-primary/40 hover:shadow-md transition-all cursor-pointer border-border/60 overflow-hidden relative"
+                                            onClick={() => setSelectedHistory(challenge)}
+                                        >
+                                            <div className="absolute inset-y-0 start-0 w-1 bg-primary group-hover:w-1.5 transition-all" />
+                                            <CardContent className="p-5 flex flex-col md:flex-row items-center gap-6">
+                                                <div className="w-16 h-16 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                                                    <span className="text-lg font-black text-primary leading-none">{challenge.avgScore}</span>
+                                                    <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter mt-0.5">الدقة</span>
                                                 </div>
-                                            </div>
-                                        )}
-                                        <div className="w-10 h-10 rounded-full border border-border group-hover:border-primary/30 group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-all shadow-sm">
-                                            <ChevronLeft className="w-5 h-5" />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
+
+                                                <div className="flex-1 text-center md:text-start">
+                                                    <h3 className="font-bold text-lg mb-1.5 group-hover:text-primary transition-colors">{challenge.topicTitle}</h3>
+                                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[11px] font-bold text-muted-foreground/70">
+                                                        <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
+                                                            <Calendar className="w-3 h-3 text-primary" />
+                                                            {challenge.date}
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
+                                                            <Clock className="w-3 h-3 text-primary" />
+                                                            {challenge.timeLabel}
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
+                                                            <Users className="w-3 h-3 text-primary" />
+                                                            {challenge.participants} مشارك
+                                                        </span>
+                                                        <Badge variant="outline" className="rounded-md border-primary/20 bg-primary/5 text-[9px] h-6 px-2">
+                                                            جماعي
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-5 w-full md:w-auto pt-4 md:pt-0 border-t md:border-0 justify-between md:justify-end">
+                                                    {challenge.topStudent && (
+                                                        <div className="text-start">
+                                                            <p className="text-[10px] font-black text-muted-foreground uppercase opacity-60">الأول</p>
+                                                            <div className="flex items-center gap-2 font-black text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 shadow-sm">
+                                                                <Trophy className="w-3.5 h-3.5" />
+                                                                {challenge.topStudent}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="w-10 h-10 rounded-full border border-border group-hover:border-primary/30 group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-all shadow-sm">
+                                                        <ChevronLeft className="w-5 h-5" />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-16 bg-muted/20 rounded-3xl border-2 border-dashed">
+                                    <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground/25" />
+                                    <p className="font-bold text-muted-foreground">لا توجد تحديات جماعية منتهية في السجل</p>
+                                </div>
+                            )}
+                        </TabsContent>
+
+                        <TabsContent value="single" className="space-y-4 mt-4">
+                            {historySingleTopicGroups.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {historySingleTopicGroups.map((group) => (
+                                        <Card
+                                            key={group.topicId}
+                                            className="group hover:border-violet-400/50 hover:shadow-md transition-all cursor-pointer border-border/60 overflow-hidden relative border-s-4 border-s-violet-500/40"
+                                            onClick={() => {
+                                                setSelectedSingleTopicGroup(group);
+                                                setSingleHistoryMonth("");
+                                                setSingleHistoryDay(null);
+                                            }}
+                                        >
+                                            <div className="absolute inset-y-0 start-0 w-1 bg-violet-500/60 group-hover:w-1.5 transition-all" />
+                                            <CardContent className="p-5 flex flex-col md:flex-row items-center gap-6">
+                                                <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                                                    <span className="text-lg font-black text-violet-700 leading-none">{group.weightedAvg}</span>
+                                                    <span className="text-[10px] font-bold text-violet-600/70 uppercase tracking-tighter mt-0.5">متوسط</span>
+                                                </div>
+
+                                                <div className="flex-1 text-center md:text-start">
+                                                    <h3 className="font-bold text-lg mb-1.5 group-hover:text-violet-700 transition-colors">{group.topicTitle}</h3>
+                                                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-[11px] font-bold text-muted-foreground/70">
+                                                        <Badge variant="outline" className="rounded-md border-violet-300 bg-violet-50 text-violet-800 text-[10px] h-6">
+                                                            {group.sessionCount} جلسة فردية
+                                                        </Badge>
+                                                        <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
+                                                            <Zap className="w-3 h-3 text-violet-600" />
+                                                            {group.totalAttempts} محاولة إجمالاً
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 bg-muted px-2 py-1 rounded-lg">
+                                                            <Calendar className="w-3 h-3 text-primary" />
+                                                            آخر نشاط:{" "}
+                                                            {group.latestEndedAt
+                                                                ? new Date(group.latestEndedAt).toLocaleDateString("ar-SA")
+                                                                : "—"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-5 w-full md:w-auto pt-4 md:pt-0 border-t md:border-0 justify-between md:justify-end">
+                                                    {group.topStudent && (
+                                                        <div className="text-start">
+                                                            <p className="text-[10px] font-black text-muted-foreground uppercase opacity-60">أعلى نقطة</p>
+                                                            <div className="flex items-center gap-2 font-black text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 shadow-sm">
+                                                                <Trophy className="w-3.5 h-3.5" />
+                                                                {group.topStudent}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="w-10 h-10 rounded-full border border-border group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white flex items-center justify-center transition-all shadow-sm">
+                                                        <ChevronLeft className="w-5 h-5" />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-16 bg-violet-50/40 rounded-3xl border-2 border-dashed border-violet-200">
+                                    <Gamepad2 className="w-16 h-16 mx-auto mb-4 text-violet-300" />
+                                    <p className="font-bold text-violet-900/80">لا توجد تحديات فردية في السجل</p>
+                                    <p className="text-sm text-muted-foreground mt-1">جميع جلسات الفردي لنفس الدرس تُجمَّع هنا في بطاقة واحدة</p>
+                                </div>
+                            )}
+                        </TabsContent>
+                    </Tabs>
                 ) : (
                     <div className="text-center py-24 bg-muted/20 rounded-3xl border-2 border-dashed">
                         <Trophy className="w-20 h-20 mx-auto mb-6 text-muted-foreground/20" />
@@ -1037,6 +1480,165 @@ const navigate = useNavigate();
                     </DialogHeader>
 
                     <ChallengeDetailsContent session={selectedHistory} />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={!!selectedSingleTopicGroup}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSelectedSingleTopicGroup(null);
+                        setSingleHistoryMonth("");
+                        setSingleHistoryDay(null);
+                    }
+                }}
+            >
+                <DialogContent
+                    className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 border-none rounded-[2rem] shadow-2xl"
+                    dir="rtl"
+                >
+                    <DialogHeader className="p-8 bg-gradient-to-bl from-violet-500/10 via-transparent to-transparent border-b relative shrink-0">
+                        <div className="flex items-center gap-6">
+                            <div className="w-16 h-16 rounded-[1.25rem] bg-gradient-to-br from-violet-600 to-violet-400 flex items-center justify-center text-white shrink-0 shadow-lg shadow-violet-500/20">
+                                <Gamepad2 className="w-8 h-8" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <DialogTitle className="text-2xl md:text-3xl font-black mb-1.5 leading-tight truncate">
+                                    {selectedSingleTopicGroup?.topicTitle}
+                                </DialogTitle>
+                                <DialogDescription asChild className="text-sm font-bold flex flex-wrap gap-3 text-muted-foreground/80">
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        <Badge
+                                            variant="secondary"
+                                            className="bg-violet-100 text-violet-800 border-violet-200 text-[10px]"
+                                        >
+                                            تحدي فردي — {selectedSingleTopicGroup?.sessionCount} جلسة
+                                        </Badge>
+                                        <span className="flex items-center gap-1">
+                                            <Users className="w-4 h-4 text-violet-600" />
+                                            {selectedSingleTopicGroup?.totalAttempts} محاولة
+                                        </span>
+                                    </div>
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    {selectedSingleTopicGroup && selectedSingleTopicGroup.sessions.length > 0 && (
+                        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                            <div className="px-6 pt-3 pb-4 border-b shrink-0 space-y-4 bg-muted/15">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
+                                        <Filter className="w-4 h-4 shrink-0 text-violet-600" />
+                                        تصفية بالشهر واليوم
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs h-8"
+                                        onClick={() => {
+                                            setSingleHistoryMonth("");
+                                            setSingleHistoryDay(null);
+                                        }}
+                                    >
+                                        إعادة ضبط الفلتر
+                                    </Button>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="single-hist-month" className="text-xs font-bold">
+                                            الشهر
+                                        </Label>
+                                        <Select
+                                            value={singleHistoryMonth || SINGLE_HISTORY_ALL_MONTHS}
+                                            onValueChange={(v) =>
+                                                setSingleHistoryMonth(v === SINGLE_HISTORY_ALL_MONTHS ? "" : v)
+                                            }
+                                        >
+                                            <SelectTrigger id="single-hist-month" className="w-full">
+                                                <SelectValue placeholder="كل الشهور" />
+                                            </SelectTrigger>
+                                            <SelectContent dir="rtl">
+                                                <SelectItem value={SINGLE_HISTORY_ALL_MONTHS}>
+                                                    كل الشهور
+                                                </SelectItem>
+                                                {singleTopicMonthOptions.map((o) => (
+                                                    <SelectItem key={o.value} value={o.value}>
+                                                        {o.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="single-hist-day" className="text-xs font-bold">
+                                            اليوم
+                                        </Label>
+                                        <Select
+                                            disabled={!singleHistoryMonth}
+                                            value={
+                                                singleHistoryDay == null
+                                                    ? SINGLE_HISTORY_ALL_DAYS
+                                                    : String(singleHistoryDay)
+                                            }
+                                            onValueChange={(v) =>
+                                                setSingleHistoryDay(
+                                                    v === SINGLE_HISTORY_ALL_DAYS ? null : Number(v)
+                                                )
+                                            }
+                                        >
+                                            <SelectTrigger id="single-hist-day" className="w-full">
+                                                <SelectValue
+                                                    placeholder={
+                                                        singleHistoryMonth ? "كل أيام الشهر" : "اختر الشهر أولاً"
+                                                    }
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent dir="rtl">
+                                                <SelectItem value={SINGLE_HISTORY_ALL_DAYS}>
+                                                    {singleHistoryMonth ? "كل أيام الشهر" : "كل الأيام"}
+                                                </SelectItem>
+                                                {singleTopicDayOptions.map((day) => (
+                                                    <SelectItem key={day} value={String(day)}>
+                                                        {day}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                {selectedSingleSession &&
+                                    typeof selectedSingleSession.sessionCountInView === "number" &&
+                                    selectedSingleSession.sessionCountInView > 1 && (
+                                        <p className="text-xs font-medium text-violet-800 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                                            يُعرض دمج كل المشاركين والمحاولات من{" "}
+                                            <strong>{selectedSingleSession.sessionCountInView}</strong> جلسة
+                                            مطابقة لهذا الشهر واليوم (كل جلسة فردية غالباً تحتوي محاولة واحدة).
+                                        </p>
+                                    )}
+                            </div>
+                            {selectedSingleSession ? (
+                                <ChallengeDetailsContent session={selectedSingleSession} />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center gap-2 p-12 text-center text-muted-foreground">
+                                    <Calendar className="w-12 h-12 opacity-20" />
+                                    <p className="font-bold">لا توجد جلسات ضمن الفلتر المحدد</p>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSingleHistoryMonth("");
+                                            setSingleHistoryDay(null);
+                                        }}
+                                    >
+                                        عرض كل الجلسات
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 
