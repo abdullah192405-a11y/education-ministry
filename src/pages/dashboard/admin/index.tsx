@@ -13,6 +13,7 @@ import {
     Clock, Eye, Gamepad2, FileText, ChartBar, LifeBuoy
 } from "lucide-react";
 import { useUser, useAdminStats, useAllUsers, useGrades, useRecentAuditLogs } from "@/hooks/useDatabase";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
@@ -56,7 +57,9 @@ const AdminDashboard = () => {
     useEffect(() => {
         if (user?.role) {
             const role = user.role.toUpperCase();
-            if (role === "STUDENT" || role === "طالب") {
+            if (role === "SUPERADMIN") {
+                navigate("/dashboard/superadmin");
+            } else if (role === "STUDENT" || role === "طالب") {
                 navigate("/dashboard/student");
             } else if (role === "TEACHER" || role === "معلم" || role === "معلمة") {
                 navigate("/dashboard/teacher");
@@ -64,11 +67,25 @@ const AdminDashboard = () => {
         }
     }, [user, navigate]);
 
-    const { data: stats, isLoading: isLoadingStats } = useAdminStats();
-    const { data: allUsers, isLoading: isLoadingUsers } = useAllUsers();
+    const {
+        isOrgAdmin,
+        isTenantLinked,
+        scopedOrganizationId,
+        organizationName,
+        allUsersOptions,
+        adminStatsOptions,
+    } = useOrgAdminTenant();
 
-    const { data: grades, isLoading: isLoadingGrades } = useGrades();
-    const { data: auditLogs, isLoading: isLoadingLogs } = useRecentAuditLogs(6);
+    const { data: stats, isLoading: isLoadingStats } = useAdminStats(adminStatsOptions);
+    const { data: allUsers, isLoading: isLoadingUsers } = useAllUsers(allUsersOptions);
+
+    const { data: grades, isLoading: isLoadingGrades } = useGrades({
+        organizationId: scopedOrganizationId,
+        enabled: allUsersOptions.enabled,
+    });
+    const { data: auditLogs, isLoading: isLoadingLogs } = useRecentAuditLogs(6, {
+        enabled: !scopedOrganizationId,
+    });
 
     const [activeTab, setActiveTab] = useState("overview");
 
@@ -77,12 +94,15 @@ const AdminDashboard = () => {
     // Derive admin data from real DB
     const adminData = {
         id: user?.id || "",
-        name: user?.name || "مدير Lab4",
+        name: user?.name || "مدير المؤسسة",
         email: user?.email || "",
         avatar: user?.avatar || "https://api.dicebear.com/7.x/fun-emoji/svg?seed=admin",
-        role: "مسؤول النظام",
+        role: scopedOrganizationId
+            ? "مدير المؤسسة / المدرسة"
+            : "مدير مؤسسة (بانتظار ربط المؤسسة)",
         verified: user?.verified || false
     };
+    const adminNeedsOrgAssignment = isOrgAdmin && !isTenantLinked;
 
     // Real stats from DB
     const currentStats = {
@@ -129,8 +149,14 @@ const AdminDashboard = () => {
                                     <Shield className="w-5 h-5 text-white" />
                                 </div>
                                 <div className="hidden md:block">
-                                    <span className="font-medium text-sm">لوحة الإدارة</span>
-                                    <p className="text-xs text-muted-foreground">إدارة شاملة</p>
+                                    <span className="font-medium text-sm">لوحة إدارة المؤسسة</span>
+                                    <p className="text-xs text-muted-foreground">
+                                        {scopedOrganizationId
+                                            ? organizationName
+                                              ? `${organizationName} — اشتراكك يُدار من قبل السوبر أدمن`
+                                              : "مستخدمو مؤسستك فقط"
+                                            : "يرجى من السوبر أدمن ربط حسابك بمؤسسة لتفعيل الصلاحيات."}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -185,6 +211,9 @@ const AdminDashboard = () => {
                                         <h2 className="font-bold text-sm mb-1">{adminData.name}</h2>
                                     )}
                                     <p className="text-xs text-muted-foreground">{adminData.role}</p>
+                                    {scopedOrganizationId && organizationName && (
+                                        <p className="text-xs font-medium text-primary/90 mt-1">{organizationName}</p>
+                                    )}
                                     {adminData.verified && (
                                         <div className="flex items-center justify-center gap-1 text-xs text-primary mt-2">
                                             <CheckCircle className="w-3 h-3 fill-primary" />
@@ -237,8 +266,35 @@ const AdminDashboard = () => {
                         className="lg:col-span-4 space-y-6"
                     >
                         <AnimatePresence mode="wait">
+                            {adminNeedsOrgAssignment && (
+                                <motion.div
+                                    key="admin-no-org"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                >
+                                    <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20">
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                                                <Shield className="w-5 h-5" />
+                                                صلاحياتك موقوفة مؤقتًا حتى ربط المؤسسة
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-3 text-sm">
+                                            <p>
+                                                حساب الأدمن يجب أن يكون مرتبطًا بمؤسسة/مدرسة واحدة. بعد الربط ستظهر لك فقط بيانات
+                                                المستخدمين (أدمن/معلم/طالب) التابعة لتلك المؤسسة.
+                                            </p>
+                                            <p className="text-muted-foreground">
+                                                تواصل مع السوبر أدمن لربط حسابك من لوحة السوبر أدمن (قسم أدمن المؤسسات).
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            )}
+
                             {/* Overview Tab */}
-                            {activeTab === "overview" && (
+                            {!adminNeedsOrgAssignment && activeTab === "overview" && (
                                 <motion.div
                                     key="overview"
                                     initial={{ opacity: 0, y: 20 }}
@@ -450,7 +506,12 @@ const AdminDashboard = () => {
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-3">
-                                            {isLoadingLogs ? (
+                                            {scopedOrganizationId ? (
+                                                <div className="text-center py-8 text-muted-foreground">
+                                                    <Clock className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                                                    <p className="text-sm">سجل النشاط العام مخفي عن مديري المؤسسات.</p>
+                                                </div>
+                                            ) : isLoadingLogs ? (
                                                 Array.from({ length: 3 }).map((_, i) => (
                                                     <Skeleton key={i} className="h-14 rounded-xl" />
                                                 ))
@@ -529,7 +590,7 @@ const AdminDashboard = () => {
                             )}
 
                             {/* Other tabs */}
-                            {activeTab !== "overview" && (
+                            {!adminNeedsOrgAssignment && activeTab !== "overview" && (
                                 <motion.div
                                     key={activeTab}
                                     initial={{ opacity: 0, y: 20 }}

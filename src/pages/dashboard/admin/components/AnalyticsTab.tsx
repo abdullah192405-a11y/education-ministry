@@ -6,11 +6,16 @@ import {
 import { TrendingUp, Users, BookOpen, Trophy } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStats, useAllUsers, useGrades } from "@/hooks/useDatabase";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 
 const AnalyticsTab = () => {
-    const { data: adminStats, isLoading: isLoadingStats } = useAdminStats();
-    const { data: allUsers } = useAllUsers();
-    const { data: gradesData } = useGrades();
+    const { allUsersOptions, adminStatsOptions, scopedOrganizationId } = useOrgAdminTenant();
+    const { data: adminStats, isLoading: isLoadingStats } = useAdminStats(adminStatsOptions);
+    const { data: allUsers } = useAllUsers(allUsersOptions);
+    const { data: gradesData } = useGrades({
+        organizationId: scopedOrganizationId,
+        enabled: allUsersOptions.enabled,
+    });
 
     const students = (allUsers || []).filter((u: any) => u.role === "STUDENT");
     const activeStudents = students.filter((s: any) => s.is_active !== false);
@@ -33,6 +38,11 @@ const AnalyticsTab = () => {
 
     return (
         <div className="space-y-6">
+            {scopedOrganizationId && (
+                <p className="text-xs text-muted-foreground rounded-lg border border-border bg-muted/30 px-4 py-2">
+                    جميع الأرقام والرسومات أدناه تخص مؤسستك فقط.
+                </p>
+            )}
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card>

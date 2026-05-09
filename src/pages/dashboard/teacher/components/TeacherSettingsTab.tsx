@@ -135,7 +135,7 @@ const TeacherSettingsTab = () => {
 
     return (
         <Tabs defaultValue="profile" className="w-full" dir="rtl">
-            <TabsList className="w-full justify-start mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto">
+            <TabsList className="w-full justify-end mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto">
                 <TabsTrigger
                     value="profile"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"

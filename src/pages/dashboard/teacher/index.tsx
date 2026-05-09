@@ -63,7 +63,9 @@ const TeacherDashboard = () => {
     useEffect(() => {
         if (user?.role) {
             const role = user.role.toUpperCase();
-            if (role === "STUDENT" || role === "طالب") {
+            if (role === "SUPERADMIN") {
+                navigate("/dashboard/superadmin");
+            } else if (role === "STUDENT" || role === "طالب") {
                 navigate("/dashboard/student");
             } else if (role === "ADMIN" || role === "مسؤول") {
                 navigate("/dashboard/admin");
@@ -128,6 +130,9 @@ const TeacherDashboard = () => {
             totalChallenges: hostedSessions?.length || profile?.total_challenges || 0,
         }
     };
+    const organizationName = Array.isArray((user as any)?.organizations)
+        ? (user as any)?.organizations?.[0]?.name || null
+        : (user as any)?.organizations?.name || null;
 
     // Build score distribution for overview (from hosted results directly)
     const scoreDistribution = [
@@ -439,7 +444,7 @@ const TeacherDashboard = () => {
                                     ) : (
                                         <>
                                             <span className="font-medium text-sm">لوحة المعلم</span>
-                                            <p className="text-xs text-muted-foreground">{teacherData.name}</p>
+                                            <p className="text-xs text-muted-foreground">{organizationName || teacherData.name}</p>
                                         </>
                                     )}
                                 </div>
@@ -466,7 +471,9 @@ const TeacherDashboard = () => {
                                     ) : (
                                         <>
                                             <p className="font-medium text-sm">{teacherData.name}</p>
-                                            <p className="text-xs text-muted-foreground">{user?.details || "معلم"}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {organizationName ? `المؤسسة: ${organizationName}` : (user?.details || "معلم")}
+                                            </p>
                                         </>
                                     )}
                                 </div>
@@ -500,7 +507,12 @@ const TeacherDashboard = () => {
                                     {isLoading ? (
                                         <Skeleton className="h-4 w-24 mx-auto mb-2" />
                                     ) : (
-                                        <h2 className="font-bold text-sm mb-1">{teacherData.name}</h2>
+                                        <>
+                                            <h2 className="font-bold text-sm mb-1">{teacherData.name}</h2>
+                                            {organizationName && (
+                                                <p className="text-xs text-muted-foreground mb-1">{organizationName}</p>
+                                            )}
+                                        </>
                                     )}
                                     <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                                         <GraduationCap className="w-3 h-3" />

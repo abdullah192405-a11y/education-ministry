@@ -29,19 +29,43 @@ export const mapChallengeQuestion = (q: any) => ({
 
 // --- Education Hierarchy ---
 
-export const useGrades = () => {
+type GradesOptions = {
+    organizationId?: string | null;
+    enabled?: boolean;
+};
+
+export const useGrades = (options?: GradesOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
+    const enabled = options?.enabled ?? true;
     return useQuery({
-        queryKey: ["grades"],
+        queryKey: ["grades", orgId ?? "all"],
         queryFn: async () => {
             console.log("useGrades: Fetching grades...");
-            const { data, error } = await supabase
+            let query = supabase
                 .from("grades")
                 .select(`
           *,
-          subjects (id, name),
+          organizations (id, name),
+          subjects (
+            id,
+            name,
+            description,
+            icon,
+            color,
+            topics (
+              id,
+              title,
+              mediaItems:topic_media (id, type),
+              quizQuestions:quiz_questions (id)
+            )
+          ),
           student_profiles (id)
         `)
                 .order("sort_order", { ascending: true });
+            if (orgId) {
+                query = query.eq("organization_id", orgId);
+            }
+            const { data, error } = await query;
 
             if (error) {
                 console.error("useGrades Error:", error);
@@ -55,14 +79,20 @@ export const useGrades = () => {
                 students_count: grade.student_profiles?.length || grade.students_count || 0,
             }));
         },
+        enabled,
     });
 };
 
-export const useGradeDetail = (slug: string) => {
+type OrgScopeOptions = {
+    organizationId?: string | null;
+};
+
+export const useGradeDetail = (slug: string, options?: OrgScopeOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
     return useQuery({
-        queryKey: ["grade", slug],
+        queryKey: ["grade", slug, orgId ?? "all"],
         queryFn: async () => {
-            const { data, error } = await supabase
+            let query = supabase
                 .from("grades")
                 .select(`
           *,
@@ -77,8 +107,11 @@ export const useGradeDetail = (slug: string) => {
           ),
           student_profiles (id)
         `)
-                .eq("slug", slug)
-                .single();
+                .eq("slug", slug);
+            if (orgId) {
+                query = query.eq("organization_id", orgId);
+            }
+            const { data, error } = await query.single();
 
             if (error) throw error;
 
@@ -101,9 +134,10 @@ export const useGradeDetail = (slug: string) => {
     });
 };
 
-export const useSubject = (id: string, teacherId?: string) => {
+export const useSubject = (id: string, teacherId?: string, options?: OrgScopeOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
     return useQuery({
-        queryKey: ["subject", id, teacherId],
+        queryKey: ["subject", id, teacherId, orgId ?? "all"],
         queryFn: async () => {
             let query = supabase
                 .from("subjects")
@@ -124,6 +158,9 @@ export const useSubject = (id: string, teacherId?: string) => {
         `);
 
             query = query.eq("id", id);
+            if (orgId) {
+                query = query.eq("grade.organization_id", orgId);
+            }
             if (teacherId) {
                 query = query.eq("topics._TeacherTopics.A", teacherId);
             }
@@ -146,11 +183,12 @@ export const useSubject = (id: string, teacherId?: string) => {
     });
 };
 
-export const useTopic = (id: string) => {
+export const useTopic = (id: string, options?: OrgScopeOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
     return useQuery({
-        queryKey: ["topic", id],
+        queryKey: ["topic", id, orgId ?? "all"],
         queryFn: async () => {
-            const { data, error } = await supabase
+            let query = supabase
                 .from("topics")
                 .select(`
           *,
@@ -161,8 +199,11 @@ export const useTopic = (id: string) => {
           challengeItems:challenge_questions (*),
           activities:student_topic_activities (id, student_id, date)
         `)
-                .eq("id", id)
-                .single();
+                .eq("id", id);
+            if (orgId) {
+                query = query.eq("subject.grade.organization_id", orgId);
+            }
+            const { data, error } = await query.single();
 
             if (error) throw error;
 
@@ -701,6 +742,8 @@ export const useAnnouncements = () => {
 
 // --- Users & Profiles ---
 
+const USER_WITH_ORG_SELECT = "*, organizations(*)";
+
 export const useUser = () => {
     // Get Clerk auth state (works because ClerkProvider wraps the app)
     let clerkUserId: string | null | undefined = undefined;
@@ -729,7 +772,7 @@ export const useUser = () => {
                         if (parsed.email) {
                             const { data: user } = await supabase
                                 .from("users")
-                                .select("*")
+                                .select(USER_WITH_ORG_SELECT)
                                 .eq("email", parsed.email)
                                 .maybeSingle();
 
@@ -750,7 +793,7 @@ export const useUser = () => {
                 if (!authError && authUser) {
                     const { data: user } = await supabase
                         .from("users")
-                        .select("*")
+                        .select(USER_WITH_ORG_SELECT)
                         .eq("auth_id", authUser.id)
                         .maybeSingle();
 
@@ -760,7 +803,7 @@ export const useUser = () => {
                     if (authUser.email) {
                         const { data: userByEmail } = await supabase
                             .from("users")
-                            .select("*")
+                            .select(USER_WITH_ORG_SELECT)
                             .eq("email", authUser.email)
                             .maybeSingle();
 
@@ -780,7 +823,7 @@ export const useUser = () => {
                     if (parsed.email) {
                         const { data: user } = await supabase
                             .from("users")
-                            .select("*")
+                            .select(USER_WITH_ORG_SELECT)
                             .eq("email", parsed.email)
                             .maybeSingle();
 
@@ -1670,19 +1713,66 @@ export const useSessionResults = (
 
 // --- Admin Extended Stats ---
 
-export const useAdminStats = () => {
+type AdminStatsOptions = {
+    /** When set (مدير مؤسسة): user counts ضمن هذه المؤسسة فقط. المحتوى التعليمي يبقى إحصاء المنصة. */
+    organizationId?: string | null;
+    enabled?: boolean;
+};
+
+export const useAdminStats = (options?: AdminStatsOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
+    const enabled = options?.enabled ?? true;
+
     return useQuery({
-        queryKey: ["admin_stats"],
+        queryKey: ["admin_stats", orgId ?? "all"],
         queryFn: async () => {
-            const [usersCount, sessionsCount, gradesCount, subjectsCount, topicsCount, teachersCount, studentsCount] = await Promise.all([
-                supabase.from("users").select("*", { count: "exact", head: true }),
-                supabase.from("challenge_sessions").select("*", { count: "exact", head: true }),
-                supabase.from("grades").select("*", { count: "exact", head: true }),
-                supabase.from("subjects").select("*", { count: "exact", head: true }),
-                supabase.from("topics").select("*", { count: "exact", head: true }),
-                supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "TEACHER"),
-                supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "STUDENT"),
-            ]);
+            const [usersCount, sessionsCount, gradesCount, subjectsCount, topicsCount, teachersCount, studentsCount] =
+                await Promise.all([
+                    orgId
+                        ? supabase
+                              .from("users")
+                              .select("*", { count: "exact", head: true })
+                              .eq("organization_id", orgId)
+                        : supabase.from("users").select("*", { count: "exact", head: true }),
+                    orgId
+                        ? supabase
+                              .from("challenge_sessions")
+                              .select("id, topic:topics!inner(id, subject:subjects!inner(id, grade:grades!inner(id, organization_id)))", {
+                                  count: "exact",
+                                  head: true,
+                              })
+                              .eq("topic.subject.grade.organization_id", orgId)
+                        : supabase.from("challenge_sessions").select("*", { count: "exact", head: true }),
+                    orgId
+                        ? supabase.from("grades").select("*", { count: "exact", head: true }).eq("organization_id", orgId)
+                        : supabase.from("grades").select("*", { count: "exact", head: true }),
+                    orgId
+                        ? supabase
+                              .from("subjects")
+                              .select("id, grade:grades!inner(id, organization_id)", { count: "exact", head: true })
+                              .eq("grade.organization_id", orgId)
+                        : supabase.from("subjects").select("*", { count: "exact", head: true }),
+                    orgId
+                        ? supabase
+                              .from("topics")
+                              .select("id, subject:subjects!inner(id, grade:grades!inner(id, organization_id))", { count: "exact", head: true })
+                              .eq("subject.grade.organization_id", orgId)
+                        : supabase.from("topics").select("*", { count: "exact", head: true }),
+                    orgId
+                        ? supabase
+                              .from("users")
+                              .select("*", { count: "exact", head: true })
+                              .eq("role", "TEACHER")
+                              .eq("organization_id", orgId)
+                        : supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "TEACHER"),
+                    orgId
+                        ? supabase
+                              .from("users")
+                              .select("*", { count: "exact", head: true })
+                              .eq("role", "STUDENT")
+                              .eq("organization_id", orgId)
+                        : supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "STUDENT"),
+                ]);
 
             return {
                 totalUsers: usersCount.count || 0,
@@ -1694,10 +1784,12 @@ export const useAdminStats = () => {
                 totalStudents: studentsCount.count || 0,
             };
         },
+        enabled,
     });
 };
 
-export const useRecentAuditLogs = (limit = 10) => {
+export const useRecentAuditLogs = (limit = 10, options?: { enabled?: boolean }) => {
+    const enabled = options?.enabled ?? true;
     return useQuery({
         queryKey: ["recent_audit_logs", limit],
         queryFn: async () => {
@@ -1713,21 +1805,274 @@ export const useRecentAuditLogs = (limit = 10) => {
             if (error) throw error;
             return data;
         },
+        enabled,
     });
 };
 
-export const useAllUsers = () => {
+export const useOrganizations = (options?: { includeInactive?: boolean }) => {
+    const includeInactive = options?.includeInactive ?? false;
+
     return useQuery({
-        queryKey: ["all_users"],
+        queryKey: ["organizations", includeInactive],
+        queryFn: async () => {
+            let q = supabase.from("organizations").select("*").order("name", { ascending: true });
+            if (!includeInactive) {
+                q = q.eq("is_active", true);
+            }
+            const { data, error } = await q;
+
+            if (error) throw error;
+            return data ?? [];
+        },
+    });
+};
+
+/** مديرو المؤسسات (ADMIN) للإشراف السوبر أدمن فقط من الواجهة. */
+export const useOrgAdminUsers = () => {
+    return useQuery({
+        queryKey: ["org_admin_users"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("users")
+                .select("id, name, email, organization_id, created_at, organizations ( id, name, slug )")
+                .eq("role", "ADMIN")
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            return data ?? [];
+        },
+    });
+};
+
+type OrganizationKind = "EDUCATIONAL" | "ENRICHMENT" | "BOTH";
+type OrgSubscriptionPackage = "INSTITUTION_ADMIN_STUDENT" | "INSTITUTION_FULL";
+type OrgSubscriptionStatus = "ACTIVE" | "TRIAL" | "PAST_DUE" | "CANCELED";
+type OrgBillingCycle = "MONTHLY" | "YEARLY";
+
+type UpsertOrganizationPayload = {
+    id?: string;
+    name: string;
+    slug: string;
+    kind: OrganizationKind;
+    subscription_package: OrgSubscriptionPackage;
+    is_active?: boolean;
+    entity_type?: "SCHOOL" | "ORG";
+    image_url?: string | null;
+    description?: string | null;
+};
+
+export const useUpsertOrganization = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: UpsertOrganizationPayload) => {
+            const now = new Date().toISOString();
+            if (payload.id) {
+                const { data, error } = await supabase
+                    .from("organizations")
+                    .update({
+                        name: payload.name,
+                        slug: payload.slug,
+                        kind: payload.kind,
+                        subscription_package: payload.subscription_package,
+                        is_active: payload.is_active ?? true,
+                        entity_type: payload.entity_type ?? "SCHOOL",
+                        image_url: payload.image_url ?? null,
+                        description: payload.description?.trim() || null,
+                        updated_at: now,
+                    })
+                    .eq("id", payload.id)
+                    .select("*")
+                    .single();
+                if (error) throw error;
+                return data;
+            }
+
+            const { data, error } = await supabase
+                .from("organizations")
+                .insert({
+                    name: payload.name,
+                    slug: payload.slug,
+                    kind: payload.kind,
+                    subscription_package: payload.subscription_package,
+                    is_active: payload.is_active ?? true,
+                    entity_type: payload.entity_type ?? "SCHOOL",
+                    image_url: payload.image_url ?? null,
+                    description: payload.description?.trim() || null,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .select("*")
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["organizations"] });
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+        },
+    });
+};
+
+export const useDeleteOrganization = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const { error } = await supabase.from("organizations").delete().eq("id", id);
+            if (error) throw error;
+            return id;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["organizations"] });
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+        },
+    });
+};
+
+export const useOrganizationSubscriptions = () => {
+    return useQuery({
+        queryKey: ["organization_subscriptions"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("organization_subscriptions")
                 .select("*")
                 .order("created_at", { ascending: false });
+            if (error) throw error;
+            return data ?? [];
+        },
+    });
+};
+
+type UpsertOrganizationSubscriptionPayload = {
+    organization_id: string;
+    subscription_package: OrgSubscriptionPackage;
+    billing_cycle: OrgBillingCycle;
+    status: OrgSubscriptionStatus;
+    price_amount: number;
+    currency_code?: string;
+    starts_at?: string;
+    ends_at?: string | null;
+    next_billing_at?: string | null;
+    auto_renew?: boolean;
+    notes?: string | null;
+};
+
+export const useUpsertOrganizationSubscription = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: UpsertOrganizationSubscriptionPayload) => {
+            const now = new Date().toISOString();
+
+            const row = {
+                organization_id: payload.organization_id,
+                subscription_package: payload.subscription_package,
+                billing_cycle: payload.billing_cycle,
+                status: payload.status,
+                price_amount: Number(payload.price_amount || 0),
+                currency_code: payload.currency_code || "SAR",
+                starts_at: payload.starts_at || now,
+                ends_at: payload.ends_at ?? null,
+                next_billing_at: payload.next_billing_at ?? null,
+                auto_renew: payload.auto_renew ?? true,
+                notes: payload.notes ?? null,
+                updated_at: now,
+            };
+
+            const { data, error } = await supabase
+                .from("organization_subscriptions")
+                .upsert(row, { onConflict: "organization_id" })
+                .select("*")
+                .single();
+            if (error) throw error;
+
+            const { error: orgErr } = await supabase
+                .from("organizations")
+                .update({ subscription_package: payload.subscription_package, updated_at: now })
+                .eq("id", payload.organization_id);
+            if (orgErr) throw orgErr;
+
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["organization_subscriptions"] });
+            queryClient.invalidateQueries({ queryKey: ["organizations"] });
+            queryClient.invalidateQueries({ queryKey: ["admin_stats"] });
+        },
+    });
+};
+
+type UpdateOrgAdminPayload = {
+    id: string;
+    organization_id?: string | null;
+    is_active?: boolean;
+    name?: string;
+};
+
+export const useUpdateOrgAdmin = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, ...updates }: UpdateOrgAdminPayload) => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("users")
+                .update({ ...updates, updated_at: now })
+                .eq("id", id)
+                .eq("role", "ADMIN")
+                .select("id, name, email, organization_id, is_active")
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+        },
+    });
+};
+
+export const useDeleteOrgAdmin = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const { error } = await supabase
+                .from("users")
+                .delete()
+                .eq("id", id)
+                .eq("role", "ADMIN");
+            if (error) throw error;
+            return id;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+        },
+    });
+};
+
+type AllUsersOptions = {
+    organizationId?: string | null;
+    enabled?: boolean;
+};
+
+export const useAllUsers = (options?: AllUsersOptions) => {
+    const orgId = options?.organizationId && String(options.organizationId).length ? options.organizationId : null;
+    const enabled = options?.enabled ?? true;
+
+    return useQuery({
+        queryKey: ["all_users", orgId ?? "all"],
+        queryFn: async () => {
+            let q = supabase.from("users").select("*").order("created_at", { ascending: false });
+            if (orgId) {
+                q = q.eq("organization_id", orgId);
+            }
+
+            const { data, error } = await q;
 
             if (error) throw error;
             return data;
         },
+        enabled,
     });
 };
 
@@ -1764,6 +2109,9 @@ export const useUpdateUser = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["current_user"] });
             queryClient.invalidateQueries({ queryKey: ["user", variables.userId] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
+            queryClient.invalidateQueries({ queryKey: ["admin_stats"] });
         }
     });
 };
@@ -2737,7 +3085,7 @@ export const useAdminSupportTickets = () => {
                 .from("support_tickets")
                 .select(`
           *,
-          author:users!author_user_id (id, name, email, avatar, role),
+          author:users!author_user_id (id, name, email, avatar, role, organization_id),
           grade:grades (id, name, slug),
           parent:support_tickets!parent_ticket_id (
             id,
@@ -2781,6 +3129,63 @@ export const useAdminSupportTickets = () => {
                         ? {
                               ...mapSupportTicket(parentRow),
                               studentAuthor: buildStudentAuthorFromParent(parentRow, studentById),
+                          }
+                        : undefined,
+                };
+            });
+        },
+    });
+};
+
+export const useSuperadminSupportTickets = () => {
+    return useQuery({
+        queryKey: ["support_tickets", "superadmin"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("support_tickets")
+                .select(`
+          *,
+          author:users!author_user_id (id, name, email, avatar, role),
+          parent:support_tickets!parent_ticket_id (
+            id,
+            subject,
+            body,
+            scope,
+            author_user_id,
+            ticket_type,
+            attachment_urls,
+            author_name_snapshot
+          )
+        `)
+                .eq("scope", "ADMIN_TO_SUPERADMIN")
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            const rows = data || [];
+            const parentAuthorIds = [
+                ...new Set(
+                    rows
+                        .map((r: { parent?: unknown }) => {
+                            const p = r.parent as { author_user_id?: string } | { author_user_id?: string }[] | null | undefined;
+                            const row = Array.isArray(p) ? p[0] : p;
+                            return row?.author_user_id;
+                        })
+                        .filter((id: string | undefined): id is string => typeof id === "string" && !!id)
+                ),
+            ];
+            const parentAuthorById = await fetchSupportTicketAuthorsByIds(parentAuthorIds);
+
+            return rows.map((row: any) => {
+                const rawParent = row.parent;
+                const parentRow = Array.isArray(rawParent) ? rawParent[0] : rawParent;
+                return {
+                    ...mapSupportTicket(row),
+                    author: row.author,
+                    parent: parentRow
+                        ? {
+                              ...mapSupportTicket(parentRow),
+                              parentAuthor: parentAuthorById.get(parentRow.author_user_id),
                           }
                         : undefined,
                 };
@@ -2944,6 +3349,50 @@ export const useEscalateStudentSupportTicket = () => {
     });
 };
 
+export const useEscalateAdminSupportTicket = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            adminTicketId: string;
+            adminUserId: string;
+            subject: string;
+            originalBody: string;
+            note: string;
+            ticketType?: string;
+            parentAttachmentUrls?: string[];
+        }) => {
+            const { data: superRow, error: insErr } = await supabase
+                .from("support_tickets")
+                .insert({
+                    author_user_id: payload.adminUserId,
+                    grade_id: null,
+                    scope: "ADMIN_TO_SUPERADMIN",
+                    ticket_type: payload.ticketType || "OTHER",
+                    subject: payload.subject,
+                    body: payload.originalBody,
+                    attachment_urls: payload.parentAttachmentUrls ?? [],
+                    status: "OPEN",
+                    parent_ticket_id: payload.adminTicketId,
+                    teacher_escalation_note: payload.note.trim(),
+                })
+                .select()
+                .single();
+            if (insErr) throw insErr;
+
+            const { error: upErr } = await supabase
+                .from("support_tickets")
+                .update({ status: "ESCALATED", updated_at: new Date().toISOString() })
+                .eq("id", payload.adminTicketId);
+            if (upErr) throw upErr;
+
+            return mapSupportTicket(superRow);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["support_tickets"] });
+        },
+    });
+};
+
 export const useUpdateSupportTicketStatus = () => {
     const queryClient = useQueryClient();
     return useMutation({
@@ -2966,6 +3415,185 @@ export const useUpdateSupportTicketStatus = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["support_tickets"] });
+        },
+    });
+};
+
+// --- Registration approval chain ---
+export const usePendingTeacherRegistrationRequestsForAdmin = (organizationId?: string | null) => {
+    const orgId = organizationId || null;
+    return useQuery({
+        queryKey: ["registration_requests", "admin", orgId ?? "none"],
+        queryFn: async () => {
+            if (!orgId) return [];
+            const { data, error } = await supabase
+                .from("registration_requests")
+                .select(`
+                  *,
+                  applicant:users!applicant_user_id (id, name, email, role, is_active),
+                  grade:grades (id, name, slug)
+                `)
+                .eq("status", "PENDING")
+                .eq("applicant_role", "TEACHER")
+                .eq("approver_role", "ADMIN")
+                .eq("organization_id", orgId)
+                .order("created_at", { ascending: true });
+            if (error) throw error;
+            return data ?? [];
+        },
+        enabled: !!orgId,
+    });
+};
+
+export const usePendingStudentRegistrationRequestsForTeacher = (teacherUserId?: string | null) => {
+    const teacherId = teacherUserId || null;
+    return useQuery({
+        queryKey: ["registration_requests", "teacher", teacherId ?? "none"],
+        queryFn: async () => {
+            if (!teacherId) return [];
+            const { data, error } = await supabase
+                .from("registration_requests")
+                .select(`
+                  *,
+                  applicant:users!applicant_user_id (id, name, email, role, is_active),
+                  grade:grades (id, name, slug)
+                `)
+                .eq("status", "PENDING")
+                .eq("applicant_role", "STUDENT")
+                .eq("approver_role", "TEACHER")
+                .eq("teacher_user_id", teacherId)
+                .order("created_at", { ascending: true });
+            if (error) throw error;
+            return data ?? [];
+        },
+        enabled: !!teacherId,
+    });
+};
+
+export const usePendingAdminRegistrationRequestsForSuperadmin = () => {
+    return useQuery({
+        queryKey: ["registration_requests", "superadmin", "admins"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("registration_requests")
+                .select(`
+                  *,
+                  applicant:users!applicant_user_id (id, name, email, role, is_active),
+                  organization:organizations (id, name, slug, kind, subscription_package, is_active)
+                `)
+                .eq("status", "PENDING")
+                .eq("applicant_role", "ADMIN")
+                .eq("approver_role", "SUPERADMIN")
+                .order("created_at", { ascending: true });
+            if (error) throw error;
+            return data ?? [];
+        },
+    });
+};
+
+export const useReviewRegistrationRequest = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            requestId: string;
+            reviewerUserId: string;
+            decision: "APPROVED" | "REJECTED";
+            reviewNote?: string;
+        }) => {
+            const now = new Date().toISOString();
+            const { data: req, error: reqErr } = await supabase
+                .from("registration_requests")
+                .select("*")
+                .eq("id", payload.requestId)
+                .single();
+            if (reqErr) throw reqErr;
+
+            const { error: upReqErr } = await supabase
+                .from("registration_requests")
+                .update({
+                    status: payload.decision,
+                    reviewed_by_user_id: payload.reviewerUserId,
+                    review_note: payload.reviewNote?.trim() || null,
+                    reviewed_at: now,
+                    updated_at: now,
+                })
+                .eq("id", payload.requestId);
+            if (upReqErr) throw upReqErr;
+
+            if (payload.decision === "APPROVED") {
+                const userPatch: Record<string, any> = {
+                    is_active: true,
+                    verified: true,
+                    updated_at: now,
+                };
+                if (req.applicant_role === "TEACHER") {
+                    userPatch.organization_id = req.organization_id ?? null;
+                    userPatch.individual_tier = null;
+                    userPatch.details = "معلم معتمد";
+                } else if (req.applicant_role === "STUDENT") {
+                    userPatch.organization_id = req.organization_id ?? null;
+                    userPatch.individual_tier = null;
+                    userPatch.details = "طالب معتمد";
+                } else if (req.applicant_role === "ADMIN") {
+                    userPatch.organization_id = req.organization_id ?? null;
+                    userPatch.individual_tier = null;
+                    userPatch.details = "أدمن مؤسسة معتمد";
+                }
+                const { error: upUserErr } = await supabase
+                    .from("users")
+                    .update(userPatch)
+                    .eq("id", req.applicant_user_id);
+                if (upUserErr) throw upUserErr;
+
+                if (req.applicant_role === "TEACHER" && req.grade_id) {
+                    await supabase
+                        .from("teacher_profiles")
+                        .update({ grade_id: req.grade_id, updated_at: now })
+                        .eq("user_id", req.applicant_user_id);
+                }
+                if (req.applicant_role === "STUDENT" && req.grade_id) {
+                    await supabase
+                        .from("student_profiles")
+                        .update({ grade_id: req.grade_id, updated_at: now })
+                        .eq("user_id", req.applicant_user_id);
+                }
+                if (req.applicant_role === "ADMIN" && req.organization_id) {
+                    await supabase
+                        .from("organizations")
+                        .update({ is_active: true, updated_at: now })
+                        .eq("id", req.organization_id);
+
+                    if (req.requested_package) {
+                        await supabase
+                            .from("organization_subscriptions")
+                            .upsert(
+                                {
+                                    organization_id: req.organization_id,
+                                    subscription_package: req.requested_package,
+                                    billing_cycle: "MONTHLY",
+                                    status: "TRIAL",
+                                    price_amount: 0,
+                                    next_billing_at: null,
+                                    auto_renew: true,
+                                    notes: "طلب اشتراك من الصفحة الرئيسية - بانتظار الضبط المالي",
+                                    updated_at: now,
+                                },
+                                { onConflict: "organization_id" }
+                            );
+                    }
+                }
+            }
+
+            return req;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["registration_requests"] });
+            queryClient.invalidateQueries({ queryKey: ["all_users"] });
+            queryClient.invalidateQueries({ queryKey: ["admin_stats"] });
+            queryClient.invalidateQueries({ queryKey: ["current_user"] });
+            queryClient.invalidateQueries({ queryKey: ["organizations"] });
+            queryClient.invalidateQueries({ queryKey: ["organization_subscriptions"] });
+            queryClient.invalidateQueries({ queryKey: ["org_admin_users"] });
         },
     });
 };

@@ -29,7 +29,45 @@ datasource db {
 enum UserRole {
   STUDENT
   TEACHER
+  /// School/org admin. Many rows may be ADMIN (many schools; multiple admins can share one organization_id).
   ADMIN
+  /// Platform operator: assigns subscription packages / orgs — not tied to one school dashboard.
+  SUPERADMIN
+}
+
+/// مؤسسة: تعليمي أو إثرائي
+enum OrganizationKind {
+  EDUCATIONAL
+  ENRICHMENT
+}
+
+/// باقة المؤسسات: أدمن+طالب فقط، أو أدمن+معلم+طالب
+enum OrgSubscriptionPackage {
+  /// ٢ — مؤسسة: أدمن + طالب
+  INSTITUTION_ADMIN_STUDENT
+  /// ٣ — مؤسسة: أدمن + معلم + طالب
+  INSTITUTION_FULL
+}
+
+/// ١ — أفراد: مجاني، محتوى إثرائي، بدون رقابة/تتبع (يُضبط على مستخدم ليس تابعًا لمؤسسة)
+enum IndividualTier {
+  INDIVIDUAL_FREE
+}
+
+/// Tenant (subscription sold by superadmin)
+model Organization {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  slug                  String                 @unique
+  kind                  OrganizationKind
+  subscriptionPackage   OrgSubscriptionPackage @map("subscription_package")
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("organizations")
 }
 
 /// User account - integrates with Supabase Auth
@@ -48,6 +86,13 @@ model User {
   lastLogin DateTime? @map("last_login")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
+
+  /// When set, user belongs to a subscribed institution (packages ٢ أو ٣).
+  organizationId String?       @map("organization_id") @db.Uuid
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  /// For users without an organization: INDIVIDUAL_FREE = باقة الأفراد (إثرائي فقط، بدون رقابة). Null = legacy/full access.
+  individualTier IndividualTier? @map("individual_tier")
 
   // Role-specific profiles
   studentProfile StudentProfile?

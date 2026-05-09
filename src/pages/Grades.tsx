@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Users, Search, Filter, CheckCircle, GraduationCap, BookOpen } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
+import { useGrades } from "@/hooks/useDatabase";
+import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
@@ -19,7 +20,7 @@ const Grades = () => {
     const kindParam = searchParams.get("kind");
 
     const { data: gradesData, isLoading, error } = useGrades();
-    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+    const { mode: visitorGradeMode } = useCatalogGradeClassMode();
 
     /** When admin shows only one catalog type, URL kind tabs are hidden — ignore kind filter */
     const kind =

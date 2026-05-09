@@ -110,9 +110,9 @@ function VisitorContentVisibilityCard() {
 
 const SettingsTab = () => {
     return (
-        <div className="w-full" dir="rtl">
+        <div className="w-full text-right" dir="rtl">
         <Tabs defaultValue="general" className="w-full">
-            <TabsList className="flex h-auto min-h-10 w-full flex-wrap justify-start gap-2 border-b border-border bg-transparent p-0 mb-6 rounded-none">
+            <TabsList className="flex h-auto min-h-10 w-full flex-wrap flex-row-reverse justify-start gap-2 border-b border-border bg-transparent p-0 mb-6 rounded-none">
                 <TabsTrigger
                     value="general"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
@@ -133,7 +133,7 @@ const SettingsTab = () => {
                 </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="general" className="space-y-6">
+            <TabsContent value="general" className="space-y-6 text-right" dir="rtl">
                 <Card>
                     <CardHeader>
                         <CardTitle>معلومات المنصة</CardTitle>
@@ -143,19 +143,19 @@ const SettingsTab = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>اسم المنصة</Label>
-                                <Input defaultValue="Lab4" />
+                                <Input defaultValue="Lab4" className="text-right" />
                             </div>
                             <div className="space-y-2">
                                 <Label>البريد الإلكتروني للدعم</Label>
-                                <Input defaultValue="support@platform.com" />
+                                <Input defaultValue="support@platform.com" className="text-right" />
                             </div>
                             <div className="space-y-2">
                                 <Label>رقم التواصل</Label>
-                                <Input defaultValue="19996" />
+                                <Input defaultValue="19996" className="text-right" />
                             </div>
                             <div className="space-y-2">
                                 <Label>اللغة الافتراضية</Label>
-                                <Input defaultValue="العربية (المملكة العربية السعودية)" disabled />
+                                <Input defaultValue="العربية (المملكة العربية السعودية)" disabled className="text-right" />
                             </div>
                         </div>
                     </CardContent>
@@ -169,8 +169,8 @@ const SettingsTab = () => {
                         <CardDescription>تكوين خصائص النظام العامة</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
+                            <div className="flex items-center gap-3 flex-row-reverse text-right">
                                 <Globe className="w-5 h-5 text-muted-foreground" />
                                 <div>
                                     <p className="font-medium">وضع الصيانة</p>
@@ -179,8 +179,8 @@ const SettingsTab = () => {
                             </div>
                             <Switch />
                         </div>
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
+                            <div className="flex items-center gap-3 flex-row-reverse text-right">
                                 <Globe className="w-5 h-5 text-muted-foreground" />
                                 <div>
                                     <p className="font-medium">التسجيل العام</p>
@@ -193,7 +193,7 @@ const SettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-6">
+            <TabsContent value="notifications" className="space-y-6 text-right" dir="rtl">
                 <Card>
                     <CardHeader>
                         <CardTitle>تفضيلات الإشعارات</CardTitle>
@@ -206,8 +206,8 @@ const SettingsTab = () => {
                             { title: "التحديات الجماعية", desc: "تنبيهات حول نشاط التحديات" },
                             { title: "الدعم الفني", desc: "تنبيهات تذاكر الدعم الفني الجديدة" },
                         ].map((item, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="flex items-center gap-3">
+                            <div key={i} className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
+                                <div className="flex items-center gap-3 flex-row-reverse text-right">
                                     <Bell className="w-5 h-5 text-muted-foreground" />
                                     <div>
                                         <p className="font-medium">{item.title}</p>
@@ -221,15 +221,15 @@ const SettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="security" className="space-y-6">
+            <TabsContent value="security" className="space-y-6 text-right" dir="rtl">
                 <Card>
                     <CardHeader>
                         <CardTitle>الأمان</CardTitle>
                         <CardDescription>إعدادات الأمان والتحقق</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
+                            <div className="flex items-center gap-3 flex-row-reverse text-right">
                                 <Shield className="w-5 h-5 text-muted-foreground" />
                                 <div>
                                     <p className="font-medium">المصادقة الثنائية (2FA)</p>

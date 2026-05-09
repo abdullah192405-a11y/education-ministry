@@ -1,10 +1,20 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LifeBuoy, CheckCircle2, Loader2 } from "lucide-react";
-import { useAdminSupportTickets, useUpdateSupportTicketStatus } from "@/hooks/useDatabase";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { LifeBuoy, CheckCircle2, Loader2, ArrowUpCircle } from "lucide-react";
+import {
+    useAdminSupportTickets,
+    useEscalateAdminSupportTicket,
+    useSuperadminSupportTickets,
+    useUpdateSupportTicketStatus,
+    useUser,
+} from "@/hooks/useDatabase";
 import { useToast } from "@/components/ui/use-toast";
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
+import { useState } from "react";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 
 function ThumbRow({ urls }: { urls: string[] }) {
     if (!urls?.length) return null;
@@ -28,8 +38,22 @@ const statusMeta: Record<string, { label: string; variant: "default" | "secondar
 
 const AdminSupportTab = () => {
     const { toast } = useToast();
-    const { data: tickets, isLoading } = useAdminSupportTickets();
+    const { data: user } = useUser();
+    const isSuperadmin = user?.role?.toUpperCase() === "SUPERADMIN";
+    const { scopedOrganizationId } = useOrgAdminTenant();
+    const { data: adminTickets, isLoading: isLoadingAdmin } = useAdminSupportTickets();
+    const { data: superadminTickets, isLoading: isLoadingSuperadmin } = useSuperadminSupportTickets();
     const updateStatus = useUpdateSupportTicketStatus();
+    const escalateToSuperadmin = useEscalateAdminSupportTicket();
+    const [escalateTicket, setEscalateTicket] = useState<any | null>(null);
+    const [escalateNote, setEscalateNote] = useState("");
+
+    const tickets = isSuperadmin
+        ? superadminTickets
+        : (adminTickets || []).filter((t: any) =>
+              scopedOrganizationId ? t?.author?.organization_id === scopedOrganizationId : true
+          );
+    const isLoading = isSuperadmin ? isLoadingSuperadmin : isLoadingAdmin;
 
     return (
         <div className="space-y-6">
@@ -39,15 +63,21 @@ const AdminSupportTab = () => {
                     تذاكر الدعم
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                    تذاكر المعلمين للإدارة، بما فيها طلبات التصعيد عن تذاكر الطلاب
+                    {isSuperadmin
+                        ? "التذاكر التي أعاد أدمن المؤسسات تصعيدها إلى السوبر أدمن"
+                        : "تذاكر المعلمين للإدارة، ويمكنك إعادة تصعيد أي تذكرة إلى السوبر أدمن"}
                 </p>
             </div>
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">جميع تذاكر المعلمين</CardTitle>
+                    <CardTitle className="text-lg">
+                        {isSuperadmin ? "تذاكر مُصعّدة إلى السوبر أدمن" : "جميع تذاكر المعلمين"}
+                    </CardTitle>
                     <CardDescription>
-                        طلبات المعلمين؛ عند التصعيد يُذكر اسم الطالب صاحب التذكرة الأصلية.
+                        {isSuperadmin
+                            ? "هذه التذاكر قادمة من أدمن المؤسسات، ويمكن أن تتكرر إعادة التصعيد لنفس التذكرة."
+                            : "طلبات المعلمين؛ عند التصعيد يُذكر اسم الطالب صاحب التذكرة الأصلية."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -77,8 +107,10 @@ const AdminSupportTab = () => {
                                                 </Badge>
                                                 <p className="font-semibold">{t.subject}</p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    <span className="text-foreground/80">من المعلم: </span>
-                                                    {t.author?.name || "—"}
+                                                    <span className="text-foreground/80">
+                                                        {isSuperadmin ? "من أدمن المؤسسة: " : "من المعلم: "}
+                                                    </span>
+                                                    {t.author?.name || parent?.parentAuthor?.name || "—"}
                                                     {t.author?.email ? ` · ${t.author.email}` : ""}
                                                 </p>
                                                 {parent && (
@@ -116,7 +148,9 @@ const AdminSupportTab = () => {
 
                                         {t.teacherEscalationNote && (
                                             <div className="p-3 rounded-lg bg-amber-500/10 text-sm">
-                                                <span className="font-medium">ملاحظة المعلم: </span>
+                                                <span className="font-medium">
+                                                    {isSuperadmin ? "ملاحظة الأدمن: " : "ملاحظة المعلم: "}
+                                                </span>
                                                 {t.teacherEscalationNote}
                                             </div>
                                         )}
@@ -151,6 +185,17 @@ const AdminSupportTab = () => {
                                                 <CheckCircle2 className="w-4 h-4 ml-1" />
                                                 تم الحل
                                             </Button>
+                                            {!isSuperadmin && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    disabled={escalateToSuperadmin.isPending}
+                                                    onClick={() => setEscalateTicket(t)}
+                                                >
+                                                    <ArrowUpCircle className="w-4 h-4 ml-1" />
+                                                    إعادة التصعيد للسوبر أدمن
+                                                </Button>
+                                            )}
                                         </div>
 
                                         <p className="text-xs text-muted-foreground">
@@ -165,6 +210,70 @@ const AdminSupportTab = () => {
                     )}
                 </CardContent>
             </Card>
+
+            {!isSuperadmin && (
+                <Dialog open={!!escalateTicket} onOpenChange={(o) => !o && setEscalateTicket(null)}>
+                    <DialogContent className="sm:max-w-lg" dir="rtl">
+                        <DialogHeader>
+                            <DialogTitle>إعادة تصعيد التذكرة إلى السوبر أدمن</DialogTitle>
+                            <DialogDescription>
+                                يمكنك إعادة التصعيد أكثر من مرة عند الحاجة، مع إضافة ملاحظة جديدة في كل مرة.
+                            </DialogDescription>
+                        </DialogHeader>
+                        {escalateTicket && (
+                            <div className="space-y-3">
+                                <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
+                                    <p className="font-medium">{escalateTicket.subject}</p>
+                                    <p className="text-muted-foreground whitespace-pre-wrap">{escalateTicket.body}</p>
+                                </div>
+                                <Textarea
+                                    value={escalateNote}
+                                    onChange={(e) => setEscalateNote(e.target.value)}
+                                    placeholder="ملاحظة للإدارة العليا..."
+                                    rows={4}
+                                />
+                            </div>
+                        )}
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setEscalateTicket(null)}>
+                                إلغاء
+                            </Button>
+                            <Button
+                                disabled={!escalateNote.trim() || escalateToSuperadmin.isPending || !user?.id}
+                                onClick={() => {
+                                    if (!escalateTicket || !user?.id) return;
+                                    escalateToSuperadmin.mutate(
+                                        {
+                                            adminTicketId: escalateTicket.id,
+                                            adminUserId: user.id,
+                                            subject: escalateTicket.subject,
+                                            originalBody: escalateTicket.body,
+                                            note: escalateNote,
+                                            ticketType: escalateTicket.ticketType,
+                                            parentAttachmentUrls: escalateTicket.attachmentUrls,
+                                        },
+                                        {
+                                            onSuccess: () => {
+                                                toast({ title: "تم التصعيد", description: "أُرسلت التذكرة إلى السوبر أدمن." });
+                                                setEscalateTicket(null);
+                                                setEscalateNote("");
+                                            },
+                                            onError: (e: any) =>
+                                                toast({
+                                                    title: "خطأ",
+                                                    description: e?.message || "تعذّر التصعيد.",
+                                                    variant: "destructive",
+                                                }),
+                                        }
+                                    );
+                                }}
+                            >
+                                {escalateToSuperadmin.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "تأكيد التصعيد"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
         </div>
     );
 };

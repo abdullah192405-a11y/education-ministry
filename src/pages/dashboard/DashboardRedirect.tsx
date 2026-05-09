@@ -15,7 +15,9 @@ const DashboardRedirect = () => {
             }
 
             const role = user.role?.toUpperCase();
-            if (role === "ADMIN" || role === "مسؤول") {
+            if (role === "SUPERADMIN") {
+                navigate("/dashboard/superadmin");
+            } else if (role === "ADMIN" || role === "مسؤول") {
                 navigate("/dashboard/admin");
             } else if (role === "TEACHER" || role === "معلم" || role === "معلمة") {
                 navigate("/dashboard/teacher");

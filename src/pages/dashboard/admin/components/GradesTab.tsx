@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
     BookOpen, GraduationCap, Plus,
@@ -32,6 +32,7 @@ import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 
 const getLevelLabel = (level: string) => {
     switch (level) {
@@ -56,7 +57,11 @@ const getClassTypeLabel = (classType: unknown) => {
 const isGradeHidden = (grade: { is_hidden?: boolean | null; isHidden?: boolean | null }) =>
     Boolean(grade.is_hidden ?? grade.isHidden);
 
-const GradesTab = () => {
+type GradesTabProps = {
+    externalCreateSignal?: number;
+};
+
+const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
     const { toast } = useToast();
     const { data: user } = useUser();
     const coverFileInputRef = useRef<HTMLInputElement>(null);
@@ -74,8 +79,12 @@ const GradesTab = () => {
         class_type: "تعليمي",
         is_hidden: false,
     });
+    const { scopedOrganizationId, allUsersOptions } = useOrgAdminTenant();
 
-    const { data: gradesData, isLoading } = useGrades();
+    const { data: gradesData, isLoading } = useGrades({
+        organizationId: scopedOrganizationId,
+        enabled: allUsersOptions.enabled,
+    });
     const createGradeMutation = useCreateGrade();
     const updateGradeMutation = useUpdateGrade();
     const deleteGradeMutation = useDeleteGrade();
@@ -96,6 +105,11 @@ const GradesTab = () => {
     });
 
     const hiddenGrades = filteredGrades.filter((grade: any) => isGradeHidden(grade));
+
+    useEffect(() => {
+        if (!externalCreateSignal) return;
+        handleOpenDialog();
+    }, [externalCreateSignal]);
 
     const handleOpenDialog = (grade?: any) => {
         if (grade) {
@@ -133,6 +147,7 @@ const GradesTab = () => {
             cover_image: formData.cover_image.trim() || null,
             class_type: formData.class_type,
             is_hidden: formData.is_hidden,
+            organization_id: scopedOrganizationId || null,
         };
         try {
             if (editingGrade) {

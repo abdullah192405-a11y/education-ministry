@@ -8,6 +8,9 @@ import Grades from "./pages/Grades";
 import GradeDetail from "./pages/GradeDetail";
 import SubjectView from "./pages/SubjectView";
 import TopicView from "./pages/TopicView";
+import OrganizationProfile from "./pages/OrganizationProfile";
+import Organizations from "./pages/Organizations";
+import Schools from "./pages/Schools";
 import ChallengeModeSelect from "./pages/ChallengeModeSelect";
 import SingleChallenge from "./pages/SingleChallenge";
 import GroupChallenge from "./pages/GroupChallenge";
@@ -20,7 +23,7 @@ import ResetPassword from "./pages/ResetPassword";
 import ExamPage from "./pages/ExamPage";
 
 // Dashboard Pages
-import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect } from "./pages/dashboard";
+import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect, SuperadminDashboard } from "./pages/dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
@@ -34,12 +37,16 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <ScrollToTop />
-        <Routes>
+        <div dir="rtl">
+          <ScrollToTop />
+          <Routes>
           <Route path="/" element={<Index />} />
 
           {/* Education Routes - Grades > Subjects > Topics */}
           <Route path="/grades" element={<Grades />} />
+          <Route path="/schools" element={<Schools />} />
+          <Route path="/organizations" element={<Organizations />} />
+          <Route path="/org/:orgSlug" element={<OrganizationProfile />} />
           <Route path="/grade/:gradeId" element={<GradeDetail />} />
           <Route path="/grade/:gradeId/subject/:subjectId" element={<SubjectView />} />
           <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId" element={<TopicView />} />
@@ -81,6 +88,14 @@ const App = () => (
             }
           />
           <Route
+            path="/dashboard/superadmin"
+            element={
+              <ProtectedRoute allowedRoles={["SUPERADMIN"]}>
+                <SuperadminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/analytics/:challengeId"
             element={
               <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
@@ -102,7 +117,8 @@ const App = () => (
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
-        </Routes>
+          </Routes>
+        </div>
       </BrowserRouter>
       <WhatsAppButton />
     </TooltipProvider>

@@ -9,6 +9,10 @@ if (!PUBLISHABLE_KEY) {
     throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in environment variables");
 }
 
+document.documentElement.setAttribute("dir", "rtl");
+document.documentElement.setAttribute("lang", "ar");
+document.body.setAttribute("dir", "rtl");
+
 createRoot(document.getElementById("root")!).render(
     <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/login">
         <App />

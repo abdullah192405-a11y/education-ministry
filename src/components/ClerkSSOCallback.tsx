@@ -9,6 +9,7 @@ import { CheckCircle, Loader2 } from "lucide-react";
 // Map role from DB to dashboard path
 const getDashboardPath = (role: string) => {
     const r = role?.toUpperCase();
+    if (r === "SUPERADMIN") return "/dashboard/superadmin";
     if (r === "ADMIN" || r === "مسؤول") return "/dashboard/admin";
     if (r === "TEACHER" || r === "معلم" || r === "معلمة") return "/dashboard/teacher";
     if (r === "STUDENT" || r === "طالب") return "/dashboard/student";

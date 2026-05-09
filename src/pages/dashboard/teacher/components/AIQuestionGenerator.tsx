@@ -423,15 +423,14 @@ ${userPrompt}
 
                             <TabsContent value="video" className="space-y-3 mt-4">
                                 <div className="space-y-2">
-                                    {/* dir=ltr يمنع تداخل الأيقونة مع النص في الصفحات العربية RTL */}
-                                    <div className="relative" dir="ltr">
+                                    <div className="relative">
                                         <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                                         <Input
                                             type="url"
                                             placeholder="https://www.youtube.com/watch?v=..."
                                             value={videoUrl}
                                             onChange={(e) => setVideoUrl(e.target.value)}
-                                            className="pl-10 text-left"
+                                            className="pl-10"
                                             disabled={isProcessing}
                                         />
                                     </div>

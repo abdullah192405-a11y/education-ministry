@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,10 +11,10 @@ import {
     KeyRound
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
-import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
+import { useGrades, useOrganizations } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignUp, useAuth } from "@clerk/clerk-react";
+import md5 from "js-md5";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -31,29 +31,88 @@ type UserRole = "STUDENT" | "TEACHER";
 const Register = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { data: grades } = useGrades();
-    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
-    const catalogGrades = useMemo(
-        () => filterGradesForPublicCatalog(grades, visitorGradeMode),
-        [grades, visitorGradeMode],
-    );
+    const [role, setRole] = useState<UserRole | null>(null);
+    const { data: organizations = [], isLoading: isLoadingOrganizations } = useOrganizations({ includeInactive: true });
     const { signUp, isLoaded: isClerkLoaded, setActive } = useSignUp();
     const { signOut, isSignedIn } = useAuth();
 
     // Form state
     const [step, setStep] = useState<1 | 2 | 3>(1); // Step 1: Role, Step 2: Details, Step 3: Verify Code
-    const [role, setRole] = useState<UserRole | null>(null);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
     const [selectedGradeId, setSelectedGradeId] = useState("");
+    const [selectedTeacherId, setSelectedTeacherId] = useState("");
+    const [teacherOptions, setTeacherOptions] = useState<Array<{ id: string; name: string; email: string }>>([]);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [registerSuccess, setRegisterSuccess] = useState(false);
     const [verificationCode, setVerificationCode] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
+    const { data: grades = [] } = useGrades({
+        organizationId: selectedOrganizationId || null,
+        enabled: !!selectedOrganizationId,
+    });
+
+    useEffect(() => {
+        setSelectedGradeId("");
+        setSelectedTeacherId("");
+        setTeacherOptions([]);
+    }, [selectedOrganizationId]);
+
+    useEffect(() => {
+        const run = async () => {
+            if (role !== "STUDENT" || !selectedOrganizationId || !selectedGradeId) {
+                setTeacherOptions([]);
+                setSelectedTeacherId("");
+                return;
+            }
+            const { data: users, error: uErr } = await supabase
+                .from("users")
+                .select("id, name, email")
+                .eq("role", "TEACHER")
+                .eq("organization_id", selectedOrganizationId)
+                .eq("is_active", true);
+            if (uErr) {
+                setTeacherOptions([]);
+                setSelectedTeacherId("");
+                return;
+            }
+            const teacherUserIds = (users || []).map((u: any) => u.id);
+            if (!teacherUserIds.length) {
+                setTeacherOptions([]);
+                setSelectedTeacherId("");
+                return;
+            }
+            const { data: teacherProfiles, error: tpErr } = await supabase
+                .from("teacher_profiles")
+                .select("user_id, grade_id")
+                .in("user_id", teacherUserIds);
+            if (tpErr) {
+                setTeacherOptions([]);
+                setSelectedTeacherId("");
+                return;
+            }
+            const profileByUserId = new Map<string, any>();
+            (teacherProfiles || []).forEach((tp: any) => profileByUserId.set(tp.user_id, tp));
+            const opts = (users || [])
+                .filter((u: any) => {
+                    const tp = profileByUserId.get(u.id);
+                    // Strict: show only teachers assigned to the selected class/grade.
+                    return !!tp && tp.grade_id === selectedGradeId;
+                })
+                .map((u: any) => ({ id: u.id, name: u.name, email: u.email }));
+            setTeacherOptions(opts);
+            if (!opts.some((t) => t.id === selectedTeacherId)) {
+                setSelectedTeacherId("");
+            }
+        };
+        run();
+    }, [role, selectedOrganizationId, selectedGradeId]);
 
     const handleRoleSelect = (selectedRole: UserRole) => {
         setRole(selectedRole);
@@ -94,10 +153,13 @@ const Register = () => {
                 email,
                 name,
                 role: role,
-                verified: true,
-                is_active: true,
-                details: role === "STUDENT" ? "طالب جديد" : "معلم جديد",
+                verified: false,
+                is_active: false,
+                password_hash: String(md5(password)).toLowerCase(),
+                organization_id: selectedOrganizationId || null,
+                details: role === "STUDENT" ? "بانتظار موافقة المعلم" : "بانتظار موافقة أدمن المؤسسة",
                 updated_at: now,
+                individual_tier: null,
             })
             .select()
             .single();
@@ -132,6 +194,7 @@ const Register = () => {
         } else if (role === "TEACHER") {
             await supabase.from("teacher_profiles").insert({
                 user_id: newUser.id,
+                grade_id: selectedGradeId || null,
                 total_students: 0,
                 total_topics: 0,
                 total_challenges: 0,
@@ -141,6 +204,29 @@ const Register = () => {
         }
 
         return newUser;
+    };
+
+    const createRegistrationRequest = async (applicantUserId: string) => {
+        const now = new Date().toISOString();
+        const requestRow: Record<string, any> = {
+            applicant_user_id: applicantUserId,
+            applicant_role: role,
+            organization_id: selectedOrganizationId || null,
+            grade_id: selectedGradeId || null,
+            status: "PENDING",
+            created_at: now,
+            updated_at: now,
+        };
+        if (role === "TEACHER") {
+            requestRow.approver_role = "ADMIN";
+        } else {
+            requestRow.approver_role = "TEACHER";
+            requestRow.teacher_user_id = selectedTeacherId || null;
+        }
+        const { error } = await supabase
+            .from("registration_requests")
+            .upsert(requestRow, { onConflict: "applicant_user_id" });
+        if (error) throw error;
     };
 
     // Helper: finish registration after Clerk is done
@@ -154,6 +240,7 @@ const Register = () => {
         const dbUser = await createSupabaseUser();
 
         if (dbUser) {
+            await createRegistrationRequest(dbUser.id);
             localStorage.setItem("edu_user", JSON.stringify({
                 id: dbUser.id,
                 name: dbUser.name,
@@ -164,9 +251,13 @@ const Register = () => {
             queryClient.setQueryData(["current_user"], dbUser);
         }
 
+        setSuccessMessage(
+            role === "TEACHER"
+                ? "تم إرسال طلبك إلى أدمن المؤسسة. سيتم تفعيل الحساب بعد الموافقة."
+                : "تم إرسال طلبك إلى معلم الصف المختار. سيتم تفعيل الحساب بعد الموافقة."
+        );
         setRegisterSuccess(true);
-        const dashboardPath = role === "TEACHER" ? "/dashboard/teacher" : "/dashboard/student";
-        setTimeout(() => navigate(dashboardPath), 2500);
+        setTimeout(() => navigate("/login"), 2800);
     };
 
     const handleRegister = async (e: React.FormEvent) => {
@@ -180,6 +271,18 @@ const Register = () => {
         }
         if (!email.trim()) {
             setError("يرجى إدخال البريد الإلكتروني");
+            return;
+        }
+        if (!selectedOrganizationId) {
+            setError("يرجى اختيار المدرسة أو المؤسسة");
+            return;
+        }
+        if (!selectedGradeId) {
+            setError(role === "TEACHER" ? "يرجى اختيار الصف الذي تدرّسه" : "يرجى اختيار الصف الدراسي");
+            return;
+        }
+        if (role === "STUDENT" && !selectedTeacherId) {
+            setError("يرجى اختيار المعلم المسؤول عن صفك");
             return;
         }
         if (password.length < 6) {
@@ -347,11 +450,9 @@ const Register = () => {
                                             <CheckCircle className="w-10 h-10 text-success" />
                                         </div>
                                         <h3 className="text-xl font-bold mb-2">تم إنشاء الحساب بنجاح! 🎉</h3>
-                                        <p className="text-muted-foreground mb-2">
-                                            مرحباً بك في Lab4
-                                        </p>
+                                        <p className="text-muted-foreground mb-2">{successMessage || "تم استلام طلب التسجيل."}</p>
                                         <p className="text-sm text-muted-foreground">
-                                            جارٍ التحويل إلى لوحة التحكم...
+                                            جارٍ التحويل إلى تسجيل الدخول...
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -635,19 +736,70 @@ const Register = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Grade Selection (Students only) */}
+                                            <div>
+                                                <label className="text-sm font-medium mb-2 block">المدرسة / المؤسسة</label>
+                                                <select
+                                                    value={selectedOrganizationId}
+                                                    onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                                                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                    required
+                                                    disabled={isLoadingOrganizations}
+                                                >
+                                                    <option value="">
+                                                        {isLoadingOrganizations ? "جاري تحميل المؤسسات..." : "اختر المدرسة أو المؤسسة..."}
+                                                    </option>
+                                                    {(organizations || []).map((org: any) => (
+                                                        <option key={org.id} value={org.id}>
+                                                            {org.name}{org.is_active === false ? " (غير مفعّلة بعد)" : ""}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-medium mb-2 block">
+                                                    {role === "TEACHER" ? "الصف الذي تدرّسه" : "الصف الدراسي"}
+                                                </label>
+                                                <select
+                                                    value={selectedGradeId}
+                                                    onChange={(e) => setSelectedGradeId(e.target.value)}
+                                                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                    required
+                                                    disabled={!selectedOrganizationId}
+                                                >
+                                                    <option value="">
+                                                        {!selectedOrganizationId
+                                                            ? "اختر المؤسسة أولاً"
+                                                            : grades.length
+                                                                ? "اختر الصف..."
+                                                                : "لا توجد صفوف لهذه المؤسسة"}
+                                                    </option>
+                                                    {grades.map((g: any) => (
+                                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
                                             {role === "STUDENT" && (
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">الصف الدراسي (اختياري)</label>
+                                                    <label className="text-sm font-medium mb-2 block">المعلم المسؤول عن الصف</label>
                                                     <select
-                                                        value={selectedGradeId}
-                                                        onChange={(e) => setSelectedGradeId(e.target.value)}
+                                                        value={selectedTeacherId}
+                                                        onChange={(e) => setSelectedTeacherId(e.target.value)}
                                                         className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                        required
+                                                        disabled={!selectedOrganizationId || !selectedGradeId}
                                                     >
-                                                        <option value="">اختر الصف...</option>
-                                                        {(catalogGrades || []).map((grade: any) => (
-                                                            <option key={grade.id} value={grade.id}>
-                                                                {grade.name}
+                                                        <option value="">
+                                                            {!selectedOrganizationId || !selectedGradeId
+                                                                ? "اختر المؤسسة والصف أولاً"
+                                                                : teacherOptions.length
+                                                                    ? "اختر المعلم..."
+                                                                    : "لا يوجد معلم معتمد لهذا الصف"}
+                                                        </option>
+                                                        {teacherOptions.map((t) => (
+                                                            <option key={t.id} value={t.id}>
+                                                                {t.name} ({t.email})
                                                             </option>
                                                         ))}
                                                     </select>

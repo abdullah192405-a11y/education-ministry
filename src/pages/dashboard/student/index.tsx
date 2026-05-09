@@ -67,7 +67,9 @@ const StudentDashboard = () => {
     useEffect(() => {
         if (user?.role) {
             const role = user.role.toUpperCase();
-            if (role === "TEACHER" || role === "معلم" || role === "معلمة") {
+            if (role === "SUPERADMIN") {
+                navigate("/dashboard/superadmin");
+            } else if (role === "TEACHER" || role === "معلم" || role === "معلمة") {
                 navigate("/dashboard/teacher");
             } else if (role === "ADMIN" || role === "مسؤول") {
                 navigate("/dashboard/admin");
@@ -150,7 +152,9 @@ const StudentDashboard = () => {
         }
     };
     const { data: subjectProgress, isLoading: isLoadingProgress } = useStudentSubjectProgress(profile?.id || "");
-    const { data: gradeDetail, isLoading: isLoadingGradeDetail } = useGradeDetail(profile?.grade?.slug || "");
+    const { data: gradeDetail, isLoading: isLoadingGradeDetail } = useGradeDetail(profile?.grade?.slug || "", {
+        organizationId: (user as any)?.organization_id || null,
+    });
     const { data: topicActivities, isLoading: isLoadingActivities } = useStudentTopicActivities(profile?.id || "", 1000);
     const { data: userBadges, isLoading: isLoadingUserBadges } = useUserBadges(user?.id || "");
     const { data: allBadges, isLoading: isLoadingAllBadges } = useAllBadges();
@@ -178,6 +182,9 @@ const StudentDashboard = () => {
             totalStudyHours: profile?.total_study_hours || 0
         }
     };
+    const organizationName = Array.isArray((user as any)?.organizations)
+        ? (user as any)?.organizations?.[0]?.name || null
+        : (user as any)?.organizations?.name || null;
 
     const currentGrade = profile?.grade;
 
@@ -305,7 +312,9 @@ const StudentDashboard = () => {
                                     ) : (
                                         <>
                                             <p className="font-medium text-sm">{student.name}</p>
-                                            <p className="text-xs text-muted-foreground">{currentGrade?.name || "طالب"}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {organizationName || currentGrade?.name || "طالب"}
+                                            </p>
                                         </>
                                     )}
                                 </div>
@@ -351,6 +360,9 @@ const StudentDashboard = () => {
                                         <>
                                             <h2 className="font-bold text-sm mb-1">{student.name}</h2>
                                             <p className="text-xs text-muted-foreground mb-1">{currentGrade?.name || ""}</p>
+                                            {organizationName && (
+                                                <p className="text-xs text-muted-foreground mb-1">{organizationName}</p>
+                                            )}
                                             {student.stats.rank > 0 && (
                                                 <p className="text-[11px] text-muted-foreground mb-3">
                                                     المرتبة #{student.stats.rank} في الصف

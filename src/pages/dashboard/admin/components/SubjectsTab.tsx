@@ -27,9 +27,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateSubject, useUpdateSubject, useDeleteSubject } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 
 const SubjectsTab = () => {
     const { toast } = useToast();
+    const { scopedOrganizationId, allUsersOptions } = useOrgAdminTenant();
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedGradeId, setSelectedGradeId] = useState("all");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -42,7 +44,10 @@ const SubjectsTab = () => {
         color: "#6366f1"
     });
 
-    const { data: gradesData, isLoading } = useGrades();
+    const { data: gradesData, isLoading } = useGrades({
+        organizationId: scopedOrganizationId,
+        enabled: allUsersOptions.enabled,
+    });
     const createSubjectMutation = useCreateSubject();
     const updateSubjectMutation = useUpdateSubject();
     const deleteSubjectMutation = useDeleteSubject();

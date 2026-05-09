@@ -25,7 +25,9 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
 
                 if (!isAllowed) {
                     // Redirect to their own dashboard if they try to access something they shouldn't
-                    if (userRole === "ADMIN" || userRole === "مسؤول") {
+                    if (userRole === "SUPERADMIN") {
+                        navigate("/dashboard/superadmin", { replace: true });
+                    } else if (userRole === "ADMIN" || userRole === "مسؤول") {
                         navigate("/dashboard/admin", { replace: true });
                     } else if (userRole === "TEACHER" || userRole === "معلم" || userRole === "معلمة") {
                         navigate("/dashboard/teacher", { replace: true });

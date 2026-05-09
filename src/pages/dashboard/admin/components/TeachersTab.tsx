@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAllUsers } from "@/hooks/useDatabase";
+import { useAllUsers, usePendingTeacherRegistrationRequestsForAdmin, useReviewRegistrationRequest, useUser } from "@/hooks/useDatabase";
+import { useAccountCapabilities } from "@/hooks/useAccountCapabilities";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,7 +29,13 @@ import {
 const TeachersTab = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
-    const { data: allUsers, isLoading } = useAllUsers();
+    const { allUsersOptions } = useOrgAdminTenant();
+    const { data: allUsers, isLoading } = useAllUsers(allUsersOptions);
+    const { data: user } = useUser();
+    const orgId = allUsersOptions.organizationId || null;
+    const { data: pendingRequests = [], isLoading: isLoadingPending } = usePendingTeacherRegistrationRequestsForAdmin(orgId);
+    const reviewRequest = useReviewRegistrationRequest();
+    const { orgAllowsTeachers } = useAccountCapabilities();
 
     // Filter to teachers only
     const teachers = (allUsers || []).filter((u: any) => u.role === "TEACHER");
@@ -39,6 +47,67 @@ const TeachersTab = () => {
 
     return (
         <div className="space-y-6">
+            <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">طلبات تسجيل المعلمين (بانتظار موافقتك)</h3>
+                        <Badge variant="outline">{pendingRequests.length}</Badge>
+                    </div>
+                    {isLoadingPending ? (
+                        <p className="text-sm text-muted-foreground">جاري تحميل الطلبات...</p>
+                    ) : pendingRequests.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">لا توجد طلبات معلّقة حاليًا.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {pendingRequests.map((req: any) => (
+                                <div key={req.id} className="rounded-lg border bg-background p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                    <div>
+                                        <p className="font-medium">{req.applicant?.name || "معلم جديد"}</p>
+                                        <p className="text-xs text-muted-foreground">{req.applicant?.email}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            الصف: {req.grade?.name || "غير محدد"} · تم الإرسال: {new Date(req.created_at).toLocaleDateString("ar-SA")}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            size="sm"
+                                            onClick={() =>
+                                                reviewRequest.mutate({
+                                                    requestId: req.id,
+                                                    reviewerUserId: user?.id,
+                                                    decision: "APPROVED",
+                                                })
+                                            }
+                                            disabled={!user?.id || reviewRequest.isPending}
+                                        >
+                                            قبول المعلم
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                                reviewRequest.mutate({
+                                                    requestId: req.id,
+                                                    reviewerUserId: user?.id,
+                                                    decision: "REJECTED",
+                                                })
+                                            }
+                                            disabled={!user?.id || reviewRequest.isPending}
+                                        >
+                                            رفض
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+            {!orgAllowsTeachers && (
+                <p className="text-sm rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-foreground">
+                    باقة المؤسسة الحالية تشمل أدمنًا وطلابًا فقط (باقة ٢). لا يتوفر دور المعلم ضمن هذه الباقة.
+                </p>
+            )}
             {/* Header Actions */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="flex gap-4 w-full md:w-auto flex-1">
@@ -62,7 +131,10 @@ const TeachersTab = () => {
                         </SelectContent>
                     </Select>
                 </div>
-                <Button className="gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
+                <Button
+                    disabled={!orgAllowsTeachers}
+                    className="gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50"
+                >
                     <UserCheck className="w-4 h-4" />
                     توثيق معلم جديد
                 </Button>

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAllUsers, useAdminStats } from "@/hooks/useDatabase";
+import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,8 +28,9 @@ import {
 
 const StudentsTab = () => {
     const [searchTerm, setSearchTerm] = useState("");
-    const { data: allUsers, isLoading } = useAllUsers();
-    const { data: adminStats } = useAdminStats();
+    const { allUsersOptions, adminStatsOptions } = useOrgAdminTenant();
+    const { data: allUsers, isLoading } = useAllUsers(allUsersOptions);
+    const { data: adminStats } = useAdminStats(adminStatsOptions);
 
     // Filter to students only
     const students = (allUsers || []).filter((u: any) => u.role === "STUDENT");

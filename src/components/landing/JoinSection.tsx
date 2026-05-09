@@ -25,6 +25,7 @@ const JoinSection = () => {
     navigate(`/join/${pin}`);
   };
 
+
   return (
     <section className="py-20 md:py-32 relative overflow-hidden">
       {/* Background */}

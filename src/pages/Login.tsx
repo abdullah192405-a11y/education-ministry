@@ -18,6 +18,7 @@ import md5 from "js-md5";
 // Map role from DB to dashboard path
 const getDashboardPath = (role: string) => {
     const r = role?.toUpperCase();
+    if (r === "SUPERADMIN") return "/dashboard/superadmin";
     if (r === "ADMIN" || r === "مسؤول") return "/dashboard/admin";
     if (r === "TEACHER" || r === "معلم" || r === "معلمة") return "/dashboard/teacher";
     if (r === "STUDENT" || r === "طالب") return "/dashboard/student";
@@ -68,7 +69,7 @@ function rpcLoginSucceeded(row: Record<string, unknown> | null): row is Record<s
 const Login = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { signIn, isLoaded: isClerkLoaded } = useSignIn();
+    const { signIn, setActive, isLoaded: isClerkLoaded } = useSignIn();
     const { signOut, isSignedIn } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -119,6 +120,51 @@ const Login = () => {
         }
 
         try {
+            // Try Clerk email/password first (accounts created from Register page).
+            if (isClerkLoaded && signIn) {
+                try {
+                    const clerkResult = await signIn.create({
+                        identifier: normalizedEmail,
+                        password,
+                    });
+
+                    if (clerkResult.status === "complete") {
+                        if (clerkResult.createdSessionId && setActive) {
+                            await setActive({ session: clerkResult.createdSessionId });
+                        }
+
+                        const { data: clerkDbUser } = await supabase
+                            .from("users")
+                            .select("*")
+                            .ilike("email", normalizedEmail)
+                            .maybeSingle();
+
+                        if (clerkDbUser) {
+                            if (clerkDbUser.is_active === false) {
+                                setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                                return;
+                            }
+
+                            localStorage.setItem("edu_user", JSON.stringify({
+                                id: clerkDbUser.id,
+                                name: clerkDbUser.name,
+                                email: clerkDbUser.email,
+                                role: clerkDbUser.role,
+                                details: clerkDbUser.details
+                            }));
+                            setLoginSuccess(clerkDbUser.name);
+                            queryClient.setQueryData(["current_user"], clerkDbUser);
+                            setTimeout(() => {
+                                navigate(getDashboardPath(clerkDbUser.role));
+                            }, 1000);
+                            return;
+                        }
+                    }
+                } catch {
+                    // Clerk auth failed; continue to existing Supabase + legacy fallbacks.
+                }
+            }
+
             // Attempt Supabase Auth login
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email: normalizedEmail,
@@ -160,10 +206,14 @@ const Login = () => {
 
                 console.log("[Login] Direct users lookup:", { u, userSelErr });
 
-                if (!userSelErr && u && u.is_active !== false && u.password_hash) {
+                if (!userSelErr && u && u.password_hash) {
                     const got = String(md5(password)).toLowerCase();
                     const want = String(u.password_hash).toLowerCase();
                     if (got === want) {
+                        if (u.is_active === false) {
+                            setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                            return;
+                        }
                         console.log("[Login] Authenticated via users.password_hash");
                         localStorage.setItem("edu_user", JSON.stringify({
                             id: u.id,
@@ -176,6 +226,14 @@ const Login = () => {
                         setTimeout(() => navigate(getDashboardPath(u.role)), 1000);
                         return;
                     }
+                }
+                if (!userSelErr && u && !u.password_hash) {
+                    if (u.is_active === false) {
+                        setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                        return;
+                    }
+                    setError("هذا الحساب يحتاج إعادة تعيين كلمة المرور أو تسجيل الدخول عبر Google.");
+                    return;
                 }
 
                 setError("البريد الإلكتروني أو كلمة المرور غير صحيحة");
@@ -220,6 +278,11 @@ const Login = () => {
                 setTimeout(() => {
                     navigate("/dashboard/student");
                 }, 1000);
+                return;
+            }
+
+            if (userData.is_active === false) {
+                setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
                 return;
             }
 

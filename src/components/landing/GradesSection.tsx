@@ -3,7 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, BookOpen, CheckCircle, GraduationCap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useGrades, useVisitorGradeClassMode } from "@/hooks/useDatabase";
+import { useGrades } from "@/hooks/useDatabase";
+import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
@@ -52,7 +53,15 @@ type GradeRow = {
     classType?: string | null;
     is_hidden?: boolean | null;
     isHidden?: boolean | null;
+    organizations?: { id?: string; name?: string } | { id?: string; name?: string }[] | null;
 };
+
+function getGradeOrganizationName(grade: GradeRow): string | null {
+    const org = grade.organizations;
+    if (!org) return null;
+    if (Array.isArray(org)) return org[0]?.name || null;
+    return org.name || null;
+}
 
 function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }) {
     return (
@@ -94,6 +103,11 @@ function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }
                         </div>
 
                         <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{grade.description}</p>
+                        {getGradeOrganizationName(grade) && (
+                            <p className="text-xs text-muted-foreground mb-3">
+                                المؤسسة: {getGradeOrganizationName(grade)}
+                            </p>
+                        )}
 
                         <div className="flex items-center justify-between text-xs pt-3 border-t">
                             <div className="flex items-center gap-1 text-muted-foreground">
@@ -166,7 +180,7 @@ function SectionBlock({
 
 const GradesSection = () => {
     const { data: gradesData = [], isLoading } = useGrades();
-    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+    const { mode: visitorGradeMode } = useCatalogGradeClassMode();
 
     const visible = filterGradesForPublicCatalog(gradesData as GradeRow[], visitorGradeMode);
     const educational = visible.filter(

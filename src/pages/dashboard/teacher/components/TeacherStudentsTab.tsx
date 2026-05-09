@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUser, useTeacherProfile, useStudentsInGrade, useHostedChallengeResults, useGradeSubjectProgress } from "@/hooks/useDatabase";
+import { useUser, useTeacherProfile, useStudentsInGrade, useHostedChallengeResults, useGradeSubjectProgress, usePendingStudentRegistrationRequestsForTeacher, useReviewRegistrationRequest } from "@/hooks/useDatabase";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -33,15 +33,13 @@ const TeacherStudentsTab = () => {
     const { data: gradeStudents, isLoading: isLoadingStudents } = useStudentsInGrade(teacherProfile?.grade_id || "");
     const { data: hostedResults, isLoading: isLoadingResults } = useHostedChallengeResults(user?.id || "", 100);
     const { data: gradeSubjectProgress } = useGradeSubjectProgress(teacherProfile?.grade_id || "", teacherProfile?.subject_id || "");
+    const { data: pendingRequests = [], isLoading: isLoadingPending } = usePendingStudentRegistrationRequestsForTeacher(user?.id || "");
+    const reviewRequest = useReviewRegistrationRequest();
 
     const isLoading = isLoadingStudents || isLoadingResults;
 
-    // Use student profiles from the grade, but filtered for only those who participated
-    // in this teacher's challenges (under this teacher's content)
+    // Show all students assigned to the teacher's grade/class.
     const students = (gradeStudents || [])
-        .filter((profile: any) =>
-            (hostedResults || []).some((r: any) => (r.user_id || r.userId) === profile.user_id)
-        )
         .map((profile: any) => {
             // Collect specific performance data for this student from hosted results
             const studentResults = (hostedResults || []).filter(
@@ -81,6 +79,62 @@ const TeacherStudentsTab = () => {
 
     return (
         <div className="space-y-6">
+            <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">طلبات تسجيل الطلاب (بانتظار موافقتك)</h3>
+                        <Badge variant="outline">{pendingRequests.length}</Badge>
+                    </div>
+                    {isLoadingPending ? (
+                        <p className="text-sm text-muted-foreground">جاري تحميل الطلبات...</p>
+                    ) : pendingRequests.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">لا توجد طلبات طلاب معلّقة.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {pendingRequests.map((req: any) => (
+                                <div key={req.id} className="rounded-lg border bg-background p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                    <div>
+                                        <p className="font-medium">{req.applicant?.name || "طالب جديد"}</p>
+                                        <p className="text-xs text-muted-foreground">{req.applicant?.email}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            الصف: {req.grade?.name || "غير محدد"} · تم الإرسال: {new Date(req.created_at).toLocaleDateString("ar-SA")}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            size="sm"
+                                            onClick={() =>
+                                                reviewRequest.mutate({
+                                                    requestId: req.id,
+                                                    reviewerUserId: user?.id,
+                                                    decision: "APPROVED",
+                                                })
+                                            }
+                                            disabled={!user?.id || reviewRequest.isPending}
+                                        >
+                                            قبول الطالب
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                                reviewRequest.mutate({
+                                                    requestId: req.id,
+                                                    reviewerUserId: user?.id,
+                                                    decision: "REJECTED",
+                                                })
+                                            }
+                                            disabled={!user?.id || reviewRequest.isPending}
+                                        >
+                                            رفض
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Card className="bg-blue-500/5 border-blue-500/20">

@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import AnnouncementBar from "./AnnouncementBar";
-import { useUser, useVisitorGradeClassMode } from "@/hooks/useDatabase";
+import { useUser } from "@/hooks/useDatabase";
+import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { LayoutDashboard, LogIn, User, Menu, X, Trophy } from "lucide-react";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useUser();
-  const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+  const { mode: visitorGradeMode } = useCatalogGradeClassMode();
 
   const gradesNavLabel =
     visitorGradeMode === "teaching_only"
@@ -21,6 +22,7 @@ const Header = () => {
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
     const role = user.role.toUpperCase();
+    if (role === "SUPERADMIN") return "/dashboard/superadmin";
     if (role === "ADMIN" || role === "مسؤول") return "/dashboard/admin";
     if (role === "TEACHER" || role === "معلم" || role === "معلمة") return "/dashboard/teacher";
     return "/dashboard/student";

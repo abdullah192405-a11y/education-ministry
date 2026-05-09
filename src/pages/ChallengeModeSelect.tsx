@@ -17,8 +17,8 @@ import {
     useSubject,
     useUser,
     useCreateChallengeSession,
-    useVisitorGradeClassMode,
 } from "@/hooks/useDatabase";
+import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -34,7 +34,7 @@ const ChallengeModeSelect = () => {
     const navigate = useNavigate();
 
     const { data: grades = [] } = useGrades();
-    const { mode: visitorGradeMode } = useVisitorGradeClassMode();
+    const { mode: visitorGradeMode } = useCatalogGradeClassMode();
     const grade = grades.find(g => g.id.toString() === gradeId || g.slug === gradeId);
     const gradeInPublicCatalog =
         !!grade && filterGradesForPublicCatalog([grade], visitorGradeMode).length > 0;
