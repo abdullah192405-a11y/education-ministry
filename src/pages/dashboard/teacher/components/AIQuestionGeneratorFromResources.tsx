@@ -24,6 +24,40 @@ interface AIQuestionGeneratorFromResourcesProps {
     onCancel: () => void;
 }
 
+type GenerateMode = "questions" | "games" | "both";
+type QuestionType = "multiple_choice" | "true_false" | "qa" | "know_dont_know" | "order_questions";
+type GameType = "matching" | "shooting" | "wheel_spin" | "puzzle";
+type ChallengeType = QuestionType | GameType;
+
+const QUESTION_TYPES: QuestionType[] = [
+    "multiple_choice",
+    "true_false",
+    "qa",
+    "know_dont_know",
+    "order_questions",
+];
+
+const GAME_TYPES: GameType[] = [
+    "matching",
+    "shooting",
+    "wheel_spin",
+    "puzzle",
+];
+
+const ALL_CHALLENGE_TYPES: ChallengeType[] = [...QUESTION_TYPES, ...GAME_TYPES];
+
+const CHALLENGE_TYPE_LABELS: Record<ChallengeType, string> = {
+    multiple_choice: "اختيار متعدد",
+    true_false: "صح وخطأ",
+    qa: "سؤال وجواب",
+    know_dont_know: "أعرف / لا أعرف",
+    order_questions: "ترتيب",
+    matching: "مطابقة",
+    shooting: "تصويب",
+    wheel_spin: "عجلة الحظ",
+    puzzle: "ألغاز",
+};
+
 const AIQuestionGeneratorFromResources = ({
     media,
     onGenerate,
@@ -34,7 +68,9 @@ const AIQuestionGeneratorFromResources = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState("");
     const [processingPhase, setProcessingPhase] = useState<"idle" | "extracting" | "analyzing" | "generating">("idle");
-    const [generateType, setGenerateType] = useState<"questions" | "games" | "both">("both");
+    const [generateType, setGenerateType] = useState<GenerateMode>("both");
+    const [targetCount, setTargetCount] = useState(10);
+    const [selectedChallengeTypes, setSelectedChallengeTypes] = useState<ChallengeType[]>(ALL_CHALLENGE_TYPES);
     const { toast } = useToast();
 
     const getGeminiApiKey = (): string => {
@@ -64,6 +100,21 @@ const AIQuestionGeneratorFromResources = ({
                 ? prev.filter(i => i !== index)
                 : [...prev, index]
         );
+    };
+
+    const toggleChallengeType = (type: ChallengeType) => {
+        setSelectedChallengeTypes((prev) =>
+            prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+        );
+    };
+
+    const getAllowedTypesForMode = (
+        mode: GenerateMode,
+        selectedTypes: ChallengeType[]
+    ): ChallengeType[] => {
+        if (mode === "questions") return selectedTypes.filter((type) => QUESTION_TYPES.includes(type as QuestionType));
+        if (mode === "games") return selectedTypes.filter((type) => GAME_TYPES.includes(type as GameType));
+        return selectedTypes;
     };
 
     const getMediaIcon = (type: ContentMedia["type"]) => {
@@ -299,7 +350,7 @@ const AIQuestionGeneratorFromResources = ({
     const parseItemsWithRepair = async (
         generatedText: string,
         apiKey: string,
-        generateType: "questions" | "games" | "both"
+        generateType: GenerateMode
     ) => {
         try {
             return parseAiGeneratedChallengeItems(generatedText);
@@ -491,6 +542,16 @@ ${generatedText}`;
             return;
         }
 
+        const allowedTypes = getAllowedTypesForMode(generateType, selectedChallengeTypes);
+        if (allowedTypes.length === 0) {
+            toast({
+                title: "حدد نوعاً واحداً على الأقل",
+                description: "اختر نوع سؤال/لعبة مناسباً لنمط التوليد الحالي قبل المتابعة.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         setIsProcessing(true);
         setProcessingPhase("extracting");
 
@@ -652,62 +713,100 @@ ${generatedText}`;
 
             // Build comprehensive prompt
             const fullContent = `${textContent}\n\n${videoResourceMetadata}\n\n${externalLinksContext}\n\n${audioTranscriptContext}`;
-            const promptText = buildPrompt(
-                fullContent,
-                prompt,
-                pdfParts.length,
-                imageParts.length,
-                audioParts.length,
-                generateType
-            );
-            parts.push({ text: promptText });
-
             console.log(`Gemini generateContent (PDFs: ${pdfParts.length}, Images: ${imageParts.length}, Audio: ${audioParts.length})`);
 
-            const data = (await generateGeminiContent(apiKey, {
-                contents: [{ parts }],
-                generationConfig: {
-                    temperature: 0.7,
-                    topK: 40,
-                    topP: 0.95,
-                    maxOutputTokens: 8192,
-                    responseMimeType: "application/json",
-                },
-            }, {
-                models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
-                onRetry: ({ attempt, delayMs, model, reason }) => {
-                    const sec = Math.max(1, Math.round(delayMs / 1000));
-                    setProgress(
-                        `ازدحام مؤقت على الخادم — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
-                    );
-                    console.warn("[Gemini retry]", { attempt, model, reason });
-                },
-            })) as {
-                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-            };
+            const uniqueAllowedTypes = Array.from(new Set(allowedTypes));
+            const questions: ChallengeQuestion[] = [];
+            const batchSize = targetCount >= 40 ? 10 : 15;
+            const maxCycles = Math.max(8, Math.ceil(targetCount / batchSize) * 6);
+            let emptyCycles = 0;
 
-            const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            for (let batch = 1; batch <= maxCycles && questions.length < targetCount; batch++) {
+                const remaining = targetCount - questions.length;
+                const currentBatchCount = Math.min(batchSize, remaining);
+                setProgress(`جاري توليد الدفعة ${batch} (${currentBatchCount} عنصر)...`);
 
-            if (!generatedText) {
-                throw new Error("لم يتم توليد أي محتوى");
+                const batchParts = [...parts];
+                const promptText = buildPrompt(
+                    fullContent,
+                    prompt,
+                    pdfParts.length,
+                    imageParts.length,
+                    audioParts.length,
+                    generateType,
+                    uniqueAllowedTypes,
+                    currentBatchCount,
+                    targetCount
+                );
+                batchParts.push({ text: promptText });
+
+                const data = (await generateGeminiContent(apiKey, {
+                    contents: [{ parts: batchParts }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        topK: 40,
+                        topP: 0.95,
+                        maxOutputTokens: 8192,
+                        responseMimeType: "application/json",
+                    },
+                }, {
+                    models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+                    onRetry: ({ attempt, delayMs, model, reason }) => {
+                        const sec = Math.max(1, Math.round(delayMs / 1000));
+                        setProgress(
+                            `ازدحام مؤقت على الخادم — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
+                        );
+                        console.warn("[Gemini retry]", { attempt, model, reason });
+                    },
+                })) as {
+                    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+                };
+
+                const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!generatedText) {
+                    emptyCycles += 1;
+                    if (emptyCycles >= 5) break;
+                    continue;
+                }
+
+                const parsedItems = normalizeGeneratedItems(
+                    await parseItemsWithRepair(generatedText, apiKey, generateType)
+                );
+                const filteredItems = parsedItems.filter((item) => {
+                    const type = String(item.type || "") as ChallengeType;
+                    if (!uniqueAllowedTypes.includes(type)) return false;
+                    if (generateType === "questions" && !QUESTION_TYPES.includes(type as QuestionType)) return false;
+                    if (generateType === "games" && !GAME_TYPES.includes(type as GameType)) return false;
+                    return true;
+                });
+                if (filteredItems.length === 0) {
+                    emptyCycles += 1;
+                    if (emptyCycles >= 5) break;
+                    continue;
+                }
+                emptyCycles = 0;
+
+                for (const item of filteredItems) {
+                    if (questions.length >= targetCount) break;
+                    questions.push({
+                        ...(item as Record<string, unknown>),
+                        id: (item as { id?: number | string }).id || Date.now() + questions.length,
+                    } as ChallengeQuestion);
+                }
             }
 
-            const items = normalizeGeneratedItems(
-                await parseItemsWithRepair(generatedText, apiKey, generateType)
-            );
-            const questions = items.map((item: any, index: number) => ({
-                ...item,
-                id: item.id || Date.now() + index,
-            })) as ChallengeQuestion[];
-
             if (questions.length === 0) {
-                throw new Error("لم يتم توليد أي أسئلة صالحة");
+                throw new Error("لم يتم توليد عناصر صالحة حسب الأنواع المحددة. جرّب توسيع الأنواع أو تقليل العدد.");
+            }
+
+            if (questions.length < targetCount) {
+                throw new Error(`تم توليد ${questions.length} فقط من أصل ${targetCount}. وسّع الأنواع المسموحة أو قلّل العدد المطلوب ثم أعد المحاولة.`);
             }
 
             setProgress("تم التوليد بنجاح! ✓");
             toast({
                 title: "تم توليد الأسئلة بنجاح! 🎉",
-                description: `تم توليد ${questions.length} سؤال ولعبة من ${selectedMedia.length} مورد`,
+                description: `تم توليد ${questions.length} عنصر من ${selectedMedia.length} مورد`,
             });
 
             setTimeout(() => {
@@ -744,7 +843,10 @@ ${generatedText}`;
         pdfCount: number = 0,
         imageCount: number = 0,
         audioCount: number = 0,
-        genType: "questions" | "games" | "both" = "both"
+        genType: GenerateMode = "both",
+        allowedTypes: ChallengeType[] = ALL_CHALLENGE_TYPES,
+        batchCount = 10,
+        totalRequestedCount = 10
     ): string => {
         const hasRichFiles = pdfCount > 0 || imageCount > 0 || audioCount > 0;
         const fileNote = hasRichFiles
@@ -796,6 +898,9 @@ ${generatedText}`;
 4. ألغاز (puzzle) - حل لغز`;
         }
 
+        const allowedTypesArabic = allowedTypes.map((type) => CHALLENGE_TYPE_LABELS[type]).join("، ");
+        const allowedTypesJson = allowedTypes.join(", ");
+
         return `أنت مساعد ذكي متخصص في إنشاء محتوى تعليمي تفاعلي باللغة العربية.
 مهمتك: توليد محتوى مستنداً **حصرياً** على الموارد التي قام المعلم باختيارها من القائمة المرفقة أدناه.
 في حال وجود روابط فيديو (يوتيوب)، استخدم العنوان والبيانات المتاحة للبحث في قاعدة بياناتك عن محتوى الفيديو وتحليله بدقة.
@@ -805,6 +910,10 @@ ${fileNote}${contentSection}
 ${userPrompt}
 
 ${typeInstruction} بناءً **فقط** على المعلومات المستخرجة من الصور أو ملفات PDF أو الملفات الصوتية أو النصوص أو الروابط المختارة، مع الالتزام بالتنسيق التالي بدقة. لا تولد أي سؤال من خارج المحتوى المختار.
+عدد العناصر المطلوب في هذه الدفعة: ${batchCount}
+العدد النهائي المستهدف في العملية كلها: ${totalRequestedCount}
+الأنواع المسموح بها فقط في هذه الدفعة: ${allowedTypesArabic}
+لا تستخدم أي نوع خارج القائمة التالية (type): ${allowedTypesJson}
 ${availableTypes}
 
 يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي:
@@ -865,6 +974,7 @@ ${availableTypes}
 
 ملاحظات مهمة:
 - التزم بنسبة 100% بالمحتوى المرفق (الصور وPDF والنصوص والصوت والروابط). ممنوع تماماً توليد أسئلة من خارجها.
+- أخرج بالضبط ${batchCount} عناصر في هذه الدفعة (لا أقل ولا أكثر)، وكل عنصر type يجب أن يكون من: ${allowedTypesJson}.
 - صِغ الأسئلة كجمل مستقلة مباشرة، وممنوع استخدام عبارات إحالية مثل: "كما ترى في الصورة" أو "في الفيديو المعروض" أو "في الرابط أعلاه".
 - إذا كان المصدر صورة أو PDF بصري، استخرج الحقائق أولاً ثم حوّلها مباشرة إلى أسئلة/ألعاب بدون وصف للمصدر نفسه.
 - احرص أن كل عنصر يطابق قالب نوعه تماماً (مثال: matching يحتوي pairs، وwheel_spin يحتوي wheelSegments كاملة، وpuzzle يحتوي correctAnswer + options مناسبة).
@@ -1017,6 +1127,25 @@ ${availableTypes}
                             className="resize-none"
                         />
 
+                        <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">عدد العناصر المطلوب توليدها:</Label>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={80}
+                                value={targetCount}
+                                onChange={(e) => {
+                                    const value = Number(e.target.value || 0);
+                                    if (!Number.isFinite(value)) return;
+                                    setTargetCount(Math.max(1, Math.min(80, Math.floor(value))));
+                                }}
+                                disabled={isProcessing}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                يدعم التوليد على دفعات تلقائياً لتحسين الثبات عند الأعداد الكبيرة (مثل 50).
+                            </p>
+                        </div>
+
                         {/* Generation Type Selector */}
                         <div className="space-y-2">
                             <Label className="text-sm text-muted-foreground">نوع المحتوى المراد توليده:</Label>
@@ -1054,6 +1183,25 @@ ${availableTypes}
                                     <Wand2 className="w-4 h-4" />
                                     كلاهما
                                 </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">اختر أنواع الأسئلة/الألعاب المسموح بها:</Label>
+                            <div className="flex gap-2 flex-wrap">
+                                {ALL_CHALLENGE_TYPES.map((type) => (
+                                    <Button
+                                        key={type}
+                                        type="button"
+                                        variant={selectedChallengeTypes.includes(type) ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => toggleChallengeType(type)}
+                                        disabled={isProcessing}
+                                        className="gap-1"
+                                    >
+                                        {CHALLENGE_TYPE_LABELS[type]}
+                                    </Button>
+                                ))}
                             </div>
                         </div>
 
