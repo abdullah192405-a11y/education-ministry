@@ -7,9 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
-    ChevronLeft, Trophy, Zap, Clock, Star, Target,
+    ChevronLeft, Trophy, Zap, Clock, Target,
     CheckCircle2, XCircle, RotateCcw, Home, Share2,
     ArrowLeft, ArrowRight, GripVertical, Sparkles, ArrowUp, ArrowDown,
     Volume2, VolumeX, Music, Trash2
@@ -95,7 +94,6 @@ const SingleChallenge = () => {
     const updatePlayerSessionMutation = useUpdatePlayerSession();
     const [resultsSaved, setResultsSaved] = useState(false);
     const [guestDisplayName, setGuestDisplayName] = useState("");
-    const [guestExtra, setGuestExtra] = useState("");
 
     useEffect(() => {
         const n = joinDisplayName?.trim();
@@ -640,7 +638,7 @@ const SingleChallenge = () => {
                 return;
             }
 
-            /** زائر قدّم اسماً وبيانات إضافية — يُحفظ صف في challenge_results للمعلّم */
+            /** زائر قدّم الاسم المطلوب — يُحفظ صف في challenge_results للمعلّم */
             if (
                 !hasFullProfile &&
                 collectParticipantData &&
@@ -660,7 +658,7 @@ const SingleChallenge = () => {
                         sessionId: session.id,
                         userId: null,
                         participantDisplayName: guestDisplayName.trim(),
-                        participantExtra: guestExtra.trim() || null,
+                        participantExtra: null,
                         totalQuestions: results.totalQuestions,
                         correctAnswers: results.correctAnswers,
                         wrongAnswers: results.wrongAnswers,
@@ -1066,7 +1064,6 @@ const SingleChallenge = () => {
         sessionForVisibilityLoading,
         collectParticipantData,
         guestDisplayName,
-        guestExtra,
         teacherHostUserId,
         category,
         questions,
@@ -1697,52 +1694,22 @@ const SingleChallenge = () => {
 
                 {showGuestIdentityForm && (
                     <div className="text-right space-y-4 mb-8 border rounded-xl p-4 bg-muted/30">
-                        <p className="text-sm font-semibold text-foreground">
-                            طلب المعلّم تسجيل بياناتك قبل البدء
-                        </p>
                         {!teacherHostUserId && (
                             <p className="text-xs text-destructive">
                                 تعذّر تفعيل التسجيل لهذا الدرس تقنياً. يمكنك المتابعة لاحقاً أو التواصل مع المعلّم.
                             </p>
                         )}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium block text-right">الاسم الكامل *</label>
                             <Input
                                 dir="rtl"
                                 value={guestDisplayName}
                                 onChange={(e) => setGuestDisplayName(e.target.value)}
-                                placeholder="اكتب اسمك كما يظهر في السجل"
+                                placeholder="اكتب اسمك الثنائي"
                                 className="text-right"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium block text-right">تفاصيل إضافية (اختياري)</label>
-                            <Textarea
-                                dir="rtl"
-                                value={guestExtra}
-                                onChange={(e) => setGuestExtra(e.target.value)}
-                                placeholder="مثال: الصف، رقم الجلسة، رقم الهاتف…"
-                                rows={2}
-                                className="text-right resize-none"
                             />
                         </div>
                     </div>
                 )}
-
-                <div className="grid grid-cols-3 gap-4 mb-8">
-                    <div className="p-4 rounded-xl bg-muted/50">
-                        <Clock className="w-6 h-6 mx-auto mb-2 text-primary" />
-                        <div className="text-sm text-muted-foreground">وقت محدد</div>
-                    </div>
-                    <div className="p-4 rounded-xl bg-muted/50">
-                        <Zap className="w-6 h-6 mx-auto mb-2 text-warning" />
-                        <div className="text-sm text-muted-foreground">نقاط سرعة</div>
-                    </div>
-                    <div className="p-4 rounded-xl bg-muted/50">
-                        <Star className="w-6 h-6 mx-auto mb-2 text-secondary" />
-                        <div className="text-sm text-muted-foreground">شارات</div>
-                    </div>
-                </div>
 
                 <Button
                     onClick={handleStartGame}
