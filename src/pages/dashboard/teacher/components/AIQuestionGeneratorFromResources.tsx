@@ -70,7 +70,7 @@ const AIQuestionGeneratorFromResources = ({
     const [processingPhase, setProcessingPhase] = useState<"idle" | "extracting" | "analyzing" | "generating">("idle");
     const [generateType, setGenerateType] = useState<GenerateMode>("both");
     const [targetCount, setTargetCount] = useState(10);
-    const [selectedChallengeTypes, setSelectedChallengeTypes] = useState<ChallengeType[]>(ALL_CHALLENGE_TYPES);
+    const [selectedChallengeTypes, setSelectedChallengeTypes] = useState<ChallengeType[]>([]);
     const { toast } = useToast();
 
     const getGeminiApiKey = (): string => {
@@ -115,6 +115,12 @@ const AIQuestionGeneratorFromResources = ({
         if (mode === "questions") return selectedTypes.filter((type) => QUESTION_TYPES.includes(type as QuestionType));
         if (mode === "games") return selectedTypes.filter((type) => GAME_TYPES.includes(type as GameType));
         return selectedTypes;
+    };
+
+    const getVisibleTypesForMode = (mode: GenerateMode): ChallengeType[] => {
+        if (mode === "questions") return QUESTION_TYPES;
+        if (mode === "games") return GAME_TYPES;
+        return ALL_CHALLENGE_TYPES;
     };
 
     const getMediaIcon = (type: ContentMedia["type"]) => {
@@ -1189,7 +1195,7 @@ ${availableTypes}
                         <div className="space-y-2">
                             <Label className="text-sm text-muted-foreground">اختر أنواع الأسئلة/الألعاب المسموح بها:</Label>
                             <div className="flex gap-2 flex-wrap">
-                                {ALL_CHALLENGE_TYPES.map((type) => (
+                                {getVisibleTypesForMode(generateType).map((type) => (
                                     <Button
                                         key={type}
                                         type="button"
