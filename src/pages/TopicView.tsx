@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-    ChevronLeft, ChevronRight, Play, Eye, Clock,
+    CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Play, Eye, Clock,
     BookOpen, Gamepad2,
     FileText, Image as ImageIcon, AlignLeft, Video,
     Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
@@ -33,6 +33,43 @@ import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 
+const liveProviderLabels: Record<string, string> = {
+    GOOGLE_MEET: "Google Meet",
+    ZOOM: "Zoom",
+    CUSTOM: "رابط مباشر",
+};
+
+interface TopicLiveSession {
+    id: string;
+    provider?: string | null;
+    meeting_url?: string | null;
+    title?: string | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+    notes?: string | null;
+    is_active?: boolean | null;
+    host?: {
+        user?: {
+            name?: string | null;
+        } | null;
+    } | null;
+}
+
+const formatLiveDateTime = (value?: string | null) => {
+    const date = new Date(value || "");
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
+};
+
+const getLiveSessionStatus = (session: TopicLiveSession): "live" | "upcoming" | "ended" => {
+    const now = Date.now();
+    const start = new Date(session.starts_at || "").getTime();
+    const end = new Date(session.ends_at || "").getTime();
+    if (session.is_active && Number.isFinite(start) && Number.isFinite(end) && start <= now && now <= end) return "live";
+    if (session.is_active && Number.isFinite(start) && start > now) return "upcoming";
+    return "ended";
+};
+
 
 const TopicView = () => {
     const { topicId } = useParams();
@@ -41,7 +78,8 @@ const TopicView = () => {
     const { data: topic, isLoading, error } = useTopic(topicId || "");
     const { data: user } = useUser();
     const { data: discussions = [], isLoading: discussionsLoading } = useTopicDiscussions(topicId || "");
-    const { data: topicLiveSessions = [] } = useTopicLiveSessions(topicId || "");
+    const { data: topicLiveSessionsData = [] } = useTopicLiveSessions(topicId || "");
+    const topicLiveSessions = topicLiveSessionsData as TopicLiveSession[];
     const { data: topicRatings = [] } = useTopicRatings(topicId || "");
     const createDiscussionMutation = useCreateTopicDiscussion();
     const createReplyMutation = useCreateTopicDiscussionReply();
@@ -145,14 +183,43 @@ const TopicView = () => {
     const activeLiveSession = useMemo(() => {
         const now = Date.now();
         const liveNow = topicLiveSessions
-            .filter((session: any) => {
-                const start = new Date(session.starts_at).getTime();
-                const end = new Date(session.ends_at).getTime();
+            .filter((session) => {
+                const start = new Date(session.starts_at || "").getTime();
+                const end = new Date(session.ends_at || "").getTime();
                 return session.is_active && Number.isFinite(start) && Number.isFinite(end) && start <= now && now <= end;
             })
-            .sort((a: any, b: any) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+            .sort((a, b) => new Date(b.starts_at || "").getTime() - new Date(a.starts_at || "").getTime());
         return liveNow[0] || null;
     }, [topicLiveSessions]);
+
+    const upcomingLiveSessions = useMemo(() => {
+        const now = Date.now();
+        return topicLiveSessions
+            .filter((session) => {
+                const start = new Date(session.starts_at || "").getTime();
+                return session.is_active && Number.isFinite(start) && start > now;
+            })
+            .sort((a, b) => new Date(a.starts_at || "").getTime() - new Date(b.starts_at || "").getTime());
+    }, [topicLiveSessions]);
+
+    const featuredLiveSession = activeLiveSession || upcomingLiveSessions[0] || null;
+    const additionalUpcomingSessions = featuredLiveSession
+        ? upcomingLiveSessions.filter((session) => session.id !== featuredLiveSession.id).slice(0, 2)
+        : upcomingLiveSessions.slice(0, 2);
+
+    const courseMedia = useMemo(() => {
+        if (!featuredLiveSession) return media;
+
+        return [
+            {
+                type: "live_session",
+                caption: featuredLiveSession.title || "البث المباشر",
+                liveSession: featuredLiveSession,
+                additionalLiveSessions: additionalUpcomingSessions,
+            },
+            ...media,
+        ];
+    }, [additionalUpcomingSessions, featuredLiveSession, media]);
 
     if (isLoading) {
         return (
@@ -174,8 +241,8 @@ const TopicView = () => {
         return <NotFound />;
     }
 
-    const currentMedia = media[currentMediaIndex];
-    const totalMedia = media.length;
+    const currentMedia = courseMedia[currentMediaIndex];
+    const totalMedia = courseMedia.length;
 
     const handleNextMedia = () => {
         if (currentMediaIndex < totalMedia - 1) {
@@ -430,6 +497,7 @@ const TopicView = () => {
 
     const getMediaIcon = (type: string) => {
         switch (type) {
+            case "live_session": return <Radio className="w-4 h-4" />;
             case "video": return <Video className="w-4 h-4" />;
             case "image": return <ImageIcon className="w-4 h-4" />;
             case "text": return <AlignLeft className="w-4 h-4" />;
@@ -443,6 +511,103 @@ const TopicView = () => {
     const renderMedia = () => {
         if (!currentMedia) return null;
         switch (currentMedia.type) {
+            case "live_session": {
+                const session = currentMedia.liveSession as TopicLiveSession | undefined;
+                if (!session) return null;
+
+                const status = getLiveSessionStatus(session);
+                const isLiveNow = status === "live";
+                const hostName = session.host?.user?.name;
+                const upcomingSessions = currentMedia.additionalLiveSessions as TopicLiveSession[] | undefined;
+
+                return (
+                    <Card className="overflow-hidden border-0 shadow-xl ring-1 ring-border/60">
+                        <CardContent className="p-0">
+                            <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-slate-950 p-6 text-white md:p-8">
+                                <div className="absolute -left-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                                <div className="absolute -bottom-16 right-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+
+                                <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                                    <div className="space-y-4">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold backdrop-blur ${isLiveNow ? "bg-emerald-500 text-white" : "bg-white/15 text-white"}`}>
+                                                {isLiveNow ? <Radio className="w-3.5 h-3.5 animate-pulse" /> : <CalendarClock className="w-3.5 h-3.5" />}
+                                                {isLiveNow ? "مباشر الآن" : "موعد بث قادم"}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 backdrop-blur">
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                ضمن محتوى الدرس
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-2xl md:text-3xl font-black tracking-tight">{session.title || "حصة مباشرة للدرس"}</p>
+                                            <p className="mt-2 max-w-2xl text-sm md:text-base text-white/80">
+                                                {isLiveNow
+                                                    ? "الحصة جارية الآن. انضم للشرح المباشر ثم تابع باقي محتوى الدرس من هنا."
+                                                    : "هذا الموعد جزء من الدرس. عند بداية الحصة سيظهر لك خيار الانضمام من نفس المحتوى."}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <Button asChild size="lg" className="h-12 rounded-full bg-white px-6 font-bold text-primary shadow-lg hover:bg-white/90">
+                                        <a href={session.meeting_url || "#"} target="_blank" rel="noopener noreferrer">
+                                            {isLiveNow ? "انضم الآن" : "فتح رابط الجلسة"}
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 bg-background p-5 md:p-6">
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div className="rounded-2xl border bg-muted/25 p-4">
+                                        <p className="text-[11px] font-bold text-muted-foreground">منصة البث</p>
+                                        <p className="mt-1 font-bold">{liveProviderLabels[session.provider || ""] || "رابط مباشر"}</p>
+                                    </div>
+                                    <div className="rounded-2xl border bg-muted/25 p-4">
+                                        <p className="text-[11px] font-bold text-muted-foreground">وقت البداية</p>
+                                        <p className="mt-1 text-sm font-bold">{formatLiveDateTime(session.starts_at)}</p>
+                                    </div>
+                                    <div className="rounded-2xl border bg-muted/25 p-4">
+                                        <p className="text-[11px] font-bold text-muted-foreground">وقت النهاية</p>
+                                        <p className="mt-1 text-sm font-bold">{formatLiveDateTime(session.ends_at)}</p>
+                                    </div>
+                                    {hostName && (
+                                        <div className="rounded-2xl border bg-muted/25 p-4">
+                                            <p className="text-[11px] font-bold text-muted-foreground">المعلم</p>
+                                            <p className="mt-1 font-bold">{hostName}</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {session.notes && (
+                                    <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4">
+                                        <p className="mb-1 text-xs font-bold text-primary">ملاحظة المعلم</p>
+                                        <p className="text-sm text-muted-foreground">{session.notes}</p>
+                                    </div>
+                                )}
+
+                                {upcomingSessions && upcomingSessions.length > 0 && (
+                                    <div className="border-t pt-4">
+                                        <p className="mb-2 text-xs font-bold text-muted-foreground">جلسات قادمة أخرى</p>
+                                        <div className="grid gap-2 md:grid-cols-2">
+                                            {upcomingSessions.map((upcomingSession) => (
+                                                <div key={upcomingSession.id} className="rounded-xl border bg-muted/20 p-3">
+                                                    <p className="text-sm font-bold">{upcomingSession.title || "حصة مباشرة قادمة"}</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {formatLiveDateTime(upcomingSession.starts_at)} - {liveProviderLabels[upcomingSession.provider || ""] || "رابط مباشر"}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                );
+            }
             case "video":
                 const embedUrl = getYouTubeEmbedUrl(currentMedia.url);
                 const isYouTube = currentMedia.url?.includes("youtube") || currentMedia.url?.includes("youtu.be");
@@ -709,41 +874,6 @@ const TopicView = () => {
                         <h1 className="text-3xl md:text-4xl font-black mb-3">{topic.title}</h1>
                         <p className="text-lg text-muted-foreground">{topic.description}</p>
                     </motion.div>
-                    {activeLiveSession && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="mb-6 max-w-4xl mx-auto"
-                        >
-                            <Card className="border-red-500/30 bg-red-500/5">
-                                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <span className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-500 text-white text-xs font-bold">
-                                            <Radio className="w-3.5 h-3.5 animate-pulse" />
-                                            مباشر الآن
-                                        </span>
-                                        <div>
-                                            <p className="font-bold">{activeLiveSession.title || "حصة مباشرة جارية"}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {activeLiveSession.provider === "GOOGLE_MEET"
-                                                    ? "Google Meet"
-                                                    : activeLiveSession.provider === "ZOOM"
-                                                        ? "Zoom"
-                                                        : "رابط مباشر"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <Button asChild className="gap-2">
-                                        <a href={activeLiveSession.meeting_url} target="_blank" rel="noopener noreferrer">
-                                            انضم الآن
-                                            <ExternalLink className="w-4 h-4" />
-                                        </a>
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </motion.div>
-                    )}
-
                     {/* Main Content Area */}
                     <div className="space-y-6">
                         {/* Progress Bar */}
@@ -768,7 +898,7 @@ const TopicView = () => {
                             </AnimatePresence>
 
                             {/* Caption */}
-                            {currentMedia?.caption && (
+                            {currentMedia?.caption && currentMedia.type !== "live_session" && (
                                 <p className="text-center text-muted-foreground mt-4 text-lg">
                                     {currentMedia.caption}
                                 </p>
@@ -788,7 +918,7 @@ const TopicView = () => {
                             </Button>
 
                             <div className="flex flex-wrap justify-center gap-2 max-h-[200px] overflow-y-auto p-2">
-                                {media.map((item: any, index: number) => (
+                                {courseMedia.map((item: any, index: number) => (
                                     <button
                                         key={index}
                                         onClick={() => setCurrentMediaIndex(index)}
