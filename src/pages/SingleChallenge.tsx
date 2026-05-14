@@ -716,6 +716,8 @@ const SingleChallenge = () => {
 
                     const prevSingleAttempts = Number(existingReport?.single_attempts || 0);
                     const prevTotalAttempts = Number(existingReport?.total_attempts || 0);
+                    const prevUniqueParticipants = Number(existingReport?.unique_participants || 0);
+                    const prevUniqueSingleParticipants = Number(existingReport?.unique_single_participants || 0);
                     const prevSingleAvg = Number(existingReport?.average_score_single || 0);
                     const prevOverallAvg = Number(existingReport?.average_score_overall || 0);
                     const prevHigh = Number(existingReport?.highest_score || 0);
@@ -723,6 +725,8 @@ const SingleChallenge = () => {
 
                     const nextSingleAttempts = prevSingleAttempts + 1;
                     const nextTotalAttempts = prevTotalAttempts + 1;
+                    const nextUniqueSingleParticipants = prevUniqueSingleParticipants + 1;
+                    const nextUniqueParticipants = prevUniqueParticipants + 1;
                     const nextSingleAvg = Math.round(((prevSingleAvg * prevSingleAttempts) + results.percentage) / Math.max(1, nextSingleAttempts));
                     const nextOverallAvg = Math.round(((prevOverallAvg * prevTotalAttempts) + results.percentage) / Math.max(1, nextTotalAttempts));
                     const nextHighest = Math.max(prevHigh, results.percentage);
@@ -784,8 +788,8 @@ const SingleChallenge = () => {
                                 total_attempts: nextTotalAttempts,
                                 single_attempts: nextSingleAttempts,
                                 group_attempts: Number(existingReport?.group_attempts || 0),
-                                unique_participants: Number(existingReport?.unique_participants || 0),
-                                unique_single_participants: Number(existingReport?.unique_single_participants || 0),
+                                unique_participants: nextUniqueParticipants,
+                                unique_single_participants: nextUniqueSingleParticipants,
                                 unique_group_participants: Number(existingReport?.unique_group_participants || 0),
                                 average_score_overall: nextOverallAvg,
                                 average_score_single: nextSingleAvg,

@@ -44,6 +44,7 @@ import {
     useTeacherTopicContentReport,
 } from "@/hooks/useDatabase";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
+import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import ContentEditor from "./ContentEditor";
 import { useToast } from "@/components/ui/use-toast";
@@ -62,6 +63,11 @@ import {
     Tooltip as RechartsTooltip,
     BarChart,
     Bar,
+    LineChart,
+    Line,
+    ScatterChart,
+    Scatter,
+    ReferenceLine,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -85,6 +91,7 @@ interface ExtendedTopic {
     wrong_sound_url?: string | null;
     answering_background_sound_url?: string | null;
     discussions_enabled?: boolean;
+    collect_single_challenge_participant_data?: boolean | null;
     createdAt: string;
     media?: any[];
     quiz?: any[];
@@ -101,6 +108,185 @@ const SINGLE_SHARE_OPTIONS: Array<{ category: SingleShareCategory; label: string
     { category: "games", label: "الأنشطة التلعيبية فقط" },
     { category: "mixed", label: "الكل (مختلط)" },
 ];
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" ? value as Record<string, unknown> : {};
+
+const clampScorePercent = (score: number) => Math.max(0, Math.min(100, Math.round(score)));
+
+const getScorePercent = (result: unknown) => {
+    const row = toRecord(result);
+    const percentage = Number(row.percentage);
+    if (Number.isFinite(percentage)) return clampScorePercent(percentage);
+
+    const score = Number(row.score);
+    const maxScore = Number(row.max_score ?? row.maxScore);
+    if (Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) {
+        return clampScorePercent((score / maxScore) * 100);
+    }
+
+    return Number.isFinite(score) ? clampScorePercent(score) : 0;
+};
+
+const getTopicActivityCount = (topic: unknown) => {
+    const row = toRecord(topic);
+    return Array.isArray(row.activities) ? row.activities.length : 0;
+};
+
+const getTopicViewerCount = (topic: unknown) => Number(toRecord(topic).views || 0) + getTopicActivityCount(topic);
+
+const getMedianScore = (scores: number[]) => {
+    if (scores.length === 0) return 0;
+    const sorted = [...scores].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1
+        ? sorted[middle]
+        : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+};
+
+const getAverage = (values: number[]) =>
+    values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+
+const getStandardDeviation = (values: number[]) => {
+    if (values.length <= 1) return 0;
+    const avg = getAverage(values);
+    const variance = getAverage(values.map((value) => (value - avg) ** 2));
+    return Math.sqrt(variance);
+};
+
+const getPercentile = (values: number[], percentile: number) => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = (percentile / 100) * (sorted.length - 1);
+    const lower = Math.floor(index);
+    const upper = Math.ceil(index);
+    if (lower === upper) return sorted[lower];
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+};
+
+const getCorrelation = (xs: number[], ys: number[]) => {
+    if (xs.length !== ys.length || xs.length < 2) return 0;
+    const avgX = getAverage(xs);
+    const avgY = getAverage(ys);
+    const numerator = xs.reduce((sum, x, index) => sum + ((x - avgX) * (ys[index] - avgY)), 0);
+    const denomX = Math.sqrt(xs.reduce((sum, x) => sum + ((x - avgX) ** 2), 0));
+    const denomY = Math.sqrt(ys.reduce((sum, y) => sum + ((y - avgY) ** 2), 0));
+    if (denomX === 0 || denomY === 0) return 0;
+    return numerator / (denomX * denomY);
+};
+
+const getNestedRecord = (row: Record<string, unknown>, key: string) => toRecord(row[key]);
+
+const getNumberValue = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const getNumberField = (row: unknown, keys: string[]) => {
+    const record = toRecord(row);
+    for (const key of keys) {
+        const value = getNumberValue(record[key]);
+        if (value > 0) return value;
+    }
+    return 0;
+};
+
+const getStringField = (row: unknown, keys: string[]) => {
+    const record = toRecord(row);
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+};
+
+const getParticipantName = (result: unknown) => {
+    const row = toRecord(result);
+    const user = getNestedRecord(row, "user");
+    return getStringField(user, ["name"])
+        || getStringField(row, ["participant_display_name", "name"])
+        || "زائر";
+};
+
+const isRegisteredAttempt = (result: unknown) => {
+    const row = toRecord(result);
+    const user = getNestedRecord(row, "user");
+    return Boolean(row.user_id || user.id);
+};
+
+const getAttemptTimestamp = (result: unknown) => {
+    const row = toRecord(result);
+    const raw = getStringField(row, ["created_at", "joined_at", "updated_at"]);
+    if (!raw) return null;
+    const time = new Date(raw).getTime();
+    return Number.isFinite(time) ? raw : null;
+};
+
+const getLocalDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const getAttemptLocalDateKey = (date: string | null) => {
+    if (!date) return "";
+    const parsed = new Date(date);
+    return Number.isFinite(parsed.getTime()) ? getLocalDateKey(parsed) : "";
+};
+
+const getQuestionResults = (result: unknown) => {
+    const rows = toRecord(result).question_results;
+    return Array.isArray(rows) ? rows.map((row) => toRecord(row)) : [];
+};
+
+const buildQuestionTextById = (topic: unknown) => {
+    const questionTextById = new Map<string, string>();
+    const topicRow = toRecord(topic);
+    const items = Array.isArray(topicRow.challengeItems)
+        ? topicRow.challengeItems
+        : Array.isArray(topicRow.challenge_questions)
+            ? topicRow.challenge_questions
+            : [];
+
+    items.forEach((item, index) => {
+        const question = toRecord(item);
+        const text = getStringField(question, ["question", "text", "title"]);
+        if (!text) return;
+
+        const id = String(question.id ?? index + 1);
+        questionTextById.set(id, text);
+        questionTextById.set(String(index + 1), text);
+    });
+
+    return questionTextById;
+};
+
+const getAttemptKey = (result: unknown, fallback = "") => {
+    const row = toRecord(result);
+    return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result)}-${fallback}`);
+};
+
+const getAttemptQuestionRows = (result: unknown, questionTextById: Map<string, string>) =>
+    getQuestionResults(result).map((question, index) => {
+        const questionId = String(question.questionId ?? question.question_id ?? question.id ?? index + 1);
+        return {
+            questionId,
+            label: questionTextById.get(questionId) || `سؤال ${questionId}`,
+            correct: Boolean(question.correct ?? question.isCorrect ?? question.is_correct),
+            timeTaken: getNumberField(question, ["timeTaken", "time_taken"]),
+            pointsEarned: getNumberField(question, ["pointsEarned", "points_earned"]),
+            userAnswer: getStringField(question, ["userAnswer", "user_answer", "answer"]),
+        };
+    });
+
+const formatSeconds = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+    if (seconds < 60) return `${Math.round(seconds)} ث`;
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds % 60);
+    return rest > 0 ? `${minutes} د ${rest} ث` : `${minutes} د`;
+};
 
 const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
     const { toast } = useToast();
@@ -188,6 +374,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const [singleShareDialogTopic, setSingleShareDialogTopic] = useState<ExtendedTopic | null>(null);
     const [singleShareCategory, setSingleShareCategory] = useState<SingleShareCategory>("mixed");
     const [singleChallengeResultsTopic, setSingleChallengeResultsTopic] = useState<ExtendedTopic | null>(null);
+    const [expandedSingleAttempt, setExpandedSingleAttempt] = useState<unknown | null>(null);
+    const [isSingleReportPdfDownloading, setIsSingleReportPdfDownloading] = useState(false);
 
     const sortedSingleResultsForDialog = useMemo(() => {
         if (!singleChallengeResultsTopic) return [];
@@ -198,14 +386,291 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         );
     }, [singleChallengeResultsTopic, singleResultsByTopicId]);
 
-    const singleResultsDialogSummary = useMemo(() => {
+    const singleQuestionTextById = useMemo(
+        () => buildQuestionTextById(singleChallengeResultsTopic),
+        [singleChallengeResultsTopic]
+    );
+
+    const singleChallengeCollectedReport = useMemo(() => {
         const list = sortedSingleResultsForDialog;
         if (!list.length) return null;
-        const pcts = list.map((r: any) => Number(r.percentage ?? 0));
-        const avg = Math.round(pcts.reduce((s, x) => s + x, 0) / pcts.length);
-        const best = Math.max(...pcts);
-        return { count: list.length, avg, best };
-    }, [sortedSingleResultsForDialog]);
+
+        const scoreRows = list.map((result: unknown) => ({
+            result,
+            name: getParticipantName(result),
+            score: getScorePercent(result),
+            correct: getNumberField(result, ["correct_answers", "correctAnswers"]),
+            wrong: getNumberField(result, ["wrong_answers", "wrongAnswers"]),
+            totalQuestions: getNumberField(result, ["total_questions", "totalQuestions"]),
+            timeTaken: getNumberField(result, ["time_taken", "timeTaken"]),
+            avgTime: getNumberField(result, ["avg_time_per_question", "averageTimePerQuestion"]),
+            streak: getNumberField(result, ["longest_streak", "longestStreak"]),
+            points: getNumberField(result, ["score"]),
+            registered: isRegisteredAttempt(result),
+            createdAt: getAttemptTimestamp(result),
+        }));
+
+        const scores = scoreRows.map((row) => row.score);
+        const withTime = scoreRows.filter((row) => row.timeTaken > 0);
+        const totalCorrect = scoreRows.reduce((sum, row) => sum + row.correct, 0);
+        const totalWrong = scoreRows.reduce((sum, row) => sum + row.wrong, 0);
+        const answeredQuestions = totalCorrect + totalWrong;
+        const uniqueParticipants = new Set(scoreRows.map((row) => row.name)).size;
+        const passCount = scoreRows.filter((row) => row.score >= 70).length;
+        const highPerformers = scoreRows.filter((row) => row.score >= 90).length;
+        const supportNeeded = scoreRows.filter((row) => row.score < 50).length;
+        const registeredAttempts = scoreRows.filter((row) => row.registered).length;
+        const guestAttempts = scoreRows.length - registeredAttempts;
+
+        const scoreDistribution = [
+            { label: "أقل من 50", count: scoreRows.filter((row) => row.score < 50).length, fill: "#ef4444" },
+            { label: "50-69", count: scoreRows.filter((row) => row.score >= 50 && row.score < 70).length, fill: "#f59e0b" },
+            { label: "70-89", count: scoreRows.filter((row) => row.score >= 70 && row.score < 90).length, fill: "#3b82f6" },
+            { label: "90-100", count: highPerformers, fill: "#10b981" },
+        ];
+
+        const participantTypeData = [
+            { name: "مسجل", value: registeredAttempts, color: "#2563eb" },
+            { name: "زائر", value: guestAttempts, color: "#8b5cf6" },
+        ].filter((item) => item.value > 0);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dailyTrend = Array.from({ length: 7 }, (_, idx) => {
+            const day = new Date(today);
+            day.setDate(today.getDate() - (6 - idx));
+            const key = getLocalDateKey(day);
+            const attempts = scoreRows.filter((row) => getAttemptLocalDateKey(row.createdAt) === key);
+            const avg = attempts.length
+                ? Math.round(attempts.reduce((sum, row) => sum + row.score, 0) / attempts.length)
+                : 0;
+            const passed = attempts.filter((row) => row.score >= 70).length;
+            const participants = new Set(attempts.map((row) => row.name)).size;
+            const totalTime = attempts.reduce((sum, row) => sum + row.timeTaken, 0);
+            return {
+                day: day.toLocaleDateString("ar-SA", { weekday: "short" }),
+                date: day.toLocaleDateString("ar-SA", { day: "numeric", month: "short" }),
+                key,
+                attempts: attempts.length,
+                participants,
+                avg,
+                passRate: attempts.length ? Math.round((passed / attempts.length) * 100) : 0,
+                averageTime: attempts.length && totalTime > 0 ? Math.round(totalTime / attempts.length) : 0,
+            };
+        });
+        const weeklyAttempts = dailyTrend.reduce((sum, day) => sum + day.attempts, 0);
+        const weeklyActiveDays = dailyTrend.filter((day) => day.attempts > 0).length;
+        const weeklyAverageScore = weeklyAttempts
+            ? Math.round(dailyTrend.reduce((sum, day) => sum + (day.avg * day.attempts), 0) / weeklyAttempts)
+            : 0;
+        const weeklyPassRate = weeklyAttempts
+            ? Math.round(dailyTrend.reduce((sum, day) => sum + ((day.passRate / 100) * day.attempts), 0) / weeklyAttempts * 100)
+            : 0;
+        const weeklyPassedAttempts = dailyTrend.reduce((sum, day) => sum + Math.round((day.passRate / 100) * day.attempts), 0);
+        const busiestDay = [...dailyTrend].sort((a, b) => b.attempts - a.attempts)[0] || null;
+        const bestActivityDay = [...dailyTrend]
+            .filter((day) => day.attempts > 0)
+            .sort((a, b) => b.avg - a.avg || b.attempts - a.attempts)[0] || null;
+        const todayActivity = dailyTrend[dailyTrend.length - 1] || null;
+
+        const questionMap = new Map<string, { questionId: string; attempts: number; correct: number; wrong: number; totalTime: number; points: number }>();
+        list.forEach((result: unknown) => {
+            getQuestionResults(result).forEach((question, index) => {
+                const id = String(question.questionId ?? question.question_id ?? question.id ?? index + 1);
+                const current = questionMap.get(id) || {
+                    questionId: id,
+                    attempts: 0,
+                    correct: 0,
+                    wrong: 0,
+                    totalTime: 0,
+                    points: 0,
+                };
+                const isCorrect = Boolean(question.correct ?? question.isCorrect ?? question.is_correct);
+                current.attempts += 1;
+                if (isCorrect) current.correct += 1;
+                else current.wrong += 1;
+                current.totalTime += getNumberField(question, ["timeTaken", "time_taken"]);
+                current.points += getNumberField(question, ["pointsEarned", "points_earned"]);
+                questionMap.set(id, current);
+            });
+        });
+
+        const questionAnalytics = Array.from(questionMap.values())
+            .map((question) => ({
+                ...question,
+                label: singleQuestionTextById.get(question.questionId) || `سؤال ${question.questionId}`,
+                accuracy: question.attempts ? Math.round((question.correct / question.attempts) * 100) : 0,
+                avgTime: question.attempts ? Math.round(question.totalTime / question.attempts) : 0,
+            }))
+            .sort((a, b) => a.accuracy - b.accuracy);
+
+        const topAttempts = [...scoreRows]
+            .sort((a, b) => b.score - a.score || a.timeTaken - b.timeTaken)
+            .slice(0, 5);
+
+        const topScoreChartData = [...scoreRows]
+            .sort((a, b) => b.score - a.score || a.timeTaken - b.timeTaken)
+            .slice(0, 8)
+            .map((row) => ({
+                name: row.name.length > 14 ? `${row.name.slice(0, 14)}...` : row.name,
+                score: row.score,
+            }));
+
+        const answerOutcomeData = [
+            { name: "صحيح", value: totalCorrect, color: "#10b981" },
+            { name: "خطأ", value: totalWrong, color: "#ef4444" },
+        ].filter((item) => item.value > 0);
+
+        const questionAccuracyChartData = questionAnalytics.map((question, index) => ({
+            ...question,
+            shortLabel: `س${index + 1}`,
+        }));
+        const questionTimeChartData = [...questionAccuracyChartData]
+            .sort((a, b) => b.avgTime - a.avgTime)
+            .slice(0, 8);
+
+        const strongestQuestion = [...questionAnalytics].sort((a, b) => b.accuracy - a.accuracy)[0] || null;
+        const weakestQuestion = questionAnalytics[0] || null;
+        const slowestQuestion = [...questionAnalytics].sort((a, b) => b.avgTime - a.avgTime)[0] || null;
+        const averageScoreRaw = getAverage(scores);
+        const q1Score = getPercentile(scores, 25);
+        const q3Score = getPercentile(scores, 75);
+        const iqrScore = q3Score - q1Score;
+        const stdDevScore = getStandardDeviation(scores);
+        const coefficientOfVariation = averageScoreRaw > 0 ? (stdDevScore / averageScoreRaw) * 100 : 0;
+        const scoreRange = Math.max(...scores) - Math.min(...scores);
+        const timeScoreRows = scoreRows.filter((row) => row.timeTaken > 0);
+        const scoreTimeCorrelation = getCorrelation(
+            timeScoreRows.map((row) => row.timeTaken),
+            timeScoreRows.map((row) => row.score)
+        );
+        const scoreTimeCorrelationLabel =
+            Math.abs(scoreTimeCorrelation) < 0.2
+                ? "ضعيف"
+                : scoreTimeCorrelation > 0
+                    ? "طردي"
+                    : "عكسي";
+        const lowOutlierThreshold = q1Score - (1.5 * iqrScore);
+        const highOutlierThreshold = q3Score + (1.5 * iqrScore);
+        const lowOutliers = scoreRows.filter((row) => row.score < lowOutlierThreshold);
+        const highOutliers = scoreRows.filter((row) => row.score > highOutlierThreshold);
+
+        const scoreBoxData = [
+            { label: "أدنى", value: Math.round(Math.min(...scores)), fill: "#ef4444" },
+            { label: "Q1", value: Math.round(q1Score), fill: "#f59e0b" },
+            { label: "وسيط", value: getMedianScore(scores), fill: "#3b82f6" },
+            { label: "Q3", value: Math.round(q3Score), fill: "#6366f1" },
+            { label: "أعلى", value: Math.round(Math.max(...scores)), fill: "#10b981" },
+        ];
+
+        const scoreTimeScatterData = timeScoreRows.map((row) => ({
+            name: row.name,
+            time: Math.round(row.timeTaken),
+            score: row.score,
+        }));
+
+        const averageTimeForSegments = withTime.length ? getAverage(withTime.map((row) => row.timeTaken)) : 0;
+        const learnerSegments = [
+            {
+                name: "سريع ومتقن",
+                count: scoreRows.filter((row) => row.score >= 80 && (!averageTimeForSegments || row.timeTaken <= averageTimeForSegments)).length,
+                fill: "#10b981",
+            },
+            {
+                name: "سريع ويحتاج تثبيت",
+                count: scoreRows.filter((row) => row.score < 80 && (!averageTimeForSegments || row.timeTaken <= averageTimeForSegments)).length,
+                fill: "#f59e0b",
+            },
+            {
+                name: "متأن ومتقن",
+                count: scoreRows.filter((row) => row.score >= 80 && row.timeTaken > averageTimeForSegments).length,
+                fill: "#3b82f6",
+            },
+            {
+                name: "متعثر وبطيء",
+                count: scoreRows.filter((row) => row.score < 80 && row.timeTaken > averageTimeForSegments).length,
+                fill: "#ef4444",
+            },
+        ].filter((segment) => segment.count > 0);
+
+        const questionDifficultyData = [
+            { name: "صعبة", count: questionAnalytics.filter((q) => q.accuracy < 50).length, fill: "#ef4444" },
+            { name: "متوسطة", count: questionAnalytics.filter((q) => q.accuracy >= 50 && q.accuracy < 80).length, fill: "#f59e0b" },
+            { name: "سهلة", count: questionAnalytics.filter((q) => q.accuracy >= 80).length, fill: "#10b981" },
+        ].filter((item) => item.count > 0);
+
+        const recommendations = [
+            supportNeeded > 0
+                ? `يوجد ${supportNeeded} محاولة أقل من 50%؛ يفضل مراجعة المفاهيم الأساسية مع هذه المجموعة.`
+                : "لا توجد محاولات منخفضة جدًا؛ مستوى الدعم العاجل منخفض.",
+            stdDevScore >= 20
+                ? "التشتت مرتفع بين الطلاب؛ قسّم الطلاب إلى مجموعات دعم/إثراء بدل نشاط واحد للجميع."
+                : "التشتت محدود؛ يمكن تقديم تغذية راجعة موحدة مع تدخلات فردية بسيطة.",
+            weakestQuestion
+                ? `ابدأ بالمراجعة من السؤال الأضعف: "${weakestQuestion.label}" لأن دقته ${weakestQuestion.accuracy}%.`
+                : "",
+            scoreTimeCorrelation < -0.3
+                ? "العلاقة عكسية بين الوقت والدرجة: الطلاب الأبطأ غالبًا يواجهون صعوبة، فاختصر السؤال أو أضف مثالًا تمهيديًا."
+                : scoreTimeCorrelation > 0.3
+                    ? "العلاقة طردية بين الوقت والدرجة: التفكير الأطول يساعد، فشجع الطلاب على التمهل."
+                    : "لا توجد علاقة قوية بين الزمن والدرجة؛ ركّز على جودة السؤال والمفهوم أكثر من السرعة.",
+        ].filter(Boolean);
+
+        return {
+            count: scoreRows.length,
+            averageScore: Math.round(averageScoreRaw),
+            bestScore: Math.max(...scores),
+            lowestScore: Math.min(...scores),
+            medianScore: getMedianScore(scores),
+            passRate: Math.round((passCount / scoreRows.length) * 100),
+            highPerformers,
+            supportNeeded,
+            uniqueParticipants,
+            registeredAttempts,
+            guestAttempts,
+            totalCorrect,
+            totalWrong,
+            answerAccuracy: answeredQuestions ? Math.round((totalCorrect / answeredQuestions) * 100) : 0,
+            averageTime: withTime.length ? Math.round(withTime.reduce((sum, row) => sum + row.timeTaken, 0) / withTime.length) : 0,
+            fastestTime: withTime.length ? Math.min(...withTime.map((row) => row.timeTaken)) : 0,
+            averageStreak: Math.round(scoreRows.reduce((sum, row) => sum + row.streak, 0) / scoreRows.length),
+            scoreDistribution,
+            participantTypeData,
+            dailyTrend,
+            weeklyAttempts,
+            weeklyActiveDays,
+            weeklyAverageScore,
+            weeklyPassRate,
+            weeklyPassedAttempts,
+            busiestDay,
+            bestActivityDay,
+            todayActivity,
+            questionAnalytics,
+            questionAccuracyChartData,
+            questionTimeChartData,
+            answerOutcomeData,
+            topScoreChartData,
+            strongestQuestion,
+            weakestQuestion,
+            slowestQuestion,
+            q1Score: Math.round(q1Score),
+            q3Score: Math.round(q3Score),
+            iqrScore: Math.round(iqrScore),
+            stdDevScore: Math.round(stdDevScore),
+            coefficientOfVariation: Math.round(coefficientOfVariation),
+            scoreRange,
+            scoreTimeCorrelation: Number(scoreTimeCorrelation.toFixed(2)),
+            scoreTimeCorrelationLabel,
+            lowOutliers,
+            highOutliers,
+            scoreBoxData,
+            scoreTimeScatterData,
+            learnerSegments,
+            questionDifficultyData,
+            recommendations,
+            topAttempts,
+        };
+    }, [sortedSingleResultsForDialog, singleQuestionTextById]);
 
     const buildSingleShareLink = (topicId: string, category: SingleShareCategory) => {
         const gradeSegment = currentGrade?.slug || selectedGradeId;
@@ -243,13 +708,105 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         }
     };
 
+    const handleDownloadSingleReportPdf = async () => {
+        if (!singleChallengeResultsTopic || !singleChallengeCollectedReport) return;
+
+        setIsSingleReportPdfDownloading(true);
+        try {
+            toast({
+                title: "جاري إنشاء التقرير الذكي",
+                description: "يقوم Gemini الآن بتحليل نتائج التحدي وتوليد توصيات تعليمية مفصلة، قد يستغرق ذلك لحظات.",
+            });
+            const pdfResults = sortedSingleResultsForDialog.map((result: unknown) => {
+                const row = toRecord(result);
+                const user = getNestedRecord(row, "user");
+                return {
+                    ...row,
+                    name: getParticipantName(result),
+                    user: {
+                        ...user,
+                        id: user.id || row.user_id || null,
+                    },
+                    percentage: getScorePercent(result),
+                    score: getNumberField(result, ["score"]) || getScorePercent(result),
+                    correct_answers: getNumberField(result, ["correct_answers", "correctAnswers"]),
+                    wrong_answers: getNumberField(result, ["wrong_answers", "wrongAnswers"]),
+                    time_taken: getNumberField(result, ["time_taken", "timeTaken"]),
+                    participant_display_name: getParticipantName(result),
+                };
+            });
+
+            const questionRows = singleChallengeCollectedReport.questionAnalytics.map((question) => ({
+                questionText: question.label,
+                accuracy: question.accuracy,
+                correct: question.correct,
+                total: question.attempts,
+            }));
+
+            await downloadChallengeReportPdf({
+                topicTitle: `تقرير التحدي الفردي: ${singleChallengeResultsTopic.title}`,
+                lessonTitle: singleChallengeResultsTopic.title,
+                className: currentGrade?.name,
+                subjectName: subjectData?.name,
+                teacherName: currentUser?.name || (currentTeacherProfile as any)?.name,
+                sessionDate: new Date().toLocaleDateString("ar-SA", { dateStyle: "full" }),
+                sessionTime: new Date().toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" }),
+                mergedSessionsNote: `تقرير مجمع لكل محاولات رابط التحدي الفردي. إجمالي المحاولات: ${singleChallengeCollectedReport.count}، متوسط الأداء: ${singleChallengeCollectedReport.averageScore}%، معدل النجاح: ${singleChallengeCollectedReport.passRate}%.`,
+                analysisRows: [
+                    { label: "الوسيط", value: `${singleChallengeCollectedReport.medianScore}%` },
+                    { label: "أدنى نتيجة", value: `${singleChallengeCollectedReport.lowestScore}%` },
+                    { label: "Q1", value: `${singleChallengeCollectedReport.q1Score}%` },
+                    { label: "Q3", value: `${singleChallengeCollectedReport.q3Score}%` },
+                    { label: "IQR", value: singleChallengeCollectedReport.iqrScore },
+                    { label: "الانحراف المعياري", value: singleChallengeCollectedReport.stdDevScore },
+                    { label: "معامل التشتت", value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
+                    { label: "ارتباط الزمن/الدرجة", value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
+                    { label: "محاولات الأسبوع", value: singleChallengeCollectedReport.weeklyAttempts },
+                    { label: "نجاح الأسبوع", value: `${singleChallengeCollectedReport.weeklyPassRate}%` },
+                    { label: "نتائج ممتازة", value: singleChallengeCollectedReport.highPerformers },
+                    { label: "يحتاجون دعم", value: singleChallengeCollectedReport.supportNeeded },
+                ],
+                recommendations: singleChallengeCollectedReport.recommendations,
+                charts: {
+                    scoreDistribution: singleChallengeCollectedReport.scoreDistribution,
+                    dailyTrend: singleChallengeCollectedReport.dailyTrend,
+                    participantTypeData: singleChallengeCollectedReport.participantTypeData,
+                    answerOutcomeData: singleChallengeCollectedReport.answerOutcomeData,
+                    topScoreChartData: singleChallengeCollectedReport.topScoreChartData,
+                    questionAccuracyChartData: singleChallengeCollectedReport.questionAccuracyChartData,
+                    questionTimeChartData: singleChallengeCollectedReport.questionTimeChartData,
+                    scoreBoxData: singleChallengeCollectedReport.scoreBoxData,
+                    scoreTimeScatterData: singleChallengeCollectedReport.scoreTimeScatterData,
+                    learnerSegments: singleChallengeCollectedReport.learnerSegments,
+                    questionDifficultyData: singleChallengeCollectedReport.questionDifficultyData,
+                },
+                results: pdfResults,
+                questionRows,
+            });
+
+            toast({
+                title: "تم تنزيل PDF",
+                description: "تم إنشاء تقرير عربي منسق بخط عربي قابل للقراءة والبحث.",
+            });
+        } catch (error) {
+            console.error("Failed to download single challenge PDF:", error);
+            toast({
+                title: "تعذر تنزيل PDF",
+                description: "حدث خطأ أثناء إنشاء التقرير. حاول مرة أخرى.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsSingleReportPdfDownloading(false);
+        }
+    };
+
     // Sync DB topics to local state
     useEffect(() => {
         if (subjectData?.topics) {
             const mapped = subjectData.topics.map((topic: any) => ({
                 ...topic,
                 thumbnail: topic.thumbnail || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop",
-                views: (topic.views || 0) + (topic.activities?.length || 0),
+                views: Number(topic.views || 0),
                 createdAt: topic.created_at || topic.createdAt || "",
                 status: "published" as const,
                 mediaCount: topic.mediaItems?.length || topic.media?.length || 0,
@@ -287,8 +844,18 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             averageScoreSingle: number;
             averageScoreGroup: number;
             highestScore: number;
+            lowestScore: number;
+            medianScore: number;
             passRate: number;
+            totalAttempts: number;
+            uniqueParticipants: number;
+            highPerformersCount: number;
+            lowPerformersCount: number;
+            attemptsToday: number;
+            attemptsLast7Days: number;
+            activityDaysLast30Days: number;
             lastAttemptAt: string | null;
+            questionAnalytics: unknown[];
         }>();
 
         const ensure = (topicId: string) => {
@@ -306,16 +873,21 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     averageScoreSingle: 0,
                     averageScoreGroup: 0,
                     highestScore: 0,
+                    lowestScore: 0,
+                    medianScore: 0,
                     passRate: 0,
+                    totalAttempts: 0,
+                    uniqueParticipants: 0,
+                    highPerformersCount: 0,
+                    lowPerformersCount: 0,
+                    attemptsToday: 0,
+                    attemptsLast7Days: 0,
+                    activityDaysLast30Days: 0,
                     lastAttemptAt: null,
+                    questionAnalytics: [],
                 });
             }
             return statsMap.get(topicId)!;
-        };
-
-        const scoreOf = (result: any) => {
-            const scoreValue = Number(result?.percentage ?? result?.score ?? 0);
-            return Number.isFinite(scoreValue) ? scoreValue : 0;
         };
 
         const resolveTopicId = (result: any) => {
@@ -338,14 +910,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     .filter((id: any) => !!id)
             );
             const row = ensure(topicId);
-            row.viewers = Number(topic.views || 0) + topicActivities.length;
+            row.viewers = getTopicViewerCount(topic);
             row.uniqueViewers = uniqueViewers.size;
         });
 
         const participantsByTopic = new Map<string, Set<string>>();
         const singleParticipantsByTopic = new Map<string, Set<string>>();
         const groupParticipantsByTopic = new Map<string, Set<string>>();
-        const scoreAggByTopic = new Map<string, { total: number; count: number; passed: number; highest: number; lastAttemptAt: string | null }>();
+        const scoreAggByTopic = new Map<string, { total: number; count: number; passed: number; highest: number; lowest: number; scores: number[]; attemptDates: string[]; lastAttemptAt: string | null }>();
         const scoreAggSingleByTopic = new Map<string, { total: number; count: number }>();
         const scoreAggGroupByTopic = new Map<string, { total: number; count: number }>();
 
@@ -358,7 +930,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
         const ensureMainScoreAgg = (topicId: string) => {
             if (!scoreAggByTopic.has(topicId)) {
-                scoreAggByTopic.set(topicId, { total: 0, count: 0, passed: 0, highest: 0, lastAttemptAt: null });
+                scoreAggByTopic.set(topicId, { total: 0, count: 0, passed: 0, highest: 0, lowest: 100, scores: [], attemptDates: [], lastAttemptAt: null });
             }
             return scoreAggByTopic.get(topicId)!;
         };
@@ -373,15 +945,20 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         };
 
         const markAttempt = (topicId: string, result: any, mode: "single" | "group", participantKey: string | null) => {
-            const score = scoreOf(result);
+            const score = getScorePercent(result);
             const mainAgg = ensureMainScoreAgg(topicId);
             mainAgg.total += score;
             mainAgg.count += 1;
             if (score >= 70) mainAgg.passed += 1;
             if (score > mainAgg.highest) mainAgg.highest = score;
-            if (result?.created_at) {
-                if (!mainAgg.lastAttemptAt || new Date(result.created_at).getTime() > new Date(mainAgg.lastAttemptAt).getTime()) {
-                    mainAgg.lastAttemptAt = result.created_at;
+            if (score < mainAgg.lowest) mainAgg.lowest = score;
+            mainAgg.scores.push(score);
+
+            const attemptDate = result?.created_at || result?.joined_at || result?.updated_at;
+            if (attemptDate) {
+                mainAgg.attemptDates.push(attemptDate);
+                if (!mainAgg.lastAttemptAt || new Date(attemptDate).getTime() > new Date(mainAgg.lastAttemptAt).getTime()) {
+                    mainAgg.lastAttemptAt = attemptDate;
                 }
             }
 
@@ -433,8 +1010,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         allTopicIds.forEach((topicId) => {
             const row = ensure(topicId);
             row.uniqueChallengeParticipants = participantsByTopic.get(topicId)?.size || 0;
+            row.uniqueParticipants = row.uniqueChallengeParticipants;
             row.uniqueSingleParticipants = singleParticipantsByTopic.get(topicId)?.size || 0;
             row.uniqueGroupParticipants = groupParticipantsByTopic.get(topicId)?.size || 0;
+            row.totalAttempts = row.challengeAttempts;
 
             const allAgg = scoreAggByTopic.get(topicId);
             const singleAgg = scoreAggSingleByTopic.get(topicId);
@@ -444,8 +1023,32 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             row.averageScoreSingle = singleAgg?.count ? Math.round(singleAgg.total / singleAgg.count) : 0;
             row.averageScoreGroup = groupAgg?.count ? Math.round(groupAgg.total / groupAgg.count) : 0;
             row.highestScore = allAgg?.highest || 0;
+            row.lowestScore = allAgg?.count ? allAgg.lowest : 0;
+            row.medianScore = allAgg?.scores ? getMedianScore(allAgg.scores) : 0;
             row.passRate = allAgg?.count ? Math.round((allAgg.passed / allAgg.count) * 100) : 0;
+            row.highPerformersCount = allAgg?.scores.filter((score) => score >= 90).length || 0;
+            row.lowPerformersCount = allAgg?.scores.filter((score) => score < 50).length || 0;
             row.lastAttemptAt = allAgg?.lastAttemptAt || null;
+
+            const now = Date.now();
+            const startOfToday = new Date();
+            startOfToday.setHours(0, 0, 0, 0);
+            const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+            const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+            const attemptTimes = (allAgg?.attemptDates || [])
+                .map((date) => new Date(date).getTime())
+                .filter((time) => Number.isFinite(time));
+
+            row.attemptsToday = attemptTimes.filter((time) => time >= startOfToday.getTime()).length;
+            row.attemptsLast7Days = attemptTimes.filter((time) => time >= sevenDaysAgo).length;
+            row.activityDaysLast30Days = new Set(
+                (allAgg?.attemptDates || [])
+                    .filter((date) => {
+                        const time = new Date(date).getTime();
+                        return Number.isFinite(time) && time >= thirtyDaysAgo;
+                    })
+                    .map((date) => new Date(date).toISOString().slice(0, 10))
+            ).size;
         });
 
         return statsMap;
@@ -836,7 +1439,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         <Eye className="w-4 h-4" />
-                                                        {topic.views} مشاهدة
+                                                        {getTopicViewerCount(topic)} مشاهدة
                                                     </div>
                                                 </div>
                                             </div>
@@ -1428,11 +2031,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
             <Dialog
                 open={!!singleChallengeResultsTopic}
-                onOpenChange={(open) => !open && setSingleChallengeResultsTopic(null)}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSingleChallengeResultsTopic(null);
+                        setExpandedSingleAttempt(null);
+                    }
+                }}
             >
                 <DialogContent
                     dir="rtl"
-                    className="gap-0 overflow-hidden p-0 sm:max-w-xl max-h-[88vh] flex flex-col"
+                    className="flex h-[90dvh] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
                 >
                     <DialogHeader className="relative shrink-0 space-y-0 border-0 bg-gradient-to-bl from-primary/[0.12] via-primary/[0.04] to-transparent px-6 pb-5 pt-6 text-start">
                         <div className="flex items-start gap-4">
@@ -1449,139 +2057,653 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     </p>
                                 )}
                                 <DialogDescription className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                                    قائمة بجميع المحاولات عبر رابط التحدي الفردي للدرس. الأحدث أولاً. للتحليل التفصيلي للأسئلة
-                                    استخدم «التحديات» ← «سجل التحديات».
+                                    تقرير تفصيلي لبيانات التحدي الفردي المجمعة: الدرجات، الزمن، المشاركين، النشاط، وتحليل الأسئلة.
                                 </DialogDescription>
                             </div>
+                            {singleChallengeCollectedReport && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 gap-2 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
+                                    onClick={handleDownloadSingleReportPdf}
+                                    disabled={isSingleReportPdfDownloading}
+                                >
+                                    <Download className="h-4 w-4" />
+                                    {isSingleReportPdfDownloading ? "جاري..." : "تنزيل PDF"}
+                                </Button>
+                            )}
                         </div>
                     </DialogHeader>
 
-                    {singleChallengeResultsTopic && singleResultsDialogSummary && (
-                        <>
-                            <div className="grid grid-cols-3 gap-2 border-b bg-muted/30 px-4 py-4 sm:gap-3 sm:px-6">
-                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
-                                    <Users className="mx-auto mb-1 h-4 w-4 text-primary opacity-80" />
-                                    <div className="text-lg font-black tabular-nums text-foreground">
-                                        {singleResultsDialogSummary.count}
-                                    </div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                                        محاولات
-                                    </div>
+                    {singleChallengeResultsTopic && singleChallengeCollectedReport && (
+                        <ScrollArea dir="rtl" className="min-h-0 flex-1">
+                            <div className="space-y-4 p-4 sm:p-6">
+                                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+                                    {[
+                                        { label: "محاولات", value: singleChallengeCollectedReport.count, color: "text-foreground" },
+                                        { label: "مشاركون", value: singleChallengeCollectedReport.uniqueParticipants, color: "text-primary" },
+                                        { label: "المتوسط", value: `${singleChallengeCollectedReport.averageScore}%`, color: "text-emerald-700" },
+                                        { label: "الأفضل", value: `${singleChallengeCollectedReport.bestScore}%`, color: "text-amber-700" },
+                                        { label: "الوسيط", value: `${singleChallengeCollectedReport.medianScore}%`, color: "text-blue-700" },
+                                        { label: "معدل النجاح", value: `${singleChallengeCollectedReport.passRate}%`, color: "text-violet-700" },
+                                    ].map((card) => (
+                                        <div key={card.label} className="rounded-2xl border bg-background/80 p-3 text-center shadow-sm">
+                                            <div className={`text-xl font-black tabular-nums ${card.color}`}>{card.value}</div>
+                                            <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{card.label}</div>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
-                                    <TrendingUp className="mx-auto mb-1 h-4 w-4 text-emerald-600 opacity-90" />
-                                    <div className="text-lg font-black tabular-nums text-emerald-700">
-                                        {singleResultsDialogSummary.avg}%
-                                    </div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                                        متوسط
-                                    </div>
+
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    <Card className="border-primary/20">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">توزيع الدرجات</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="h-56" dir="ltr">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={singleChallengeCollectedReport.scoreDistribution}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis dataKey="label" />
+                                                        <YAxis allowDecimals={false} />
+                                                        <RechartsTooltip />
+                                                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                                                            {singleChallengeCollectedReport.scoreDistribution.map((entry) => (
+                                                                <Cell key={entry.label} fill={entry.fill} />
+                                                            ))}
+                                                        </Bar>
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-primary/20">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">النشاط آخر 7 أيام</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                                                <div className="rounded-xl border bg-background/80 p-2 text-center">
+                                                    <div className="text-lg font-black text-primary">{singleChallengeCollectedReport.weeklyAttempts}</div>
+                                                    <div className="text-muted-foreground">محاولات الأسبوع</div>
+                                                </div>
+                                                <div className="rounded-xl border bg-background/80 p-2 text-center">
+                                                    <div className="text-lg font-black text-emerald-700">{singleChallengeCollectedReport.weeklyAverageScore}%</div>
+                                                    <div className="text-muted-foreground">متوسط الأسبوع</div>
+                                                </div>
+                                                <div className="rounded-xl border bg-background/80 p-2 text-center">
+                                                    <div className="text-lg font-black text-violet-700">{singleChallengeCollectedReport.weeklyActiveDays}</div>
+                                                    <div className="text-muted-foreground">أيام نشطة</div>
+                                                </div>
+                                                <div className="rounded-xl border bg-background/80 p-2 text-center">
+                                                    <div className="text-lg font-black text-amber-700">
+                                                        {singleChallengeCollectedReport.weeklyAttempts > 0 ? `${singleChallengeCollectedReport.weeklyPassRate}%` : "—"}
+                                                    </div>
+                                                    <div className="text-muted-foreground">نجاح الأسبوع (70%+)</div>
+                                                    {singleChallengeCollectedReport.weeklyAttempts > 0 && (
+                                                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                                            {singleChallengeCollectedReport.weeklyPassedAttempts} من {singleChallengeCollectedReport.weeklyAttempts} محاولات
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="h-56" dir="ltr">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <LineChart data={singleChallengeCollectedReport.dailyTrend}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis dataKey="day" />
+                                                        <YAxis yAxisId="left" allowDecimals={false} />
+                                                        <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
+                                                        <RechartsTooltip />
+                                                        <Line yAxisId="left" type="monotone" dataKey="attempts" name="المحاولات" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
+                                                        <Line yAxisId="right" type="monotone" dataKey="avg" name="المتوسط" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                                                        <Line yAxisId="right" type="monotone" dataKey="passRate" name="نسبة النجاح" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                                                <div className="rounded-xl border bg-blue-50/60 p-3">
+                                                    <div className="font-bold text-blue-900">أكثر يوم نشاطًا</div>
+                                                    <div className="mt-1 text-muted-foreground">
+                                                        {singleChallengeCollectedReport.busiestDay?.attempts
+                                                            ? `${singleChallengeCollectedReport.busiestDay.day} (${singleChallengeCollectedReport.busiestDay.date}) — ${singleChallengeCollectedReport.busiestDay.attempts} محاولات`
+                                                            : "لا توجد محاولات في آخر 7 أيام"}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-xl border bg-emerald-50/60 p-3">
+                                                    <div className="font-bold text-emerald-900">أفضل يوم أداء</div>
+                                                    <div className="mt-1 text-muted-foreground">
+                                                        {singleChallengeCollectedReport.bestActivityDay
+                                                            ? `${singleChallengeCollectedReport.bestActivityDay.day} (${singleChallengeCollectedReport.bestActivityDay.date}) — متوسط ${singleChallengeCollectedReport.bestActivityDay.avg}%`
+                                                            : "لا توجد بيانات أداء كافية"}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl border overflow-hidden">
+                                                <div className="grid grid-cols-6 bg-muted/50 px-3 py-2 text-[11px] font-bold text-muted-foreground">
+                                                    <div>اليوم</div>
+                                                    <div className="text-center">التاريخ</div>
+                                                    <div className="text-center">محاولات</div>
+                                                    <div className="text-center">مشاركون</div>
+                                                    <div className="text-center">متوسط</div>
+                                                    <div className="text-center">نجاح</div>
+                                                </div>
+                                                {singleChallengeCollectedReport.dailyTrend.map((day) => (
+                                                    <div key={day.key} className="grid grid-cols-6 border-t px-3 py-2 text-[11px]">
+                                                        <div className="font-bold">{day.day}</div>
+                                                        <div className="text-center text-muted-foreground">{day.date}</div>
+                                                        <div className="text-center font-bold">{day.attempts}</div>
+                                                        <div className="text-center">{day.participants}</div>
+                                                        <div className="text-center">{day.attempts > 0 ? `${day.avg}%` : "—"}</div>
+                                                        <div className="text-center">{day.attempts > 0 ? `${day.passRate}%` : "—"}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
                                 </div>
-                                <div className="rounded-xl border bg-background/80 px-3 py-3 text-center shadow-sm">
-                                    <Trophy className="mx-auto mb-1 h-4 w-4 text-amber-600 opacity-90" />
-                                    <div className="text-lg font-black tabular-nums text-amber-700">
-                                        {singleResultsDialogSummary.best}%
+
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                    <Card className="border-violet-200 bg-violet-50/40 lg:col-span-1">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">نوع المشاركين</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {singleChallengeCollectedReport.participantTypeData.length > 0 ? (
+                                                <div className="h-48" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={singleChallengeCollectedReport.participantTypeData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={70} paddingAngle={4}>
+                                                                {singleChallengeCollectedReport.participantTypeData.map((entry) => (
+                                                                    <Cell key={entry.name} fill={entry.color} />
+                                                                ))}
+                                                            </Pie>
+                                                            <RechartsTooltip />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            ) : (
+                                                <div className="py-10 text-center text-sm text-muted-foreground">لا توجد بيانات</div>
+                                            )}
+                                            <div className="flex justify-center gap-4 text-xs">
+                                                <span>مسجل: {singleChallengeCollectedReport.registeredAttempts}</span>
+                                                <span>زائر: {singleChallengeCollectedReport.guestAttempts}</span>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-emerald-200 bg-emerald-50/40 lg:col-span-2">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">تفاصيل الأداء والزمن</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black text-emerald-700">{singleChallengeCollectedReport.answerAccuracy}%</div>
+                                                <div className="text-xs text-muted-foreground">دقة الإجابات</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black">{singleChallengeCollectedReport.totalCorrect}/{singleChallengeCollectedReport.totalCorrect + singleChallengeCollectedReport.totalWrong}</div>
+                                                <div className="text-xs text-muted-foreground">صحيح من الإجمالي</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black">{formatSeconds(singleChallengeCollectedReport.averageTime)}</div>
+                                                <div className="text-xs text-muted-foreground">متوسط الزمن</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black">{formatSeconds(singleChallengeCollectedReport.fastestTime)}</div>
+                                                <div className="text-xs text-muted-foreground">أسرع محاولة</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black text-amber-700">{singleChallengeCollectedReport.highPerformers}</div>
+                                                <div className="text-xs text-muted-foreground">ممتاز +90</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black text-rose-700">{singleChallengeCollectedReport.supportNeeded}</div>
+                                                <div className="text-xs text-muted-foreground">يحتاج دعم &lt;50</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black">{singleChallengeCollectedReport.lowestScore}%</div>
+                                                <div className="text-xs text-muted-foreground">أدنى نتيجة</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3 text-center">
+                                                <div className="font-black">{singleChallengeCollectedReport.averageStreak}</div>
+                                                <div className="text-xs text-muted-foreground">متوسط السلسلة</div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                <Card className="border-blue-200 bg-blue-50/30">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm">قراءة تحليلية سريعة</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+                                        <div className="rounded-xl border bg-background/80 p-3">
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أضعف سؤال</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.weakestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mt-1 text-xs text-rose-700">
+                                                دقة {singleChallengeCollectedReport.weakestQuestion?.accuracy ?? 0}%
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl border bg-background/80 p-3">
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أقوى سؤال</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.strongestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mt-1 text-xs text-emerald-700">
+                                                دقة {singleChallengeCollectedReport.strongestQuestion?.accuracy ?? 0}%
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl border bg-background/80 p-3">
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أبطأ سؤال</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.slowestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mt-1 text-xs text-amber-700">
+                                                متوسط الزمن {formatSeconds(singleChallengeCollectedReport.slowestQuestion?.avgTime || 0)}
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="border-slate-200 bg-slate-50/60">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm">تحليل إحصائي متقدم</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4 lg:grid-cols-6">
+                                            {[
+                                                { label: "Q1", value: `${singleChallengeCollectedReport.q1Score}%` },
+                                                { label: "Q3", value: `${singleChallengeCollectedReport.q3Score}%` },
+                                                { label: "IQR", value: `${singleChallengeCollectedReport.iqrScore}` },
+                                                { label: "الانحراف المعياري", value: `${singleChallengeCollectedReport.stdDevScore}` },
+                                                { label: "معامل التشتت", value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
+                                                { label: "ارتباط الزمن/الدرجة", value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
+                                            ].map((metric) => (
+                                                <div key={metric.label} className="rounded-xl border bg-background/80 p-3 text-center">
+                                                    <div className="font-black text-slate-800">{metric.value}</div>
+                                                    <div className="mt-1 text-[11px] text-muted-foreground">{metric.label}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="rounded-xl border bg-background/80 p-3">
+                                            <div className="mb-2 text-sm font-bold">توصيات مبنية على البيانات</div>
+                                            <ul className="space-y-1 text-sm text-muted-foreground">
+                                                {singleChallengeCollectedReport.recommendations.map((item, index) => (
+                                                    <li key={index} className="flex gap-2">
+                                                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    <Card className="border-slate-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">ملخص الربعيات والمدى</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="h-56" dir="ltr">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={singleChallengeCollectedReport.scoreBoxData}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis dataKey="label" />
+                                                        <YAxis domain={[0, 100]} />
+                                                        <RechartsTooltip />
+                                                        <Bar dataKey="value" name="القيمة" radius={[6, 6, 0, 0]}>
+                                                            {singleChallengeCollectedReport.scoreBoxData.map((entry) => (
+                                                                <Cell key={entry.label} fill={entry.fill} />
+                                                            ))}
+                                                        </Bar>
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-slate-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">علاقة الزمن بالدرجة</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {singleChallengeCollectedReport.scoreTimeScatterData.length > 1 ? (
+                                                <div className="h-56" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <ScatterChart>
+                                                            <CartesianGrid strokeDasharray="3 3" />
+                                                            <XAxis type="number" dataKey="time" name="الوقت" unit="ث" />
+                                                            <YAxis type="number" dataKey="score" name="الدرجة" unit="%" domain={[0, 100]} />
+                                                            <ReferenceLine y={80} stroke="#10b981" strokeDasharray="4 4" />
+                                                            <RechartsTooltip cursor={{ strokeDasharray: "3 3" }} />
+                                                            <Scatter data={singleChallengeCollectedReport.scoreTimeScatterData} fill="#6366f1" name="محاولة" />
+                                                        </ScatterChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            ) : (
+                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات زمن كافية لتحليل العلاقة</div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    <Card className="border-cyan-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">شرائح المتعلمين</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="h-56" dir="ltr">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={singleChallengeCollectedReport.learnerSegments}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                                                        <YAxis allowDecimals={false} />
+                                                        <RechartsTooltip />
+                                                        <Bar dataKey="count" name="العدد" radius={[6, 6, 0, 0]}>
+                                                            {singleChallengeCollectedReport.learnerSegments.map((entry) => (
+                                                                <Cell key={entry.name} fill={entry.fill} />
+                                                            ))}
+                                                        </Bar>
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-rose-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">تصنيف صعوبة الأسئلة</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {singleChallengeCollectedReport.questionDifficultyData.length > 0 ? (
+                                                <div className="h-56" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={singleChallengeCollectedReport.questionDifficultyData} dataKey="count" nameKey="name" innerRadius={48} outerRadius={82} paddingAngle={4}>
+                                                                {singleChallengeCollectedReport.questionDifficultyData.map((entry) => (
+                                                                    <Cell key={entry.name} fill={entry.fill} />
+                                                                ))}
+                                                            </Pie>
+                                                            <RechartsTooltip />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            ) : (
+                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات أسئلة كافية</div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    <Card className="border-emerald-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">الصحيح مقابل الخطأ</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {singleChallengeCollectedReport.answerOutcomeData.length > 0 ? (
+                                                <div className="h-56" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={singleChallengeCollectedReport.answerOutcomeData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={82} paddingAngle={4}>
+                                                                {singleChallengeCollectedReport.answerOutcomeData.map((entry) => (
+                                                                    <Cell key={entry.name} fill={entry.color} />
+                                                                ))}
+                                                            </Pie>
+                                                            <RechartsTooltip />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            ) : (
+                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات إجابات كافية</div>
+                                            )}
+                                            <div className="flex justify-center gap-4 text-xs">
+                                                <span>صحيح: {singleChallengeCollectedReport.totalCorrect}</span>
+                                                <span>خطأ: {singleChallengeCollectedReport.totalWrong}</span>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-amber-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">أفضل درجات المشاركين</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="h-56" dir="ltr">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={singleChallengeCollectedReport.topScoreChartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                                                        <YAxis domain={[0, 100]} />
+                                                        <RechartsTooltip />
+                                                        <Bar dataKey="score" name="الدرجة" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                {singleChallengeCollectedReport.questionAccuracyChartData.length > 0 && (
+                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                        <Card className="border-primary/20">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-sm">دقة كل سؤال</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="h-64" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={singleChallengeCollectedReport.questionAccuracyChartData}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                            <XAxis dataKey="shortLabel" />
+                                                            <YAxis domain={[0, 100]} />
+                                                            <RechartsTooltip />
+                                                            <Bar dataKey="accuracy" name="الدقة" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="border-violet-200">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-sm">أبطأ الأسئلة زمنًا</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="h-64" dir="ltr">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={singleChallengeCollectedReport.questionTimeChartData}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                            <XAxis dataKey="shortLabel" />
+                                                            <YAxis allowDecimals={false} />
+                                                            <RechartsTooltip />
+                                                            <Bar dataKey="avgTime" name="متوسط الزمن بالثواني" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
                                     </div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                                        الأفضل
+                                )}
+
+                                {singleChallengeCollectedReport.questionAnalytics.length > 0 && (
+                                    <Card className="border-primary/20">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm">تحليل الأسئلة في التحدي الفردي</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="rounded-xl border overflow-hidden">
+                                                <div className="grid grid-cols-12 bg-muted/50 px-3 py-2 text-xs font-bold text-muted-foreground">
+                                                    <div className="col-span-4">السؤال</div>
+                                                    <div className="col-span-2 text-center">المحاولات</div>
+                                                    <div className="col-span-2 text-center">الدقة</div>
+                                                    <div className="col-span-2 text-center">متوسط الزمن</div>
+                                                    <div className="col-span-2 text-center">النقاط</div>
+                                                </div>
+                                                <div className="max-h-56 overflow-y-auto">
+                                                    {singleChallengeCollectedReport.questionAnalytics.map((question) => (
+                                                        <div key={question.questionId} className="grid grid-cols-12 border-t px-3 py-2 text-xs">
+                                                            <div className="col-span-4 font-semibold">{question.label}</div>
+                                                            <div className="col-span-2 text-center font-bold">{question.attempts}</div>
+                                                            <div className="col-span-2 text-center font-black">{question.accuracy}%</div>
+                                                            <div className="col-span-2 text-center">{formatSeconds(question.avgTime)}</div>
+                                                            <div className="col-span-2 text-center">{question.points}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                <Card className="border-amber-200 bg-amber-50/30">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm">أفضل المحاولات</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-2">
+                                        {singleChallengeCollectedReport.topAttempts.map((attempt, index) => (
+                                            <div key={`${attempt.name}-${index}`} className="flex items-center justify-between rounded-xl border bg-background/80 px-3 py-2 text-sm">
+                                                <div>
+                                                    <div className="font-bold">{index + 1}. {attempt.name}</div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {attempt.correct || attempt.wrong ? `${attempt.correct} صحيح / ${attempt.wrong} خطأ` : "تفاصيل الإجابات غير متاحة"}
+                                                    </div>
+                                                </div>
+                                                <div className="text-end">
+                                                    <div className="font-black text-amber-700">{attempt.score}%</div>
+                                                    <div className="text-xs text-muted-foreground">{formatSeconds(attempt.timeTaken)}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+
+                                <div className="rounded-2xl border bg-card">
+                                    <div className="border-b bg-muted/20 px-4 py-3">
+                                        <p className="text-sm font-bold text-foreground">قائمة المشاركين التفصيلية</p>
+                                        <p className="text-[11px] text-muted-foreground">اضغط على أي مشارك لعرض تفاصيل الأسئلة التي أجابها.</p>
                                     </div>
+                                    <ul dir="rtl" className="space-y-2 p-4">
+                                        {sortedSingleResultsForDialog.map((r: any, index: number) => {
+                                            const label = getParticipantName(r);
+                                            const pct = getScorePercent(r);
+                                            const initial = label.replace(/\s/g, "").charAt(0) || "?";
+                                            const extra = getStringField(r, ["participant_extra"]);
+                                            const correct = getNumberField(r, ["correct_answers", "correctAnswers"]);
+                                            const wrong = getNumberField(r, ["wrong_answers", "wrongAnswers"]);
+                                            const timeTaken = getNumberField(r, ["time_taken", "timeTaken"]);
+                                            const streak = getNumberField(r, ["longest_streak", "longestStreak"]);
+                                            const createdAt = getAttemptTimestamp(r);
+                                            const attemptKey = getAttemptKey(r, String(index));
+                                            const expandedKey = expandedSingleAttempt ? getAttemptKey(expandedSingleAttempt, String(index)) : "";
+                                            const isExpanded = expandedKey === attemptKey;
+                                            const questionRows = getAttemptQuestionRows(r, singleQuestionTextById);
+                                            const scoreClass =
+                                                pct >= 75
+                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                                    : pct >= 50
+                                                      ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
+                                                      : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
+                                            return (
+                                                <li key={attemptKey} dir="rtl" className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20">
+                                                    <button
+                                                        type="button"
+                                                        className="flex w-full flex-row items-center gap-3 p-3 text-start sm:gap-4 sm:p-4"
+                                                        onClick={() => setExpandedSingleAttempt(isExpanded ? null : r)}
+                                                    >
+                                                        <div className="flex shrink-0 flex-col items-center gap-1">
+                                                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-base font-black text-primary ring-1 ring-primary/15">
+                                                                {initial}
+                                                            </div>
+                                                            <span className="text-[10px] font-bold tabular-nums text-muted-foreground">#{index + 1}</span>
+                                                        </div>
+
+                                                        <div className="min-w-0 flex-1 space-y-1.5 text-start">
+                                                            <p className="truncate text-base font-bold leading-tight text-foreground">{label}</p>
+                                                            {extra ? <p className="line-clamp-2 text-start text-xs leading-snug text-muted-foreground">{extra}</p> : null}
+                                                            <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                    <Clock className="h-3.5 w-3.5 shrink-0" />
+                                                                    <span className="tabular-nums">
+                                                                        {createdAt
+                                                                            ? new Date(createdAt).toLocaleString("ar-SA", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                                                                            : "—"}
+                                                                    </span>
+                                                                </span>
+                                                                <span>{correct || wrong ? `${correct} صحيح / ${wrong} خطأ` : "بدون تفاصيل إجابات"}</span>
+                                                                <span>الوقت: {formatSeconds(timeTaken)}</span>
+                                                                {streak > 0 && <span>السلسلة: {streak}</span>}
+                                                                <span className="font-semibold text-primary">{isExpanded ? "إخفاء التفاصيل" : "عرض تفاصيل الأسئلة"}</span>
+                                                                {!isRegisteredAttempt(r) && (
+                                                                    <Badge variant="outline" className="h-5 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
+                                                                        زائر
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className={`flex min-w-[4.25rem] shrink-0 flex-col items-center justify-center rounded-xl border px-2.5 py-2 text-center ${scoreClass}`}>
+                                                            <span className="text-xl font-black tabular-nums leading-none">
+                                                                {pct}<span className="ms-0.5 text-xs font-bold opacity-80">%</span>
+                                                            </span>
+                                                        </div>
+                                                    </button>
+
+                                                    {isExpanded && (
+                                                        <div className="border-t bg-muted/20 p-3 sm:p-4">
+                                                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                                                <div>
+                                                                    <p className="text-sm font-black text-foreground">تفاصيل إجابات {label}</p>
+                                                                    <p className="text-xs text-muted-foreground">الصحيح والخطأ لكل سؤال، مع الوقت والنقاط.</p>
+                                                                </div>
+                                                                <Badge variant="outline">{questionRows.length} سؤال</Badge>
+                                                            </div>
+
+                                                            {questionRows.length > 0 ? (
+                                                                <div className="space-y-2">
+                                                                    {questionRows.map((question, qIndex) => (
+                                                                        <div key={`${attemptKey}-${question.questionId}-${qIndex}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200 bg-emerald-50/70" : "border-rose-200 bg-rose-50/70"}`}>
+                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                                <div className="min-w-0 flex-1">
+                                                                                    <p className="text-sm font-bold leading-relaxed text-foreground">
+                                                                                        {qIndex + 1}. {question.label}
+                                                                                    </p>
+                                                                                    {question.userAnswer && (
+                                                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                                                            إجابة الطالب: {question.userAnswer}
+                                                                                        </p>
+                                                                                    )}
+                                                                                </div>
+                                                                                <Badge className={question.correct ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}>
+                                                                                    {question.correct ? "صحيح" : "خطأ"}
+                                                                                </Badge>
+                                                                            </div>
+                                                                            <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                                                                <span>الوقت: {formatSeconds(question.timeTaken)}</span>
+                                                                                <span>النقاط: {question.pointsEarned}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="rounded-xl border border-dashed bg-background/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                                                                    لا توجد تفاصيل أسئلة محفوظة لهذه المحاولة. تظهر هنا التفاصيل عندما تحتوي النتيجة على بيانات <span dir="ltr">question_results</span>.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
                                 </div>
                             </div>
-
-                            <Separator />
-
-                            <ScrollArea dir="rtl" className="max-h-[min(52vh,28rem)] flex-1">
-                                <div className="border-b bg-muted/20 px-4 py-2 sm:px-6">
-                                    <p className="text-sm font-bold text-foreground">قائمة المشاركين</p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                        الترتيب من الأحدث؛ المحتوى من اليمين إلى اليسار.
-                                    </p>
-                                </div>
-                                <ul dir="rtl" className="space-y-2 p-4 sm:p-6">
-                                    {sortedSingleResultsForDialog.map((r: any, index: number) => {
-                                        const label =
-                                            r.user?.name || r.participant_display_name || "زائر";
-                                        const pct = Math.round(Number(r.percentage ?? 0));
-                                        const initial =
-                                            label.replace(/\s/g, "").charAt(0) || "?";
-                                        const scoreClass =
-                                            pct >= 75
-                                                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
-                                                : pct >= 50
-                                                  ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
-                                                  : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
-                                        return (
-                                            <li
-                                                key={r.id}
-                                                dir="rtl"
-                                                className="flex flex-row items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/30 sm:gap-4 sm:p-4"
-                                            >
-                                                {/* RTL: أول عنصر = يمين — الصورة الرمزية والترتيب */}
-                                                <div className="flex shrink-0 flex-col items-center gap-1">
-                                                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-base font-black text-primary ring-1 ring-primary/15">
-                                                        {initial}
-                                                    </div>
-                                                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">
-                                                        #{index + 1}
-                                                    </span>
-                                                </div>
-
-                                                <div className="min-w-0 flex-1 space-y-1.5 text-start">
-                                                    <p className="truncate text-base font-bold leading-tight text-foreground">
-                                                        {label}
-                                                    </p>
-                                                    {r.participant_extra ? (
-                                                        <p className="line-clamp-2 text-start text-xs leading-snug text-muted-foreground">
-                                                            {r.participant_extra}
-                                                        </p>
-                                                    ) : null}
-                                                    <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                                        <span className="inline-flex items-center gap-1.5">
-                                                            <Clock className="h-3.5 w-3.5 shrink-0" />
-                                                            <span className="tabular-nums">
-                                                                {r.created_at
-                                                                    ? new Date(r.created_at).toLocaleString(
-                                                                          "ar-SA",
-                                                                          {
-                                                                              weekday: "short",
-                                                                              day: "numeric",
-                                                                              month: "short",
-                                                                              hour: "2-digit",
-                                                                              minute: "2-digit",
-                                                                          }
-                                                                      )
-                                                                    : "—"}
-                                                            </span>
-                                                        </span>
-                                                        {!r.user?.id && (
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="h-5 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
-                                                            >
-                                                                زائر
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* RTL: آخر عنصر = يسار — النسبة */}
-                                                <div
-                                                    className={`flex min-w-[4.25rem] shrink-0 flex-col items-center justify-center rounded-xl border px-2.5 py-2 text-center ${scoreClass}`}
-                                                >
-                                                    <span className="text-xl font-black tabular-nums leading-none">
-                                                        {pct}
-                                                        <span className="ms-0.5 text-xs font-bold opacity-80">%</span>
-                                                    </span>
-                                                </div>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </ScrollArea>
-                        </>
+                        </ScrollArea>
                     )}
 
-                    {singleChallengeResultsTopic && !singleResultsDialogSummary && (
+                    {singleChallengeResultsTopic && !singleChallengeCollectedReport && (
                         <div className="px-6 py-14 text-center text-sm text-muted-foreground">
                             لا توجد محاولات مسجّلة لهذا الدرس.
                         </div>

@@ -64,6 +64,25 @@ import { useToast } from "@/hooks/use-toast";
 const SINGLE_HISTORY_ALL_MONTHS = "__all_months__";
 const SINGLE_HISTORY_ALL_DAYS = "__all_days__";
 
+const toRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" ? value as Record<string, unknown> : {};
+
+const clampScorePercent = (score: number) => Math.max(0, Math.min(100, Math.round(score)));
+
+const getScorePercent = (result: unknown) => {
+    const row = toRecord(result);
+    const percentage = Number(row.percentage);
+    if (Number.isFinite(percentage)) return clampScorePercent(percentage);
+
+    const score = Number(row.score);
+    const maxScore = Number(row.max_score ?? row.maxScore);
+    if (Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) {
+        return clampScorePercent((score / maxScore) * 100);
+    }
+
+    return Number.isFinite(score) ? clampScorePercent(score) : 0;
+};
+
 function parseSessionDate(s: { endedAt?: string; date?: string; created_at?: string }): Date | null {
     const raw = s?.endedAt || s?.created_at;
     if (raw) {
@@ -88,9 +107,10 @@ function buildMergedSessionForFilter(sessions: any[]): any | null {
         list.forEach((r: any, i: number) => {
             const uid =
                 r.id != null ? `${sess.id}-${r.id}` : `${sess.id}-row-${i}`;
+            const resultScore = getScorePercent(r);
             resultsList.push({ ...r, id: uid });
-            if ((r.score || 0) > topScore) {
-                topScore = r.score || 0;
+            if (resultScore > topScore) {
+                topScore = resultScore;
                 topStudent =
                     r.name ||
                     r.user?.name ||
@@ -102,7 +122,7 @@ function buildMergedSessionForFilter(sessions: any[]): any | null {
 
     const n = resultsList.length;
     const totalPct = resultsList.reduce(
-        (acc, r) => acc + (r.percentage ?? r.score ?? 0),
+        (acc, r) => acc + getScorePercent(r),
         0
     );
     const avgScore = n > 0 ? Math.round(totalPct / n) : 0;
@@ -157,13 +177,15 @@ interface TeacherChallengesTabProps {
 const ChallengeDetailsContent = ({ session }: { session: any }) => {
     const { toast } = useToast();
     const [pdfExporting, setPdfExporting] = useState(false);
+    const { data: currentUser } = useUser();
+    const { data: currentTeacherProfile } = useTeacherProfile(currentUser?.id || "");
     const { data: topic, isLoading: loadingTopic } = useTopic(session?.topicId || "");
     const results = useMemo(() => session?.resultsList || [], [session]);
 
     const stats = useMemo(() => {
         if (!results || results.length === 0) return null;
 
-        const totalAccuracy = results.reduce((acc: number, r: any) => acc + (r.percentage || 0), 0);
+        const totalAccuracy = results.reduce((acc: number, r: any) => acc + getScorePercent(r), 0);
         const avgAccuracy = Math.round(totalAccuracy / results.length);
 
         const totalTime = results.reduce((acc: number, r: any) => acc + (r.time_taken || 0), 0);
@@ -220,6 +242,10 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
 
         return {
             topicTitle: (topic as any)?.title || session?.topicTitle || "تحدي",
+            lessonTitle: (topic as any)?.title || session?.topicTitle || "تحدي",
+            className: (topic as any)?.subject?.grade?.name,
+            subjectName: (topic as any)?.subject?.name,
+            teacherName: currentUser?.name || (currentTeacherProfile as any)?.name,
             sessionDate: session?.date,
             sessionTime: session?.timeLabel,
             mergedSessionsNote:
@@ -229,7 +255,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
             results: session?.resultsList || [],
             questionRows: questionRows.length > 0 ? questionRows : undefined,
         };
-    }, [session, topic, stats]);
+    }, [session, topic, stats, currentUser, currentTeacherProfile]);
 
     const handleDownloadCsv = useCallback(() => {
         downloadChallengeResultsCsv(reportOptions);
@@ -242,6 +268,10 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
     const handleDownloadPdf = useCallback(async () => {
         setPdfExporting(true);
         try {
+            toast({
+                title: "جاري إنشاء التقرير الذكي",
+                description: "يقوم Gemini الآن بتحليل النتائج وتوليد توصيات تعليمية مفصلة، قد يستغرق ذلك لحظات.",
+            });
             await downloadChallengeReportPdf(reportOptions);
             toast({
                 title: "تم التحميل",
@@ -419,7 +449,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
                                         </div>
                                     </div>
                                     <div className="text-end shrink-0">
-                                        <div className="font-black text-xl text-primary leading-none">{(res.percentage || 0).toFixed(0)}<span className="text-xs ms-0.5">%</span></div>
+                                        <div className="font-black text-xl text-primary leading-none">{getScorePercent(res).toFixed(0)}<span className="text-xs ms-0.5">%</span></div>
                                         <div className="text-[10px] text-muted-foreground font-bold mt-1 uppercase tracking-tight">{res.score || 0} نقطة</div>
                                     </div>
                                 </div>
@@ -608,9 +638,10 @@ const navigate = useNavigate();
             };
             ch.finishedPlayers += 1;
             ch.resultsList.push(normalizedResult);
-            ch.totalScore += r.percentage || r.score || 0;
-            if ((r.score || 0) > ch.topScore) {
-                ch.topScore = r.score || 0;
+            const resultScore = getScorePercent(r);
+            ch.totalScore += resultScore;
+            if (resultScore > ch.topScore) {
+                ch.topScore = resultScore;
                 ch.topStudent = normalizedResult.name;
             }
             if (ch.finishedPlayers > ch.participants) {
@@ -653,7 +684,7 @@ const navigate = useNavigate();
                         score: p.score || 0,
                         correct_answers: ca,
                         wrong_answers: wa,
-                        percentage,
+                        percentage: ca + wa > 0 ? percentage : getScorePercent(p),
                         time_taken: p.time_taken || 0,
                         question_results: [],
                     };
@@ -662,9 +693,10 @@ const navigate = useNavigate();
             playerOnlyResults.forEach((guestResult: any) => {
                 ch.finishedPlayers += 1;
                 ch.resultsList.push(guestResult);
-                ch.totalScore += guestResult.percentage || guestResult.score || 0;
-                if ((guestResult.score || 0) > ch.topScore) {
-                    ch.topScore = guestResult.score || 0;
+                const resultScore = getScorePercent(guestResult);
+                ch.totalScore += resultScore;
+                if (resultScore > ch.topScore) {
+                    ch.topScore = resultScore;
                     ch.topStudent = guestResult.name || "زائر";
                 }
             });

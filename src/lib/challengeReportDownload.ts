@@ -17,11 +17,55 @@ export type ChallengeReportQuestionRow = {
     total: number;
 };
 
+export type ChallengeReportChartOptions = {
+    scoreDistribution?: Array<{ label: string; count: number; fill?: string }>;
+    dailyTrend?: Array<{
+        day: string;
+        date?: string;
+        attempts: number;
+        participants?: number;
+        avg: number;
+        passRate: number;
+    }>;
+    participantTypeData?: Array<{ name: string; value: number; color?: string }>;
+    answerOutcomeData?: Array<{ name: string; value: number; color?: string }>;
+    topScoreChartData?: Array<{ name: string; score: number }>;
+    questionAccuracyChartData?: Array<{ shortLabel: string; accuracy: number; label?: string }>;
+    questionTimeChartData?: Array<{ shortLabel: string; avgTime: number; label?: string }>;
+    scoreBoxData?: Array<{ label: string; value: number; fill?: string }>;
+    scoreTimeScatterData?: Array<{ name?: string; time: number; score: number }>;
+    learnerSegments?: Array<{ name: string; count: number; fill?: string }>;
+    questionDifficultyData?: Array<{ name: string; count: number; fill?: string }>;
+};
+
+export type ChallengeRecommendationReport = {
+    headline: string;
+    summary: string;
+    keyFindings?: string[];
+    sections: Array<{
+        title: string;
+        priority?: string;
+        timeframe?: string;
+        evidence?: string[];
+        actions?: string[];
+        successIndicators?: string[];
+        points: string[];
+    }>;
+};
+
 export type ChallengeReportCsvOptions = {
     topicTitle: string;
+    lessonTitle?: string;
+    className?: string;
+    subjectName?: string;
+    teacherName?: string;
     sessionDate?: string;
     sessionTime?: string;
     mergedSessionsNote?: string;
+    analysisRows?: Array<{ label: string; value: string | number }>;
+    recommendations?: string[];
+    recommendationReport?: ChallengeRecommendationReport;
+    charts?: ChallengeReportChartOptions;
     results: any[];
     questionRows?: ChallengeReportQuestionRow[];
 };
@@ -32,6 +76,10 @@ export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): vo
 
     lines.push(join(["الحقل", "القيمة"]));
     lines.push(join(["عنوان الدرس / الموضوع", opts.topicTitle]));
+    if (opts.lessonTitle) lines.push(join(["اسم الدرس", opts.lessonTitle]));
+    if (opts.className) lines.push(join(["اسم الصف / الفصل", opts.className]));
+    if (opts.subjectName) lines.push(join(["المادة", opts.subjectName]));
+    if (opts.teacherName) lines.push(join(["اسم المعلم", opts.teacherName]));
     if (opts.sessionDate) lines.push(join(["التاريخ", opts.sessionDate]));
     if (opts.sessionTime) lines.push(join(["الوقت", opts.sessionTime]));
     if (opts.mergedSessionsNote) lines.push(join(["ملاحظة", opts.mergedSessionsNote]));

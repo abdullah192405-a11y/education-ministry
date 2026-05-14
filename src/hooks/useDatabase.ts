@@ -1157,6 +1157,31 @@ export const useTeacherTopicContentReport = (
     return useQuery({
         queryKey: ["teacher_topic_content_report", topicId],
         queryFn: async () => {
+            const toRecord = (value: unknown): Record<string, unknown> =>
+                value && typeof value === "object" ? value as Record<string, unknown> : {};
+
+            const clampScorePercent = (score: number) => Math.max(0, Math.min(100, Math.round(score)));
+
+            const scoreOf = (r: unknown) => {
+                const row = toRecord(r);
+                const percentage = Number(row.percentage);
+                if (Number.isFinite(percentage)) return clampScorePercent(percentage);
+
+                const score = Number(row.score);
+                const maxScore = Number(row.max_score ?? row.maxScore);
+                if (Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) {
+                    return clampScorePercent((score / maxScore) * 100);
+                }
+
+                return Number.isFinite(score) ? clampScorePercent(score) : 0;
+            };
+
+            const weightedAverage = (liveAverage: number, liveCount: number, cachedAverage: number, cachedCount: number) => {
+                const totalCount = liveCount + cachedCount;
+                if (totalCount <= 0) return 0;
+                return Math.round(((liveAverage * liveCount) + (cachedAverage * cachedCount)) / totalCount);
+            };
+
             const normalizeSparseMetrics = (m: any) => {
                 const out = { ...m };
 
@@ -1287,27 +1312,30 @@ export const useTeacherTopicContentReport = (
                     uniqueViewers: new Set(activities.map((a: any) => a.student_id).filter((id: any) => !!id)).size,
                 };
                 if (!cachedReport) return normalizeSparseMetrics(liveBase);
+                const cachedSingleAttempts = Number(cachedReport.single_attempts || 0);
+                const cachedGroupAttempts = Number(cachedReport.group_attempts || 0);
+                const cachedTotalAttempts = Number(cachedReport.total_attempts || cachedSingleAttempts + cachedGroupAttempts || 0);
                 return normalizeSparseMetrics({
                     ...liveBase,
-                    totalAttempts: Math.max(liveBase.totalAttempts, Number(cachedReport.total_attempts || 0)),
-                    singleAttempts: Math.max(liveBase.singleAttempts, Number(cachedReport.single_attempts || 0)),
-                    groupAttempts: Math.max(liveBase.groupAttempts, Number(cachedReport.group_attempts || 0)),
-                    uniqueParticipants: Math.max(liveBase.uniqueParticipants, Number(cachedReport.unique_participants || 0)),
-                    uniqueSingleParticipants: Math.max(liveBase.uniqueSingleParticipants, Number(cachedReport.unique_single_participants || 0)),
-                    uniqueGroupParticipants: Math.max(liveBase.uniqueGroupParticipants, Number(cachedReport.unique_group_participants || 0)),
-                    averageScoreOverall: Math.max(liveBase.averageScoreOverall, Number(cachedReport.average_score_overall || 0)),
-                    averageScoreSingle: Math.max(liveBase.averageScoreSingle, Number(cachedReport.average_score_single || 0)),
-                    averageScoreGroup: Math.max(liveBase.averageScoreGroup, Number(cachedReport.average_score_group || 0)),
-                    highestScore: Math.max(liveBase.highestScore, Number(cachedReport.highest_score || 0)),
-                    passRate: Math.max(liveBase.passRate, Number(cachedReport.pass_rate || 0)),
-                    lastAttemptAt: liveBase.lastAttemptAt || cachedReport.last_attempt_at || null,
+                    totalAttempts: cachedTotalAttempts,
+                    singleAttempts: cachedSingleAttempts,
+                    groupAttempts: cachedGroupAttempts,
+                    uniqueParticipants: Number(cachedReport.unique_participants || 0),
+                    uniqueSingleParticipants: Number(cachedReport.unique_single_participants || 0),
+                    uniqueGroupParticipants: Number(cachedReport.unique_group_participants || 0),
+                    averageScoreOverall: Number(cachedReport.average_score_overall || 0),
+                    averageScoreSingle: Number(cachedReport.average_score_single || 0),
+                    averageScoreGroup: Number(cachedReport.average_score_group || 0),
+                    highestScore: Number(cachedReport.highest_score || 0),
+                    passRate: Number(cachedReport.pass_rate || 0),
+                    lastAttemptAt: cachedReport.last_attempt_at || null,
                     questionAnalytics: Array.isArray(cachedReport.question_analytics) ? cachedReport.question_analytics : [],
                 });
             }
 
             const { data: results, error: resultsError } = await supabase
                 .from("challenge_results")
-                .select("id, session_id, user_id, score, percentage, created_at")
+                .select("id, session_id, user_id, score, max_score, percentage, question_results, created_at")
                 .in("session_id", sessionIds);
 
             if (resultsError) throw resultsError;
@@ -1361,11 +1389,6 @@ export const useTeacherTopicContentReport = (
             if (singleSessionIds.length > 0) {
                 singlePlayers = await fetchPlayerSessionsForReport(singleSessionIds, true);
             }
-
-            const scoreOf = (r: any) => {
-                const v = Number(r?.percentage ?? r?.score ?? 0);
-                return Number.isFinite(v) ? v : 0;
-            };
 
             const scoreRowsGroup = groupResults.map((r: any) => ({
                 userKey: r.user_id ? `u:${r.user_id}` : null,
@@ -1582,20 +1605,75 @@ export const useTeacherTopicContentReport = (
             });
             const mergedQuestionAnalytics = Array.from(mergedQuestionMap.values()).sort((a, b) => b.attempts - a.attempts);
 
+            const cachedSingleAttempts = Number(cachedReport.single_attempts || 0);
+            const cachedGroupAttempts = Number(cachedReport.group_attempts || 0);
+            const cachedTotalAttempts = Math.max(
+                Number(cachedReport.total_attempts || 0),
+                cachedSingleAttempts + cachedGroupAttempts
+            );
+            const cachedUniqueSingle = Number(cachedReport.unique_single_participants || 0) || cachedSingleAttempts;
+            const cachedUniqueGroup = Number(cachedReport.unique_group_participants || 0) || cachedGroupAttempts;
+            const cachedUniqueParticipants = Number(cachedReport.unique_participants || 0)
+                || Math.max(cachedUniqueSingle, cachedUniqueGroup);
+            const cachedPassRate = Number(cachedReport.pass_rate || 0);
+            const cachedPassedCount = Math.round((cachedPassRate / 100) * cachedTotalAttempts);
+            const cachedLastAttemptAt = cachedReport.last_attempt_at || null;
+            const cachedLastAttemptTime = cachedLastAttemptAt ? new Date(cachedLastAttemptAt).getTime() : NaN;
+            const cachedAttemptsToday = Number.isFinite(cachedLastAttemptTime) && cachedLastAttemptTime >= startOfToday.getTime()
+                ? cachedTotalAttempts
+                : 0;
+            const cachedAttemptsLast7Days = Number.isFinite(cachedLastAttemptTime) && cachedLastAttemptTime >= sevenDaysAgo
+                ? cachedTotalAttempts
+                : 0;
+            const combinedActivityDays = new Set(
+                allRows
+                    .filter((r) => r.createdAt && new Date(r.createdAt).getTime() >= thirtyDaysAgo)
+                    .map((r) => new Date(r.createdAt as string).toISOString().slice(0, 10))
+            );
+            if (Number.isFinite(cachedLastAttemptTime) && cachedLastAttemptTime >= thirtyDaysAgo) {
+                combinedActivityDays.add(new Date(cachedLastAttemptAt as string).toISOString().slice(0, 10));
+            }
+
+            const combinedTotalAttempts = liveMetrics.totalAttempts + cachedTotalAttempts;
+            const combinedSingleAttempts = liveMetrics.singleAttempts + cachedSingleAttempts;
+            const combinedGroupAttempts = liveMetrics.groupAttempts + cachedGroupAttempts;
+            const liveLastAttemptTime = liveMetrics.lastAttemptAt ? new Date(liveMetrics.lastAttemptAt).getTime() : NaN;
+            const lastAttemptAt = Number.isFinite(cachedLastAttemptTime) && (!Number.isFinite(liveLastAttemptTime) || cachedLastAttemptTime > liveLastAttemptTime)
+                ? cachedLastAttemptAt
+                : liveMetrics.lastAttemptAt;
+
             return normalizeSparseMetrics({
                 ...liveMetrics,
-                totalAttempts: Math.max(liveMetrics.totalAttempts, Number(cachedReport.total_attempts || 0)),
-                singleAttempts: Math.max(liveMetrics.singleAttempts, Number(cachedReport.single_attempts || 0)),
-                groupAttempts: Math.max(liveMetrics.groupAttempts, Number(cachedReport.group_attempts || 0)),
-                uniqueParticipants: Math.max(liveMetrics.uniqueParticipants, Number(cachedReport.unique_participants || 0)),
-                uniqueSingleParticipants: Math.max(liveMetrics.uniqueSingleParticipants, Number(cachedReport.unique_single_participants || 0)),
-                uniqueGroupParticipants: Math.max(liveMetrics.uniqueGroupParticipants, Number(cachedReport.unique_group_participants || 0)),
-                averageScoreOverall: Math.max(liveMetrics.averageScoreOverall, Number(cachedReport.average_score_overall || 0)),
-                averageScoreSingle: Math.max(liveMetrics.averageScoreSingle, Number(cachedReport.average_score_single || 0)),
-                averageScoreGroup: Math.max(liveMetrics.averageScoreGroup, Number(cachedReport.average_score_group || 0)),
+                totalAttempts: combinedTotalAttempts,
+                singleAttempts: combinedSingleAttempts,
+                groupAttempts: combinedGroupAttempts,
+                uniqueParticipants: liveMetrics.uniqueParticipants + cachedUniqueParticipants,
+                uniqueSingleParticipants: liveMetrics.uniqueSingleParticipants + cachedUniqueSingle,
+                uniqueGroupParticipants: liveMetrics.uniqueGroupParticipants + cachedUniqueGroup,
+                averageScoreOverall: weightedAverage(
+                    liveMetrics.averageScoreOverall,
+                    liveMetrics.totalAttempts,
+                    Number(cachedReport.average_score_overall || 0),
+                    cachedTotalAttempts
+                ),
+                averageScoreSingle: weightedAverage(
+                    liveMetrics.averageScoreSingle,
+                    liveMetrics.singleAttempts,
+                    Number(cachedReport.average_score_single || 0),
+                    cachedSingleAttempts
+                ),
+                averageScoreGroup: weightedAverage(
+                    liveMetrics.averageScoreGroup,
+                    liveMetrics.groupAttempts,
+                    Number(cachedReport.average_score_group || 0),
+                    cachedGroupAttempts
+                ),
                 highestScore: Math.max(liveMetrics.highestScore, Number(cachedReport.highest_score || 0)),
-                passRate: Math.max(liveMetrics.passRate, Number(cachedReport.pass_rate || 0)),
-                lastAttemptAt: liveMetrics.lastAttemptAt || cachedReport.last_attempt_at || null,
+                passRate: combinedTotalAttempts ? Math.round(((passedCount + cachedPassedCount) / combinedTotalAttempts) * 100) : 0,
+                attemptsToday: liveMetrics.attemptsToday + cachedAttemptsToday,
+                attemptsLast7Days: liveMetrics.attemptsLast7Days + cachedAttemptsLast7Days,
+                activityDaysLast30Days: combinedActivityDays.size,
+                lastAttemptAt,
                 questionAnalytics: mergedQuestionAnalytics,
             });
         },
