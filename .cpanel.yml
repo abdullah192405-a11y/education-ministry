@@ -1,4 +1,6 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/USERNAME/public_html/
-    - /bin/cp -R * $DEPLOYPATH
+    - npm ci
+    - npm run build
+    - /bin/cp -R dist/* $DEPLOYPATH

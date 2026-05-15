@@ -1,4 +1,5 @@
-# SPA fallback: send unknown paths to index.html so client routes (e.g. /sso-callback) work.
+# SPA fallback for Apache. Used after "npm run build": Vite writes index.html to dist/
+# and copies this file to dist/.htaccess. Deploy dist/ contents to the web root.
 # Requires: mod_rewrite enabled and AllowOverride FileInfo (or All) for this directory.
 DirectoryIndex index.html
 Options -MultiViews
