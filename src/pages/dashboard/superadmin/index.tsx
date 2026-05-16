@@ -9,8 +9,6 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
     Select,
     SelectContent,
@@ -45,7 +43,6 @@ import {
     Users,
     UserCheck,
     Layers,
-    Sparkles,
     Bell,
     Settings,
     CheckCircle,
@@ -64,6 +61,8 @@ import {
     ExternalLink,
     LifeBuoy,
     Edit,
+    MessageCircle,
+    Copy,
 } from "lucide-react";
 import {
     useUser,
@@ -76,19 +75,33 @@ import {
     useDeleteOrgAdmin,
     useAdminStats,
     useRecentAuditLogs,
-    useOrganizationSubscriptions,
-    useUpsertOrganizationSubscription,
     usePendingAdminRegistrationRequestsForSuperadmin,
     useReviewRegistrationRequest,
 } from "@/hooks/useDatabase";
 import SettingsTab from "../admin/components/SettingsTab";
 import AdminSupportTab from "../admin/components/AdminSupportTab";
 import SuperadminUsersTab from "./SuperadminUsersTab";
+import { SuperadminPlansTab } from "./SuperadminPlansTab";
+import { OrgImageField } from "./OrgImageField";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
 import CreateOrgAdminSection from "./CreateOrgAdminSection";
+import { SuperadminNav, type SuperadminTabId } from "./SuperadminNav";
+import { SuperadminMobileTabs } from "./SuperadminMobileTabs";
+import { SuperadminTabHeader } from "./SuperadminTabHeader";
+import { SuperadminQuickActions } from "./SuperadminQuickActions";
+import { PendingRequestsBanner } from "./PendingRequestsBanner";
+import { PendingRequestsPanel } from "./PendingRequestsPanel";
+import { useSuperadminTab } from "./useSuperadminTab";
+import { SUPERADMIN_TAB_META } from "./superadminTabMeta";
+import {
+    buildOrgAdminLoginReminderMessage,
+    copyToClipboard,
+    openWhatsAppShare,
+    parseWhatsAppFromDetails,
+} from "@/lib/accountOnboarding";
 
 const auditActionMeta: Record<string, { icon: LucideIcon; color: string }> = {
     CREATE: { icon: Plus, color: "text-emerald-600" },
@@ -98,32 +111,8 @@ const auditActionMeta: Record<string, { icon: LucideIcon; color: string }> = {
     default: { icon: Activity, color: "text-muted-foreground" },
 };
 
-type SuperadminTabId =
-    | "overview"
-    | "users"
-    | "orgs"
-    | "admins"
-    | "create"
-    | "support"
-    | "settings"
-    | "plans";
-
 type OrgKind = "EDUCATIONAL" | "ENRICHMENT" | "BOTH";
 type OrgPlan = "INSTITUTION_ADMIN_STUDENT" | "INSTITUTION_FULL";
-type SubscriptionStatus = "ACTIVE" | "TRIAL" | "PAST_DUE" | "CANCELED";
-type BillingCycle = "MONTHLY" | "YEARLY";
-const subscriptionStatusMeta: Record<SubscriptionStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    ACTIVE: { label: "نشطة", variant: "default" },
-    TRIAL: { label: "تجريبية", variant: "secondary" },
-    PAST_DUE: { label: "متأخرة", variant: "destructive" },
-    CANCELED: { label: "ملغاة", variant: "outline" },
-};
-
-function getOrgKindLabel(kind: OrgKind): string {
-    if (kind === "EDUCATIONAL") return "تعليمية";
-    if (kind === "ENRICHMENT") return "إثرائية";
-    return "تعليمية + إثرائية";
-}
 type OrgEdit = {
     id: string;
     name: string;
@@ -156,47 +145,18 @@ const SuperadminDashboard = () => {
     const { data: allUsers = [], isLoading: isLoadingUsers } = useAllUsers();
     const { data: platformStats, isLoading: isLoadingPlatformStats } = useAdminStats();
     const { data: auditLogs = [], isLoading: isLoadingAudit } = useRecentAuditLogs(10);
-    const { data: subscriptions = [], isLoading: isLoadingSubscriptions } = useOrganizationSubscriptions();
     const upsertOrganization = useUpsertOrganization();
-    const upsertSubscription = useUpsertOrganizationSubscription();
     const deleteOrganization = useDeleteOrganization();
     const updateOrgAdmin = useUpdateOrgAdmin();
     const deleteOrgAdmin = useDeleteOrgAdmin();
     const { data: pendingAdminRequests = [], isLoading: isLoadingPendingAdminRequests } = usePendingAdminRegistrationRequestsForSuperadmin();
     const reviewRegistrationRequest = useReviewRegistrationRequest();
 
-    const [activeTab, setActiveTab] = useState<SuperadminTabId>("overview");
+    const { activeTab, setActiveTab } = useSuperadminTab();
     const [orgSearch, setOrgSearch] = useState("");
     const [adminSearch, setAdminSearch] = useState("");
     const [deleteOrgId, setDeleteOrgId] = useState<string | null>(null);
     const [deleteAdminId, setDeleteAdminId] = useState<string | null>(null);
-
-    const [newOrgName, setNewOrgName] = useState("");
-    const [newOrgSlug, setNewOrgSlug] = useState("");
-    const [newOrgKind, setNewOrgKind] = useState<OrgKind>("BOTH");
-    const [newOrgPlan, setNewOrgPlan] = useState<OrgPlan>("INSTITUTION_FULL");
-    const [newOrgEntityType, setNewOrgEntityType] = useState<"SCHOOL" | "ORG">("SCHOOL");
-    const [newOrgImageUrl, setNewOrgImageUrl] = useState("");
-    const [newOrgDescription, setNewOrgDescription] = useState("");
-    const [isCreateOrgDialogOpen, setIsCreateOrgDialogOpen] = useState(false);
-    const [priceAdminStudent, setPriceAdminStudent] = useState<number>(199);
-    const [priceFull, setPriceFull] = useState<number>(349);
-    const [subscriptionDrafts, setSubscriptionDrafts] = useState<
-        Record<
-            string,
-            {
-                subscription_package: OrgPlan;
-                billing_cycle: BillingCycle;
-                status: SubscriptionStatus;
-                price_amount: number;
-                next_billing_at: string;
-                auto_renew: boolean;
-                notes: string;
-            }
-        >
-    >({});
-    const [subsSearch, setSubsSearch] = useState("");
-    const [subsStatusFilter, setSubsStatusFilter] = useState<"ALL" | SubscriptionStatus>("ALL");
 
     const [editingOrg, setEditingOrg] = useState<OrgEdit | null>(null);
 
@@ -238,104 +198,6 @@ const SuperadminDashboard = () => {
     const activeOrgs = organizations.filter((o: any) => o.is_active !== false);
     const planAdminStudent = organizations.filter((o: any) => o.subscription_package === "INSTITUTION_ADMIN_STUDENT");
     const planFull = organizations.filter((o: any) => o.subscription_package === "INSTITUTION_FULL");
-    const activePlanAdminStudent = activeOrgs.filter((o: any) => o.subscription_package === "INSTITUTION_ADMIN_STUDENT");
-    const activePlanFull = activeOrgs.filter((o: any) => o.subscription_package === "INSTITUTION_FULL");
-    const estimatedMonthlyIncome =
-        activePlanAdminStudent.length * (Number(priceAdminStudent) || 0) +
-        activePlanFull.length * (Number(priceFull) || 0);
-    const subscriptionsByOrgId = useMemo(() => {
-        const m = new Map<string, any>();
-        (subscriptions || []).forEach((s: any) => m.set(s.organization_id, s));
-        return m;
-    }, [subscriptions]);
-    const recurringMonthly = useMemo(
-        () =>
-            (subscriptions || [])
-                .filter((s: any) => s.status === "ACTIVE" || s.status === "TRIAL")
-                .reduce((sum: number, s: any) => {
-                    const price = Number(s.price_amount || 0);
-                    return sum + (s.billing_cycle === "YEARLY" ? price / 12 : price);
-                }, 0),
-        [subscriptions]
-    );
-    const pastDueCount = useMemo(
-        () => (subscriptions || []).filter((s: any) => s.status === "PAST_DUE").length,
-        [subscriptions]
-    );
-    const canceledCount = useMemo(
-        () => (subscriptions || []).filter((s: any) => s.status === "CANCELED").length,
-        [subscriptions]
-    );
-    const dueSoonCount = useMemo(
-        () =>
-            (subscriptions || []).filter((s: any) => {
-                if (!s?.next_billing_at) return false;
-                if (!(s.status === "ACTIVE" || s.status === "TRIAL")) return false;
-                const d = new Date(s.next_billing_at).getTime();
-                const now = Date.now();
-                const days = (d - now) / (1000 * 60 * 60 * 24);
-                return days >= 0 && days <= 7;
-            }).length,
-        [subscriptions]
-    );
-    const revenueAtRisk = useMemo(
-        () =>
-            (subscriptions || [])
-                .filter((s: any) => s.status === "PAST_DUE")
-                .reduce((sum: number, s: any) => sum + Number(s.price_amount || 0), 0),
-        [subscriptions]
-    );
-    const autoRenewCount = useMemo(
-        () => (subscriptions || []).filter((s: any) => s.auto_renew && s.status !== "CANCELED").length,
-        [subscriptions]
-    );
-
-    useEffect(() => {
-        const next: typeof subscriptionDrafts = {};
-        (organizations || []).forEach((org: any) => {
-            const s = subscriptionsByOrgId.get(org.id);
-            next[org.id] = {
-                subscription_package: (s?.subscription_package ?? org.subscription_package ?? "INSTITUTION_FULL") as OrgPlan,
-                billing_cycle: (s?.billing_cycle ?? "MONTHLY") as BillingCycle,
-                status: (s?.status ?? "ACTIVE") as SubscriptionStatus,
-                price_amount: Number(s?.price_amount ?? (org.subscription_package === "INSTITUTION_ADMIN_STUDENT" ? 199 : 349)),
-                next_billing_at: s?.next_billing_at ? String(s.next_billing_at).slice(0, 10) : "",
-                auto_renew: s?.auto_renew ?? true,
-                notes: s?.notes ?? "",
-            };
-        });
-        setSubscriptionDrafts(next);
-    }, [organizations, subscriptionsByOrgId]);
-
-    const updateSubscriptionDraft = (
-        orgId: string,
-        patch: Partial<{
-            subscription_package: OrgPlan;
-            billing_cycle: BillingCycle;
-            status: SubscriptionStatus;
-            price_amount: number;
-            next_billing_at: string;
-            auto_renew: boolean;
-            notes: string;
-        }>
-    ) => {
-        setSubscriptionDrafts((prev) => ({ ...prev, [orgId]: { ...prev[orgId], ...patch } }));
-    };
-
-    const managedSubscriptionRows = useMemo(() => {
-        const q = subsSearch.trim().toLowerCase();
-        return (organizations || []).filter((org: any) => {
-            const draft = subscriptionDrafts[org.id];
-            if (!draft) return false;
-            if (subsStatusFilter !== "ALL" && draft.status !== subsStatusFilter) return false;
-            if (!q) return true;
-            return (
-                String(org.name || "").toLowerCase().includes(q) ||
-                String(org.slug || "").toLowerCase().includes(q)
-            );
-        });
-    }, [organizations, subscriptionDrafts, subsSearch, subsStatusFilter]);
-
     const tenantUsers = useMemo(
         () => (allUsers || []).filter((u: any) => !!u.organization_id),
         [allUsers],
@@ -380,40 +242,15 @@ const SuperadminDashboard = () => {
         );
     });
 
-    const handleCreateOrganization = async () => {
-        const name = newOrgName.trim();
-        if (!name) {
-            toast({ variant: "destructive", description: "أدخل اسم المؤسسة." });
-            return;
-        }
-        const slug = slugifyAscii(newOrgSlug) || slugifyAscii(name);
-        if (!slug) {
-            toast({ variant: "destructive", description: "أدخل معرفًا لاتينيًا صالحًا (slug)." });
-            return;
-        }
-        try {
-            await upsertOrganization.mutateAsync({
-                name,
-                slug,
-                kind: newOrgKind,
-                subscription_package: newOrgPlan,
-                is_active: true,
-                entity_type: newOrgEntityType,
-                image_url: newOrgImageUrl.trim() || null,
-                description: newOrgDescription.trim() || null,
-            });
-            setNewOrgName("");
-            setNewOrgSlug("");
-            setNewOrgKind("BOTH");
-            setNewOrgPlan("INSTITUTION_FULL");
-            setNewOrgEntityType("SCHOOL");
-            setNewOrgImageUrl("");
-            setNewOrgDescription("");
-            setIsCreateOrgDialogOpen(false);
-            toast({ description: "تم إنشاء المؤسسة بنجاح." });
-        } catch (error: any) {
-            toast({ variant: "destructive", description: error?.message || "تعذّر إنشاء المؤسسة." });
-        }
+    const handleReviewRequest = async (requestId: string, decision: "APPROVED" | "REJECTED") => {
+        await reviewRegistrationRequest.mutateAsync({
+            requestId,
+            reviewerUserId: user.id,
+            decision,
+        });
+        toast({
+            description: decision === "APPROVED" ? "تم تأكيد الاشتراك وتفعيل المؤسسة." : "تم رفض الطلب.",
+        });
     };
 
     const handleSaveEditOrganization = async () => {
@@ -462,8 +299,25 @@ const SuperadminDashboard = () => {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Button variant="ghost" size="icon" onClick={() => setActiveTab("support")} title="تذاكر الدعم">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="relative"
+                                title={
+                                    pendingAdminRequests.length > 0
+                                        ? "طلبات اشتراك معلّقة"
+                                        : "تذاكر الدعم"
+                                }
+                                onClick={() =>
+                                    setActiveTab(pendingAdminRequests.length > 0 ? "admins" : "support")
+                                }
+                            >
                                 <Bell className="w-5 h-5" />
+                                {pendingAdminRequests.length > 0 && (
+                                    <span className="absolute -top-0.5 -left-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                                        {pendingAdminRequests.length > 9 ? "9+" : pendingAdminRequests.length}
+                                    </span>
+                                )}
                             </Button>
                             <div className="hidden sm:flex items-center gap-2 rounded-xl border px-3 py-1.5 bg-card/40">
                                 <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center">
@@ -483,65 +337,26 @@ const SuperadminDashboard = () => {
                 </div>
             </header>
 
+            <SuperadminMobileTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                pendingRequestsCount={pendingAdminRequests.length}
+            />
+
             <div className="container mx-auto px-4 py-8">
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     <motion.div
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="lg:col-span-1"
+                        className="hidden lg:block lg:col-span-1"
                     >
-                        <Card className="sticky top-24">
-                            <CardContent className="p-4">
-                                <div className="text-center mb-4 pb-4 border-b">
-                                    <div className="w-16 h-16 rounded-xl mx-auto mb-3 bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-                                        <Crown className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="font-bold text-sm mb-1">{user.name}</h2>
-                                    <p className="text-xs text-muted-foreground">منصة متعددة المؤسسات</p>
-                                    <div className="flex justify-center mt-2">
-                                        <Badge className="text-[10px]">SUPERADMIN</Badge>
-                                    </div>
-                                </div>
-
-                                <nav className="space-y-1">
-                                    {[
-                                        { id: "overview" as const, icon: LayoutDashboard, label: "نظرة عامة" },
-                                        { id: "users" as const, icon: Users, label: "كل المستخدمين" },
-                                        { id: "orgs" as const, icon: Building2, label: "المؤسسات" },
-                                        { id: "admins" as const, icon: UserCheck, label: "أدمن المؤسسات" },
-                                        { id: "create" as const, icon: Sparkles, label: "ترحيب مؤسسة" },
-                                        { id: "support" as const, icon: LifeBuoy, label: "تذاكر الدعم" },
-                                        { id: "settings" as const, icon: Settings, label: "إعدادات المنصة" },
-                                        { id: "plans" as const, icon: Package, label: "الباقات (مرجع)" },
-                                    ].map((item) => (
-                                        <button
-                                            key={item.id}
-                                            type="button"
-                                            onClick={() => setActiveTab(item.id)}
-                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${activeTab === item.id
-                                                ? "bg-primary text-primary-foreground"
-                                                : "hover:bg-muted"
-                                                }`}
-                                        >
-                                            <item.icon className="w-4 h-4" />
-                                            <span>{item.label}</span>
-                                        </button>
-                                    ))}
-                                </nav>
-
-                                <div className="mt-4 pt-4 border-t">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="w-full justify-start gap-2"
-                                        type="button"
-                                        onClick={() => setActiveTab("settings")}
-                                    >
-                                        <ExternalLink className="w-4 h-4" />
-                                        اختصار الإعدادات
-                                    </Button>
-                                </div>
-                            </CardContent>
+                        <Card className="sticky top-24 overflow-hidden">
+                            <SuperadminNav
+                                userName={user.name}
+                                activeTab={activeTab}
+                                onTabChange={setActiveTab}
+                                pendingRequestsCount={pendingAdminRequests.length}
+                            />
                         </Card>
                     </motion.div>
 
@@ -560,6 +375,12 @@ const SuperadminDashboard = () => {
                                 transition={{ duration: 0.2 }}
                                 className="space-y-6"
                             >
+                                <PendingRequestsBanner
+                                    count={pendingAdminRequests.length}
+                                    currentTab={activeTab}
+                                    onGoToAdmins={() => setActiveTab("admins")}
+                                />
+
                                 {activeTab === "overview" && (
                                     <>
                                         <Card className="overflow-hidden border-primary/20">
@@ -570,21 +391,9 @@ const SuperadminDashboard = () => {
                                                     </h1>
                                                     <p className="text-white/85 text-sm md:text-base leading-relaxed">
                                                         من هنا تدير المؤسسات والباقات، المستخدمين على مستوى المنصة، صلاحيات أدمن
-                                                        المؤسسات، إعدادات المنصة، وتذاكر الدعم.
+                                                        المؤسسات، إعدادات المنصة، وتذاكر الدعم. استخدم الاختصارات أدناه أو القائمة الجانبية.
                                                     </p>
-                                                    <div className="flex flex-wrap gap-2 pt-1">
-                                                        <Button size="sm" variant="secondary" className="gap-2" onClick={() => setActiveTab("users")}>
-                                                            <Users className="w-4 h-4" />
-                                                            المستخدمون
-                                                        </Button>
-                                                        <Button size="sm" variant="outline" className="gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20" onClick={() => setActiveTab("orgs")}>
-                                                            <Building2 className="w-4 h-4" />
-                                                            المؤسسات
-                                                        </Button>
-                                                        <Button size="sm" variant="outline" className="gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20" onClick={() => setActiveTab("settings")}>
-                                                            <Settings className="w-4 h-4" />
-                                                            الإعدادات
-                                                        </Button>
+                                                    <div className="pt-1">
                                                         <Button asChild size="sm" variant="outline" className="gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20">
                                                             <Link to="/grades" target="_blank" rel="noreferrer">
                                                                 <ExternalLink className="w-4 h-4" />
@@ -596,6 +405,11 @@ const SuperadminDashboard = () => {
                                                 <div className="absolute left-0 top-0 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
                                             </div>
                                         </Card>
+
+                                        <SuperadminQuickActions
+                                            pendingCount={pendingAdminRequests.length}
+                                            onNavigate={setActiveTab}
+                                        />
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                                             {[
@@ -759,28 +573,18 @@ const SuperadminDashboard = () => {
                                 )}
 
                                 {activeTab === "orgs" && (
+                                    <>
+                                        <SuperadminTabHeader
+                                            title={SUPERADMIN_TAB_META.orgs.title}
+                                            description={SUPERADMIN_TAB_META.orgs.description}
+                                        />
                                     <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <School className="h-5 w-5" />
-                                                المؤسسات والمدارس
-                                            </CardTitle>
-                                            <CardDescription>
-                                                إدارة المؤسسات المسجّلة في المنصة وحالة تفعيلها ونوع اشتراكها.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <div className="flex flex-col md:flex-row gap-3">
-                                                <Input
-                                                    value={orgSearch}
-                                                    onChange={(e) => setOrgSearch(e.target.value)}
-                                                    placeholder="بحث بالاسم أو slug..."
-                                                />
-                                                <Button className="gap-2" onClick={() => setIsCreateOrgDialogOpen(true)}>
-                                                    <Plus className="w-4 h-4" />
-                                                    مؤسسة جديدة
-                                                </Button>
-                                            </div>
+                                        <CardContent className="space-y-3 pt-6">
+                                            <Input
+                                                value={orgSearch}
+                                                onChange={(e) => setOrgSearch(e.target.value)}
+                                                placeholder="بحث بالاسم أو slug..."
+                                            />
                                             {isLoadingOrgs ? (
                                                 <Skeleton className="h-44 w-full" />
                                             ) : filteredOrganizations.length === 0 ? (
@@ -884,84 +688,24 @@ const SuperadminDashboard = () => {
                                             )}
                                         </CardContent>
                                     </Card>
+                                    </>
                                 )}
 
                                 {activeTab === "admins" && (
+                                    <>
+                                        <SuperadminTabHeader
+                                            title={SUPERADMIN_TAB_META.admins.title}
+                                            description={SUPERADMIN_TAB_META.admins.description}
+                                        />
                                     <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <UserCheck className="h-5 w-5" />
-                                                أدمن المؤسسات
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <Card className="border-primary/20 bg-primary/5">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-base">طلبات اشتراك المؤسسات من الصفحة الرئيسية</CardTitle>
-                                                    <CardDescription>
-                                                        هذه الطلبات أنشأها أدمن المؤسسة من الصفحة الرئيسية وتنتظر تأكيدك.
-                                                    </CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-2">
-                                                    {isLoadingPendingAdminRequests ? (
-                                                        <Skeleton className="h-24 w-full" />
-                                                    ) : pendingAdminRequests.length === 0 ? (
-                                                        <p className="text-sm text-muted-foreground">لا توجد طلبات معلّقة حاليًا.</p>
-                                                    ) : (
-                                                        pendingAdminRequests.map((req: any) => (
-                                                            <div key={req.id} className="rounded-lg border bg-background p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                                                <div>
-                                                                    <p className="font-semibold">{req.organization?.name || "مؤسسة جديدة"}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {req.applicant?.name || "أدمن جديد"} · {req.applicant?.email}
-                                                                    </p>
-                                                                    <div className="flex flex-wrap gap-1 mt-1">
-                                                                        <Badge variant="outline">
-                                                                            {req.requested_package === "INSTITUTION_ADMIN_STUDENT" ? "أدمن + طالب" : "أدمن + معلم + طالب"}
-                                                                        </Badge>
-                                                                        <Badge variant="secondary">
-                                                                            {req.organization?.kind === "EDUCATIONAL"
-                                                                                ? "تعليمية"
-                                                                                : req.organization?.kind === "ENRICHMENT"
-                                                                                    ? "إثرائية"
-                                                                                    : "تعليمية + إثرائية"}
-                                                                        </Badge>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <Button
-                                                                        size="sm"
-                                                                        onClick={() =>
-                                                                            reviewRegistrationRequest.mutate({
-                                                                                requestId: req.id,
-                                                                                reviewerUserId: user.id,
-                                                                                decision: "APPROVED",
-                                                                            })
-                                                                        }
-                                                                        disabled={reviewRegistrationRequest.isPending}
-                                                                    >
-                                                                        تأكيد الاشتراك
-                                                                    </Button>
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="outline"
-                                                                        onClick={() =>
-                                                                            reviewRegistrationRequest.mutate({
-                                                                                requestId: req.id,
-                                                                                reviewerUserId: user.id,
-                                                                                decision: "REJECTED",
-                                                                            })
-                                                                        }
-                                                                        disabled={reviewRegistrationRequest.isPending}
-                                                                    >
-                                                                        رفض
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        ))
-                                                    )}
-                                                </CardContent>
-                                            </Card>
+                                        <CardContent className="space-y-3 pt-6">
+                                            <PendingRequestsPanel
+                                                requests={pendingAdminRequests}
+                                                isLoading={isLoadingPendingAdminRequests}
+                                                isReviewing={reviewRegistrationRequest.isPending}
+                                                onApprove={(id) => handleReviewRequest(id, "APPROVED")}
+                                                onReject={(id) => void handleReviewRequest(id, "REJECTED")}
+                                            />
                                             <Input
                                                 value={adminSearch}
                                                 onChange={(e) => setAdminSearch(e.target.value)}
@@ -974,6 +718,8 @@ const SuperadminDashboard = () => {
                                             ) : (
                                                 filteredOrgAdmins.map((a: any) => {
                                                     const org = Array.isArray(a.organizations) ? a.organizations[0] : a.organizations;
+                                                    const phone = parseWhatsAppFromDetails(a.details);
+                                                    const orgName = org?.name ?? "المؤسسة";
                                                     return (
                                                         <div key={a.id} className="rounded-xl border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                                             <div>
@@ -1009,6 +755,38 @@ const SuperadminDashboard = () => {
                                                                 </Select>
                                                                 <Badge variant="outline">{org?.name ?? "غير مربوط بمؤسسة"}</Badge>
                                                                 <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    title="نسخ البريد"
+                                                                    onClick={async () => {
+                                                                        const ok = await copyToClipboard(a.email);
+                                                                        toast({
+                                                                            description: ok ? "تم نسخ البريد." : "تعذّر النسخ.",
+                                                                            variant: ok ? "default" : "destructive",
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    <Copy className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="text-[#25D366]"
+                                                                    title="تذكير واتساب"
+                                                                    onClick={() => {
+                                                                        const msg = buildOrgAdminLoginReminderMessage({
+                                                                            adminName: a.name,
+                                                                            orgName,
+                                                                            email: a.email,
+                                                                        });
+                                                                        openWhatsAppShare({ phone, message: msg });
+                                                                    }}
+                                                                >
+                                                                    <MessageCircle className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                                <Button
                                                                     size="sm"
                                                                     variant="outline"
                                                                     onClick={async () => {
@@ -1039,436 +817,26 @@ const SuperadminDashboard = () => {
                                             )}
                                         </CardContent>
                                     </Card>
+                                    </>
+                                )}
+
+                                {activeTab === "plans" && (
+                                    <>
+                                        <SuperadminTabHeader
+                                            title={SUPERADMIN_TAB_META.plans.title}
+                                            description={SUPERADMIN_TAB_META.plans.description}
+                                        />
+                                        <SuperadminPlansTab />
+                                    </>
                                 )}
 
                                 {activeTab === "create" && <CreateOrgAdminSection />}
 
-                                {activeTab === "plans" && (
-                                    <Card className="border-primary/20">
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2 text-lg">
-                                                <Package className="h-5 w-5" />
-                                                باقات الاشتراك
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-6 text-sm leading-relaxed">
-                                            <div className="rounded-xl border bg-card/50 p-4 space-y-2">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    <Users className="h-4 w-4 text-muted-foreground" />
-                                                    ١ — الأفراد (مجاني)
-                                                </div>
-                                                <p className="text-muted-foreground pr-6">
-                                                    مجاني، والمحتوى إثرائي فقط دون أدوات رقابة وتتبع. يُفعّل للمستخدمين خارج
-                                                    المؤسسات عبر{" "}
-                                                    <code className="text-xs bg-muted px-1 rounded">individual_tier = INDIVIDUAL_FREE</code>.
-                                                </p>
-                                            </div>
-                                            <div className="rounded-xl border bg-card/50 p-4 space-y-2">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                                                    ٢ — المؤسسات (تعليمي أو إثرائي)
-                                                </div>
-                                                <p className="text-muted-foreground pr-6">
-                                                    متاح: حساب أدمن + حساب طالب. في قاعدة البيانات:{" "}
-                                                    <code className="text-xs bg-muted px-1 rounded">INSTITUTION_ADMIN_STUDENT</code>.
-                                                </p>
-                                            </div>
-                                            <div className="rounded-xl border bg-card/50 p-4 space-y-2">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                                                    ٣ — المؤسسات (تعليمي أو إثرائي) الكاملة
-                                                </div>
-                                                <p className="text-muted-foreground pr-6">
-                                                    متاح: حساب أدمن + حساب معلم + حساب طالب. في قاعدة البيانات:{" "}
-                                                    <code className="text-xs bg-muted px-1 rounded">INSTITUTION_FULL</code>.
-                                                </p>
-                                            </div>
-
-                                            <div className="rounded-xl border bg-card/50 p-4 space-y-3">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                                    إدارة الاشتراكات والدخل
-                                                </div>
-                                                <p className="text-muted-foreground">
-                                                    عدّل الأسعار التقديرية لمتابعة الدخل، ثم استخدم تبويب «المؤسسات» لإدارة باقة كل مؤسسة.
-                                                </p>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div className="space-y-2">
-                                                        <Label>سعر باقة (أدمن + طالب) شهريًا</Label>
-                                                        <Input
-                                                            type="number"
-                                                            min={0}
-                                                            value={priceAdminStudent}
-                                                            onChange={(e) => setPriceAdminStudent(Number(e.target.value || 0))}
-                                                        />
-                                                        <p className="text-xs text-muted-foreground">
-                                                            الاشتراكات النشطة: {activePlanAdminStudent.length}
-                                                        </p>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label>سعر باقة (أدمن + معلم + طالب) شهريًا</Label>
-                                                        <Input
-                                                            type="number"
-                                                            min={0}
-                                                            value={priceFull}
-                                                            onChange={(e) => setPriceFull(Number(e.target.value || 0))}
-                                                        />
-                                                        <p className="text-xs text-muted-foreground">
-                                                            الاشتراكات النشطة: {activePlanFull.length}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">الدخل الشهري التقديري</p>
-                                                        <p className="text-xl font-bold">{estimatedMonthlyIncome.toLocaleString()} ر.س</p>
-                                                    </div>
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">الدخل السنوي التقديري</p>
-                                                        <p className="text-xl font-bold">{(estimatedMonthlyIncome * 12).toLocaleString()} ر.س</p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">MRR فعلي (من الاشتراكات)</p>
-                                                        <p className="text-lg font-bold">{Math.round(recurringMonthly).toLocaleString()} ر.س</p>
-                                                    </div>
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">ARR فعلي</p>
-                                                        <p className="text-lg font-bold">{Math.round(recurringMonthly * 12).toLocaleString()} ر.س</p>
-                                                    </div>
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">اشتراكات متأخرة</p>
-                                                        <p className="text-lg font-bold">{pastDueCount}</p>
-                                                    </div>
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">اشتراكات ملغاة</p>
-                                                        <p className="text-lg font-bold">{canceledCount}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">تجديدات خلال 7 أيام</p>
-                                                        <p className="text-lg font-bold">{dueSoonCount}</p>
-                                                    </div>
-                                                    <div className="rounded-lg border p-3">
-                                                        <p className="text-xs text-muted-foreground">إيراد معرّض للخطر (Past Due)</p>
-                                                        <p className="text-lg font-bold">{Math.round(revenueAtRisk).toLocaleString()} ر.س</p>
-                                                    </div>
-                                                </div>
-                                                <div className="rounded-lg border p-3">
-                                                    <p className="text-xs text-muted-foreground">اشتراكات بتجديد تلقائي</p>
-                                                    <p className="text-lg font-bold">{autoRenewCount}</p>
-                                                </div>
-
-                                                <div className="flex flex-wrap gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => setActiveTab("orgs")}>
-                                                        إدارة باقات المؤسسات
-                                                    </Button>
-                                                    <Button size="sm" variant="outline" onClick={() => setActiveTab("admins")}>
-                                                        إدارة أدمن المؤسسات
-                                                    </Button>
-                                                </div>
-                                            </div>
-
-                                            <div className="rounded-xl border bg-card/50 p-4 space-y-3">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    <Settings className="h-4 w-4 text-muted-foreground" />
-                                                    Manage Subs — إدارة اشتراكات المؤسسات
-                                                </div>
-                                                <p className="text-muted-foreground text-xs">
-                                                    التحكم الاحترافي: الباقة، حالة الاشتراك، دورة الفوترة، السعر، الفوترة القادمة، والتجديد التلقائي لكل مؤسسة.
-                                                </p>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                                    <Input
-                                                        placeholder="بحث باسم المؤسسة أو slug..."
-                                                        value={subsSearch}
-                                                        onChange={(e) => setSubsSearch(e.target.value)}
-                                                    />
-                                                    <Select
-                                                        value={subsStatusFilter}
-                                                        onValueChange={(v: "ALL" | SubscriptionStatus) => setSubsStatusFilter(v)}
-                                                    >
-                                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="ALL">كل الحالات</SelectItem>
-                                                            <SelectItem value="ACTIVE">نشطة</SelectItem>
-                                                            <SelectItem value="TRIAL">تجريبية</SelectItem>
-                                                            <SelectItem value="PAST_DUE">متأخرة</SelectItem>
-                                                            <SelectItem value="CANCELED">ملغاة</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Button
-                                                        variant="secondary"
-                                                        onClick={async () => {
-                                                            for (const org of managedSubscriptionRows) {
-                                                                const draft = subscriptionDrafts[org.id];
-                                                                if (!draft) continue;
-                                                                await upsertSubscription.mutateAsync({
-                                                                    organization_id: org.id,
-                                                                    subscription_package: draft.subscription_package,
-                                                                    billing_cycle: draft.billing_cycle,
-                                                                    status: draft.status,
-                                                                    price_amount: draft.price_amount,
-                                                                    next_billing_at: draft.next_billing_at
-                                                                        ? new Date(`${draft.next_billing_at}T00:00:00.000Z`).toISOString()
-                                                                        : null,
-                                                                    auto_renew: draft.auto_renew,
-                                                                    notes: draft.notes?.trim() || null,
-                                                                });
-                                                            }
-                                                            toast({ description: "تم حفظ جميع الاشتراكات الظاهرة." });
-                                                        }}
-                                                        disabled={upsertSubscription.isPending || managedSubscriptionRows.length === 0}
-                                                    >
-                                                        حفظ الكل
-                                                    </Button>
-                                                </div>
-                                                {isLoadingOrgs || isLoadingSubscriptions ? (
-                                                    <Skeleton className="h-40 w-full" />
-                                                ) : managedSubscriptionRows.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground py-6 text-center">لا توجد مؤسسات مطابقة للبحث/الفلتر.</p>
-                                                ) : (
-                                                    <div className="space-y-3">
-                                                        {managedSubscriptionRows.map((org: any) => {
-                                                            const draft = subscriptionDrafts[org.id];
-                                                            if (!draft) return null;
-                                                            return (
-                                                                <div key={org.id} className="rounded-lg border p-3 grid grid-cols-1 lg:grid-cols-12 gap-2 items-end bg-muted/20 hover:bg-muted/30 transition-colors">
-                                                                    <div className="lg:col-span-2">
-                                                                        <p className="font-semibold text-sm">{org.name}</p>
-                                                                        <p className="text-xs text-muted-foreground font-mono">{org.slug}</p>
-                                                                        <div className="flex flex-wrap gap-1 mt-2">
-                                                                            <Badge variant="outline" className="text-[10px]">{getOrgKindLabel(org.kind as OrgKind)}</Badge>
-                                                                            <Badge variant={subscriptionStatusMeta[draft.status].variant} className="text-[10px]">
-                                                                                {subscriptionStatusMeta[draft.status].label}
-                                                                            </Badge>
-                                                                            {draft.next_billing_at ? (
-                                                                                (() => {
-                                                                                    const days = Math.ceil(
-                                                                                        (new Date(`${draft.next_billing_at}T00:00:00`).getTime() - Date.now()) /
-                                                                                            (1000 * 60 * 60 * 24)
-                                                                                    );
-                                                                                    if (days >= 0 && days <= 7) {
-                                                                                        return <Badge className="text-[10px]">تجديد قريب ({days} يوم)</Badge>;
-                                                                                    }
-                                                                                    return null;
-                                                                                })()
-                                                                            ) : null}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="lg:col-span-2">
-                                                                        <Label className="text-xs">الباقة</Label>
-                                                                        <Select
-                                                                            value={draft.subscription_package}
-                                                                            onValueChange={(v: OrgPlan) =>
-                                                                                updateSubscriptionDraft(org.id, { subscription_package: v })
-                                                                            }
-                                                                        >
-                                                                            <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="INSTITUTION_ADMIN_STUDENT">أدمن + طالب</SelectItem>
-                                                                                <SelectItem value="INSTITUTION_FULL">أدمن + معلم + طالب</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-                                                                    <div className="lg:col-span-2">
-                                                                        <Label className="text-xs">الحالة</Label>
-                                                                        <Select
-                                                                            value={draft.status}
-                                                                            onValueChange={(v: SubscriptionStatus) =>
-                                                                                updateSubscriptionDraft(org.id, { status: v })
-                                                                            }
-                                                                        >
-                                                                            <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="ACTIVE">نشطة</SelectItem>
-                                                                                <SelectItem value="TRIAL">تجريبية</SelectItem>
-                                                                                <SelectItem value="PAST_DUE">متأخرة</SelectItem>
-                                                                                <SelectItem value="CANCELED">ملغاة</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-                                                                    <div className="lg:col-span-1">
-                                                                        <Label className="text-xs">الدورة</Label>
-                                                                        <Select
-                                                                            value={draft.billing_cycle}
-                                                                            onValueChange={(v: BillingCycle) =>
-                                                                                updateSubscriptionDraft(org.id, { billing_cycle: v })
-                                                                            }
-                                                                        >
-                                                                            <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="MONTHLY">شهري</SelectItem>
-                                                                                <SelectItem value="YEARLY">سنوي</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-                                                                    <div className="lg:col-span-1">
-                                                                        <Label className="text-xs">السعر</Label>
-                                                                        <Input
-                                                                            type="number"
-                                                                            min={0}
-                                                                            className="h-8"
-                                                                            value={draft.price_amount}
-                                                                            onChange={(e) =>
-                                                                                updateSubscriptionDraft(org.id, {
-                                                                                    price_amount: Math.max(0, Number(e.target.value || 0)),
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                    </div>
-                                                                    <div className="lg:col-span-1">
-                                                                        <Label className="text-xs">الفوترة القادمة</Label>
-                                                                        <Input
-                                                                            type="date"
-                                                                            className="h-8"
-                                                                            value={draft.next_billing_at}
-                                                                            onChange={(e) => updateSubscriptionDraft(org.id, { next_billing_at: e.target.value })}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="lg:col-span-1">
-                                                                        <Label className="text-xs">تجديد تلقائي</Label>
-                                                                        <div className="h-8 flex items-center">
-                                                                            <Switch
-                                                                                checked={draft.auto_renew}
-                                                                                onCheckedChange={(checked) =>
-                                                                                    updateSubscriptionDraft(org.id, { auto_renew: checked })
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="lg:col-span-2">
-                                                                        <Label className="text-xs">ملاحظات</Label>
-                                                                        <Textarea
-                                                                            className="min-h-[36px] py-1 text-xs"
-                                                                            value={draft.notes}
-                                                                            onChange={(e) => updateSubscriptionDraft(org.id, { notes: e.target.value })}
-                                                                            placeholder="ملاحظة داخلية..."
-                                                                        />
-                                                                    </div>
-                                                                    <div className="lg:col-span-2 flex items-center gap-2">
-                                                                        <Button
-                                                                            size="sm"
-                                                                            className="h-8"
-                                                                            disabled={upsertSubscription.isPending}
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    await upsertSubscription.mutateAsync({
-                                                                                        organization_id: org.id,
-                                                                                        subscription_package: draft.subscription_package,
-                                                                                        billing_cycle: draft.billing_cycle,
-                                                                                        status: draft.status,
-                                                                                        price_amount: draft.price_amount,
-                                                                                        next_billing_at: draft.next_billing_at
-                                                                                            ? new Date(`${draft.next_billing_at}T00:00:00.000Z`).toISOString()
-                                                                                            : null,
-                                                                                        auto_renew: draft.auto_renew,
-                                                                                        notes: draft.notes?.trim() || null,
-                                                                                    });
-                                                                                    toast({ description: "تم حفظ الاشتراك." });
-                                                                                } catch (error: any) {
-                                                                                    toast({
-                                                                                        variant: "destructive",
-                                                                                        description: error?.message || "تعذّر حفظ الاشتراك.",
-                                                                                    });
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            حفظ المؤسسة
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </motion.div>
+                                                            </motion.div>
                         </AnimatePresence>
                     </motion.div>
                 </div>
             </div>
-
-            <Dialog open={isCreateOrgDialogOpen} onOpenChange={setIsCreateOrgDialogOpen}>
-                <DialogContent dir="rtl">
-                    <DialogHeader>
-                        <DialogTitle>إنشاء مؤسسة جديدة</DialogTitle>
-                        <DialogDescription>أنشئ المؤسسة ثم أضف أدمن لها من تبويب أدمن المؤسسات أو إضافة أدمن/مؤسسة.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>اسم المؤسسة</Label>
-                            <Input value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>slug (اختياري)</Label>
-                            <Input value={newOrgSlug} onChange={(e) => setNewOrgSlug(e.target.value)} dir="ltr" />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                                <Label>النوع</Label>
-                                <Select value={newOrgKind} onValueChange={(v: OrgKind) => setNewOrgKind(v)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="BOTH">تعليمية اثرائية</SelectItem>
-                                        <SelectItem value="EDUCATIONAL">تعليمية</SelectItem>
-                                        <SelectItem value="ENRICHMENT">اثرائية</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>الباقة</Label>
-                                <Select value={newOrgPlan} onValueChange={(v: OrgPlan) => setNewOrgPlan(v)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="INSTITUTION_ADMIN_STUDENT">أدمن + طالب</SelectItem>
-                                        <SelectItem value="INSTITUTION_FULL">أدمن + معلم + طالب</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>نوع الكيان</Label>
-                                <Select value={newOrgEntityType} onValueChange={(v: "SCHOOL" | "ORG") => setNewOrgEntityType(v)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="SCHOOL">مدرسة</SelectItem>
-                                        <SelectItem value="ORG">مؤسسة</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>صورة المؤسسة/المدرسة (رابط)</Label>
-                            <Input
-                                value={newOrgImageUrl}
-                                onChange={(e) => setNewOrgImageUrl(e.target.value)}
-                                dir="ltr"
-                                placeholder="https://..."
-                                className="font-mono text-sm"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>وصف المؤسسة/المدرسة</Label>
-                            <Input
-                                value={newOrgDescription}
-                                onChange={(e) => setNewOrgDescription(e.target.value)}
-                                placeholder="نبذة قصيرة تظهر في صفحة الجهة"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsCreateOrgDialogOpen(false)}>إلغاء</Button>
-                        <Button onClick={handleCreateOrganization} disabled={busy}>إنشاء</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             <Dialog open={!!editingOrg} onOpenChange={(open) => !open && setEditingOrg(null)}>
                 <DialogContent dir="rtl">
@@ -1523,29 +891,12 @@ const SuperadminDashboard = () => {
                                         <SelectItem value="ORG">مؤسسة</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <div className="space-y-2">
-                                    <Label>صورة (رابط)</Label>
-                                    <Input
-                                        value={editingOrg.image_url ?? ""}
-                                        onChange={(e) => setEditingOrg({ ...editingOrg, image_url: e.target.value })}
-                                        dir="ltr"
-                                        className="font-mono text-sm"
-                                        placeholder="https://..."
-                                    />
-                                    {(editingOrg.image_url ?? "").trim() ? (
-                                        <div className="pt-2">
-                                            <img
-                                                src={editingOrg.image_url ?? ""}
-                                                alt={`صورة ${editingOrg.name}`}
-                                                className="w-20 h-20 rounded-full object-cover border"
-                                                onError={(e) => {
-                                                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                                                }}
-                                            />
-                                        </div>
-                                    ) : null}
-                                </div>
                             </div>
+                            <OrgImageField
+                                value={editingOrg.image_url ?? ""}
+                                onChange={(url) => setEditingOrg({ ...editingOrg, image_url: url })}
+                                previewRounded="full"
+                            />
                             <div className="space-y-2">
                                 <Label>الوصف</Label>
                                 <Input

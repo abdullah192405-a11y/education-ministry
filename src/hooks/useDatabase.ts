@@ -1912,7 +1912,7 @@ export const useOrgAdminUsers = () => {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("users")
-                .select("id, name, email, organization_id, created_at, organizations ( id, name, slug )")
+                .select("id, name, email, details, organization_id, created_at, organizations ( id, name, slug )")
                 .eq("role", "ADMIN")
                 .order("created_at", { ascending: false });
 
