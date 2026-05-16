@@ -10,6 +10,9 @@ import OrganizationsSection from "@/components/landing/OrganizationsSection";
 
 import CTASection from "@/components/landing/CTASection";
 
+/** Set to true when org self-registration form should appear on the home page. */
+const SHOW_ORG_SUBSCRIPTION_FORM = false;
+
 const Index = () => {
   return (
     <div className="min-h-screen font-cairo" dir="rtl">
@@ -20,7 +23,7 @@ const Index = () => {
         <GradesSection />
         <OrganizationsSection />
         <LeaderboardSection />
-        <OrgSubscriptionSection />
+        {SHOW_ORG_SUBSCRIPTION_FORM && <OrgSubscriptionSection />}
         <JoinSection />
 
         <CTASection />
