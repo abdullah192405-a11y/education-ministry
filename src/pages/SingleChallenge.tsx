@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
     ChevronLeft, Trophy, Zap, Clock, Target,
     CheckCircle2, XCircle, RotateCcw, Home, Share2,
