@@ -38,23 +38,15 @@ type ChallengeReportOptions = {
 };
 
 const PALETTE = ["#7c3aed", "#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#0f766e"];
-const DEFAULT_REPORT_ASSET_BASE_URL = "https://www.labforai.com";
 
-export function getChallengeReportAssetBaseUrl(): string {
+function getReportFontBaseUrl(): string {
     if (typeof window !== "undefined" && window.location?.origin) {
         return window.location.origin;
     }
-
-    const vercelUrl = process.env.VERCEL_URL;
-    if (vercelUrl) {
-        const host = vercelUrl.replace(/^https?:\/\//, "");
-        return `https://${host}`;
-    }
-
-    return process.env.REPORT_PDF_ASSET_BASE_URL || DEFAULT_REPORT_ASSET_BASE_URL;
+    return "https://www.labforai.com";
 }
 
-function buildReportFontFaces(baseUrl: string): string {
+function buildUrlReportFontFaces(baseUrl: string): string {
     const origin = baseUrl.replace(/\/$/, "");
     return `
         @font-face {
@@ -622,7 +614,7 @@ function renderQuestionRows(rows?: ChallengeReportQuestionRow[]): string {
 
 export function buildChallengeReportHtml(
     options: ChallengeReportOptions,
-    assetBaseUrl: string = getChallengeReportAssetBaseUrl()
+    fontFacesCss: string = buildUrlReportFontFaces(getReportFontBaseUrl())
 ): string {
     const opts = options || { topicTitle: "تقرير التحدي" };
     const results = Array.isArray(opts.results) ? opts.results : [];
@@ -638,7 +630,7 @@ export function buildChallengeReportHtml(
     <meta charset="utf-8" />
     <title>${escapeHtml(opts.topicTitle || "تقرير التحدي")}</title>
     <style>
-        ${buildReportFontFaces(assetBaseUrl)}
+        ${fontFacesCss}
         @page { size: A4; margin: 12mm 10mm; }
         * {
             box-sizing: border-box;

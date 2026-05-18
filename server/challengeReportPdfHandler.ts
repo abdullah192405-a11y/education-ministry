@@ -2,10 +2,8 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type { Browser } from "puppeteer-core";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  buildChallengeReportHtml,
-  getChallengeReportAssetBaseUrl,
-} from "../src/lib/challengeReportPdfHtml";
+import { buildEmbeddedReportFontFaces } from "../src/lib/challengeReportPdfFonts";
+import { buildChallengeReportHtml } from "../src/lib/challengeReportPdfHtml";
 import {
   buildFallbackRecommendationReport,
   generateChallengeRecommendationReport,
@@ -123,20 +121,20 @@ async function launchReportBrowser(): Promise<Browser> {
 
 async function renderChallengeReportPdf(payload: unknown): Promise<Uint8Array> {
   const browser = await launchReportBrowser();
-  const assetBaseUrl = getChallengeReportAssetBaseUrl();
-  const html = buildChallengeReportHtml(payload as any, assetBaseUrl);
+  const html = buildChallengeReportHtml(payload as any, buildEmbeddedReportFontFaces());
 
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
     await page.emulateMediaType("screen");
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "load",
       timeout: 45_000,
     });
 
     await page.evaluate(async () => {
       await document.fonts.ready;
+      await new Promise((resolve) => setTimeout(resolve, 500));
     });
 
     const visibleTextLength = await page.evaluate(

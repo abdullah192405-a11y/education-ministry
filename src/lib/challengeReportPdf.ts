@@ -1,5 +1,5 @@
 import type { ChallengeReportCsvOptions } from "./challengeReportDownload";
-import { buildChallengeReportHtml, getChallengeReportAssetBaseUrl } from "./challengeReportPdfHtml";
+import { buildChallengeReportHtml } from "./challengeReportPdfHtml";
 import {
   buildFallbackRecommendationReport,
   generateChallengeRecommendationReport,
@@ -48,7 +48,7 @@ async function enrichReportPayload(opts: ChallengeReportCsvOptions): Promise<Cha
 
 async function downloadChallengeReportPdfInBrowser(opts: ChallengeReportCsvOptions): Promise<void> {
   const enriched = await enrichReportPayload(opts);
-  const html = buildChallengeReportHtml(enriched, getChallengeReportAssetBaseUrl());
+  const html = buildChallengeReportHtml(enriched);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const blobUrl = URL.createObjectURL(blob);
 

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "postbuild": "node scripts/verify-spa-dist.mjs && node scripts/bundle-challenge-report-api.mjs",
+    "postbuild": "node scripts/verify-spa-dist.mjs && node scripts/generate-report-fonts.mjs && node scripts/bundle-challenge-report-api.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "load-test:challenge": "tsx scripts/load-test-concurrent-challenge.ts",
