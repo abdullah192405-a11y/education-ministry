@@ -38,6 +38,48 @@ type ChallengeReportOptions = {
 };
 
 const PALETTE = ["#7c3aed", "#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#0f766e"];
+const DEFAULT_REPORT_ASSET_BASE_URL = "https://www.labforai.com";
+
+export function getChallengeReportAssetBaseUrl(): string {
+    if (typeof window !== "undefined" && window.location?.origin) {
+        return window.location.origin;
+    }
+
+    const vercelUrl = process.env.VERCEL_URL;
+    if (vercelUrl) {
+        const host = vercelUrl.replace(/^https?:\/\//, "");
+        return `https://${host}`;
+    }
+
+    return process.env.REPORT_PDF_ASSET_BASE_URL || DEFAULT_REPORT_ASSET_BASE_URL;
+}
+
+function buildReportFontFaces(baseUrl: string): string {
+    const origin = baseUrl.replace(/\/$/, "");
+    return `
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 400;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-400.ttf") format("truetype");
+        }
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 600;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-600.ttf") format("truetype");
+        }
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 700;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-700.ttf") format("truetype");
+        }
+    `;
+}
 
 function escapeHtml(value: unknown): string {
     return String(value ?? "")
@@ -578,7 +620,10 @@ function renderQuestionRows(rows?: ChallengeReportQuestionRow[]): string {
     `;
 }
 
-export function buildChallengeReportHtml(options: ChallengeReportOptions): string {
+export function buildChallengeReportHtml(
+    options: ChallengeReportOptions,
+    assetBaseUrl: string = getChallengeReportAssetBaseUrl()
+): string {
     const opts = options || { topicTitle: "تقرير التحدي" };
     const results = Array.isArray(opts.results) ? opts.results : [];
     const summary = computeSummary(results);
@@ -592,18 +637,23 @@ export function buildChallengeReportHtml(options: ChallengeReportOptions): strin
 <head>
     <meta charset="utf-8" />
     <title>${escapeHtml(opts.topicTitle || "تقرير التحدي")}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
+        ${buildReportFontFaces(assetBaseUrl)}
         @page { size: A4; margin: 12mm 10mm; }
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        html, body {
+            min-height: 100%;
+        }
         body {
             margin: 0;
             color: #0f172a;
             background: #ffffff;
             direction: rtl;
-            font-family: "Cairo", "Arial", "Tahoma", sans-serif;
+            font-family: "Cairo", "Tahoma", "Arial Unicode MS", "Segoe UI", sans-serif;
             font-size: 12px;
             line-height: 1.75;
         }

@@ -2,7 +2,10 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type { Browser } from "puppeteer-core";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { buildChallengeReportHtml } from "../src/lib/challengeReportPdfHtml";
+import {
+  buildChallengeReportHtml,
+  getChallengeReportAssetBaseUrl,
+} from "../src/lib/challengeReportPdfHtml";
 import {
   buildFallbackRecommendationReport,
   generateChallengeRecommendationReport,
@@ -120,24 +123,46 @@ async function launchReportBrowser(): Promise<Browser> {
 
 async function renderChallengeReportPdf(payload: unknown): Promise<Uint8Array> {
   const browser = await launchReportBrowser();
+  const assetBaseUrl = getChallengeReportAssetBaseUrl();
+  const html = buildChallengeReportHtml(payload as any, assetBaseUrl);
 
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
-    await page.setContent(buildChallengeReportHtml(payload as any), {
-      waitUntil: "domcontentloaded",
+    await page.emulateMediaType("screen");
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
       timeout: 45_000,
     });
 
-    await page
-      .evaluate(() => document.fonts.ready)
-      .catch(() => undefined);
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
 
-    return await page.pdf({
+    const visibleTextLength = await page.evaluate(
+      () => document.body?.innerText?.replace(/\s+/g, " ").trim().length ?? 0
+    );
+    if (visibleTextLength < 24) {
+      throw new Error("تعذر عرض محتوى التقرير في ملف PDF. تحقق من توفر خطوط التقرير.");
+    }
+
+    const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
-      preferCSSPageSize: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: "12mm",
+        right: "10mm",
+        bottom: "12mm",
+        left: "10mm",
+      },
     });
+
+    if (pdf.byteLength < 1500) {
+      throw new Error("ملف PDF الناتج فارغ تقريباً.");
+    }
+
+    return pdf;
   } finally {
     await browser.close();
   }

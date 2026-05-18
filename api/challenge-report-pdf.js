@@ -40,6 +40,44 @@ var import_node_path = __toESM(require("node:path"), 1);
 
 // src/lib/challengeReportPdfHtml.ts
 var PALETTE = ["#7c3aed", "#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#0f766e"];
+var DEFAULT_REPORT_ASSET_BASE_URL = "https://www.labforai.com";
+function getChallengeReportAssetBaseUrl() {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
+    const host = vercelUrl.replace(/^https?:\/\//, "");
+    return `https://${host}`;
+  }
+  return process.env.REPORT_PDF_ASSET_BASE_URL || DEFAULT_REPORT_ASSET_BASE_URL;
+}
+function buildReportFontFaces(baseUrl) {
+  const origin = baseUrl.replace(/\/$/, "");
+  return `
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 400;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-400.ttf") format("truetype");
+        }
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 600;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-600.ttf") format("truetype");
+        }
+        @font-face {
+            font-family: "Cairo";
+            font-style: normal;
+            font-weight: 700;
+            font-display: block;
+            src: url("${origin}/fonts/cairo/cairo-700.ttf") format("truetype");
+        }
+    `;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
@@ -484,7 +522,7 @@ function renderQuestionRows(rows) {
         </section>
     `;
 }
-function buildChallengeReportHtml(options) {
+function buildChallengeReportHtml(options, assetBaseUrl = getChallengeReportAssetBaseUrl()) {
   const opts = options || { topicTitle: "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A" };
   const results = Array.isArray(opts.results) ? opts.results : [];
   const summary = computeSummary(results);
@@ -497,18 +535,23 @@ function buildChallengeReportHtml(options) {
 <head>
     <meta charset="utf-8" />
     <title>${escapeHtml(opts.topicTitle || "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A")}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
+        ${buildReportFontFaces(assetBaseUrl)}
         @page { size: A4; margin: 12mm 10mm; }
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        html, body {
+            min-height: 100%;
+        }
         body {
             margin: 0;
             color: #0f172a;
             background: #ffffff;
             direction: rtl;
-            font-family: "Cairo", "Arial", "Tahoma", sans-serif;
+            font-family: "Cairo", "Tahoma", "Arial Unicode MS", "Segoe UI", sans-serif;
             font-size: 12px;
             line-height: 1.75;
         }
@@ -1494,19 +1537,40 @@ async function launchReportBrowser() {
 }
 async function renderChallengeReportPdf(payload) {
   const browser = await launchReportBrowser();
+  const assetBaseUrl = getChallengeReportAssetBaseUrl();
+  const html = buildChallengeReportHtml(payload, assetBaseUrl);
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
-    await page.setContent(buildChallengeReportHtml(payload), {
-      waitUntil: "domcontentloaded",
+    await page.emulateMediaType("screen");
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
       timeout: 45e3
     });
-    await page.evaluate(() => document.fonts.ready).catch(() => void 0);
-    return await page.pdf({
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const visibleTextLength = await page.evaluate(
+      () => document.body?.innerText?.replace(/\s+/g, " ").trim().length ?? 0
+    );
+    if (visibleTextLength < 24) {
+      throw new Error("\u062A\u0639\u0630\u0631 \u0639\u0631\u0636 \u0645\u062D\u062A\u0648\u0649 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0641\u064A \u0645\u0644\u0641 PDF. \u062A\u062D\u0642\u0642 \u0645\u0646 \u062A\u0648\u0641\u0631 \u062E\u0637\u0648\u0637 \u0627\u0644\u062A\u0642\u0631\u064A\u0631.");
+    }
+    const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
-      preferCSSPageSize: true
+      preferCSSPageSize: false,
+      margin: {
+        top: "12mm",
+        right: "10mm",
+        bottom: "12mm",
+        left: "10mm"
+      }
     });
+    if (pdf.byteLength < 1500) {
+      throw new Error("\u0645\u0644\u0641 PDF \u0627\u0644\u0646\u0627\u062A\u062C \u0641\u0627\u0631\u063A \u062A\u0642\u0631\u064A\u0628\u0627\u064B.");
+    }
+    return pdf;
   } finally {
     await browser.close();
   }
