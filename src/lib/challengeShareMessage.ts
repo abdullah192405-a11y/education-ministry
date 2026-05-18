@@ -19,12 +19,15 @@ const E = {
     rocket: "\u{1F680}",
     cool: "\u{1F60E}",
     pointDown: "\u{1F447}",
+    link: "\u{1F517}",
 } as const;
 
 const LINE = "\u2501".repeat(16);
 
 export type ChallengeShareMessageInput = {
     topicTitle?: string | null;
+    /** Public challenge entry URL (not the in-game / results page). */
+    challengeUrl?: string;
     results: Pick<
         SinglePlayerResult,
         | "percentage"
@@ -61,8 +64,23 @@ function badgeIconForShare(badge: { id?: string }): string {
     return (badge.id && slugIcons[badge.id]) || E.medal;
 }
 
+export function buildSingleChallengeShareUrl(params: {
+    gradeId: string;
+    subjectId: string;
+    topicId: string;
+    category: string;
+    origin?: string;
+}): string {
+    const origin =
+        params.origin ??
+        (typeof window !== "undefined" ? window.location.origin : "");
+    const gradeSegment = encodeURIComponent(params.gradeId);
+    return `${origin}/grade/${gradeSegment}/subject/${params.subjectId}/topic/${params.topicId}/challenge/single/${params.category}`;
+}
+
 export function buildChallengeShareMessage({
     topicTitle,
+    challengeUrl,
     results,
 }: ChallengeShareMessageInput): string {
     const level = getLevelFromScore(results.percentage);
@@ -87,6 +105,8 @@ export function buildChallengeShareMessage({
             : null,
         LINE,
         `${E.rocket} هل تستطيع تحطيم رقمي؟ ${E.cool}${E.pointDown}`,
+        challengeUrl ? `${E.link} *رابط التحدي:*` : null,
+        challengeUrl ?? null,
     ]
         .filter(Boolean)
         .join("\n");

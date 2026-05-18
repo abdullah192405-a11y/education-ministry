@@ -47,7 +47,11 @@ import { supabase } from "@/lib/supabase";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
-import { buildChallengeShareMessage, openWhatsAppShare } from "@/lib/challengeShareMessage";
+import {
+    buildChallengeShareMessage,
+    buildSingleChallengeShareUrl,
+    openWhatsAppShare,
+} from "@/lib/challengeShareMessage";
 
 type GameState = "intro" | "playing" | "results";
 
@@ -77,6 +81,11 @@ const SingleChallenge = () => {
     const { focus } = useContentVisibilityFocus();
 
     const pinLooksLikeSession = typeof pin === "string" && /^\d{6}$/.test(pin);
+
+    const challengeShareUrl = useMemo(() => {
+        if (!gradeId || !subjectId || !topicId || !category) return undefined;
+        return buildSingleChallengeShareUrl({ gradeId, subjectId, topicId, category });
+    }, [gradeId, subjectId, topicId, category]);
     const { data: sessionForVisibility, isLoading: sessionForVisibilityLoading } = useChallengeSession(
         pinLooksLikeSession ? (pin || "") : ""
     );
@@ -540,6 +549,7 @@ const SingleChallenge = () => {
 
         const shareText = buildChallengeShareMessage({
             topicTitle: topic?.title,
+            challengeUrl: challengeShareUrl,
             results,
         });
 
@@ -547,16 +557,16 @@ const SingleChallenge = () => {
             navigator.share({
                 title: "نتيجة التحدي",
                 text: shareText,
-                url: window.location.href,
+                url: challengeShareUrl,
             }).catch(() => {
-                navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+                navigator.clipboard.writeText(shareText);
                 toast({
                     title: "تم نسخ الرابط",
                     description: "يمكنك الآن مشاركته مع أصدقائك",
                 });
             });
         } else {
-            navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+            navigator.clipboard.writeText(shareText);
             toast({
                 title: "تم نسخ الرابط",
                 description: "يمكنك الآن مشاركته مع أصدقائك",
@@ -568,10 +578,11 @@ const SingleChallenge = () => {
         const results = getResults();
         if (results.percentage < SHARE_RESULT_THRESHOLD) return;
 
-        const msg = `${buildChallengeShareMessage({
+        const msg = buildChallengeShareMessage({
             topicTitle: topic?.title,
+            challengeUrl: challengeShareUrl,
             results,
-        })}\n${window.location.href}`;
+        });
         openWhatsAppShare(msg);
     };
 
