@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import type { Browser } from "puppeteer-core";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { buildChallengeReportHtml } from "../lib/challengeReportPdfHtml";
 import {
@@ -9,8 +9,7 @@ import {
 } from "../lib/challengeReportRecommendations";
 
 const MAX_REPORT_BODY_BYTES = 10 * 1024 * 1024;
-const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const LOCAL_PUPPETEER_CACHE = path.resolve(PROJECT_ROOT, ".cache/puppeteer");
+const LOCAL_PUPPETEER_CACHE = path.resolve(process.cwd(), ".cache/puppeteer");
 const CHROME_EXECUTABLE_NAMES = new Set([
   "Google Chrome for Testing",
   "Google Chrome",
@@ -19,6 +18,14 @@ const CHROME_EXECUTABLE_NAMES = new Set([
   "chromium",
   "chrome.exe",
 ]);
+
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV
+  );
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -59,7 +66,7 @@ function findChromeExecutableInDirectory(directory: string, depth = 0): string |
   return undefined;
 }
 
-function resolveChromeExecutablePath(puppeteerExecutablePath?: string): string | undefined {
+function resolveLocalChromeExecutablePath(puppeteerExecutablePath?: string): string | undefined {
   const configuredPath = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (configuredPath && existsSync(configuredPath)) return configuredPath;
 
@@ -78,22 +85,53 @@ function resolveChromeExecutablePath(puppeteerExecutablePath?: string): string |
   return findChromeExecutableInDirectory(LOCAL_PUPPETEER_CACHE);
 }
 
-async function renderChallengeReportPdf(payload: unknown): Promise<Uint8Array> {
+async function launchReportBrowser(): Promise<Browser> {
+  if (isServerlessRuntime()) {
+    const [chromium, puppeteer] = await Promise.all([
+      import("@sparticuz/chromium"),
+      import("puppeteer-core"),
+    ]);
+
+    chromium.default.setGraphicsMode = false;
+
+    const viewport = {
+      width: 1240,
+      height: 1754,
+      deviceScaleFactor: 1,
+    };
+
+    return puppeteer.default.launch({
+      args: puppeteer.default.defaultArgs({ args: chromium.default.args, headless: "shell" }),
+      defaultViewport: viewport,
+      executablePath: await chromium.default.executablePath(),
+      headless: "shell",
+    });
+  }
+
   const puppeteer = await import("puppeteer");
-  const executablePath = resolveChromeExecutablePath(puppeteer.default.executablePath());
-  const browser = await puppeteer.default.launch({
+  const executablePath = resolveLocalChromeExecutablePath(puppeteer.default.executablePath());
+
+  return puppeteer.default.launch({
     headless: true,
     executablePath,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
+}
+
+async function renderChallengeReportPdf(payload: unknown): Promise<Uint8Array> {
+  const browser = await launchReportBrowser();
 
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
     await page.setContent(buildChallengeReportHtml(payload as any), {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
     });
-    await page.evaluate(() => document.fonts.ready);
+
+    await page
+      .evaluate(() => document.fonts.ready)
+      .catch(() => undefined);
 
     return await page.pdf({
       format: "A4",

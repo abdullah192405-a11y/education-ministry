@@ -1,5 +1,9 @@
 {
-    "installCommand": "npm install && npx puppeteer browsers install chrome",
+    "build": {
+        "env": {
+            "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+        }
+    },
     "rewrites": [
         {
             "source": "/((?!api/).*)",
@@ -9,7 +13,8 @@
     "functions": {
         "api/challenge-report-pdf.ts": {
             "maxDuration": 60,
-            "memory": 1024
+            "memory": 1024,
+            "includeFiles": "node_modules/@sparticuz/chromium/**"
         }
     }
 }
