@@ -186,6 +186,11 @@ const SingleChallenge = () => {
     const currentQuestion = questions[currentIndex];
 
     useEffect(() => {
+        if (gameState !== "playing") return;
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }, [currentIndex, gameState]);
+
+    useEffect(() => {
         if (gameState === "playing" && musicEnabled) {
             play("background");
             return;
