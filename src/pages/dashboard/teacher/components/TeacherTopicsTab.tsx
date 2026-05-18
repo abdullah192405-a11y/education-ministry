@@ -6,7 +6,7 @@ import {
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
     FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download,
-    Users, Trophy, ChevronRight, TrendingUp, ChevronUp, ChevronDown, ArrowUpDown,
+    Users, Trophy, ChevronRight, TrendingUp, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +43,7 @@ import {
     useHostedChallengeResults,
     useTeacherSingleChallengeResults,
     useTeacherTopicContentReport,
+    useResetTopicSingleChallengeResults,
 } from "@/hooks/useDatabase";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
@@ -63,6 +64,17 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
 import {
     ResponsiveContainer,
     PieChart,
@@ -273,6 +285,8 @@ const formatSeconds = (seconds: number) => {
     return rest > 0 ? `${minutes} د ${rest} ث` : `${minutes} د`;
 };
 
+const SINGLE_RESULTS_RESET_CONFIRM_PHRASE = "حذف النتائج";
+
 const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
     const { toast } = useToast();
     const [selectedTopicStats, setSelectedTopicStats] = useState<ExtendedTopic | null>(null);
@@ -362,7 +376,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const [singleChallengeResultsTopic, setSingleChallengeResultsTopic] = useState<ExtendedTopic | null>(null);
     const [expandedSingleAttempt, setExpandedSingleAttempt] = useState<unknown | null>(null);
     const [isSingleReportPdfDownloading, setIsSingleReportPdfDownloading] = useState(false);
+    const [singleResultsResetOpen, setSingleResultsResetOpen] = useState(false);
+    const [singleResultsResetConfirmText, setSingleResultsResetConfirmText] = useState("");
     const [reorderingTopicId, setReorderingTopicId] = useState<string | null>(null);
+    const resetSingleResultsMutation = useResetTopicSingleChallengeResults();
 
     const sortedSingleResultsForDialog = useMemo(() => {
         if (!singleChallengeResultsTopic) return [];
@@ -660,6 +677,33 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 title: "تعذر تنزيل QR",
                 description: "حدث خطأ أثناء تنزيل رمز QR. حاول مرة أخرى.",
                 variant: "destructive",
+            });
+        }
+    };
+
+    const handleResetSingleChallengeResults = async () => {
+        if (!singleChallengeResultsTopic) return;
+        if (singleResultsResetConfirmText.trim() !== SINGLE_RESULTS_RESET_CONFIRM_PHRASE) return;
+
+        try {
+            await resetSingleResultsMutation.mutateAsync({
+                topicId: String(singleChallengeResultsTopic.id),
+                teacherProfileId: effectiveTeacherProfileId,
+            });
+            toast({
+                title: "تمت إعادة ضبط النتائج",
+                description: "حُذفت جميع نتائج التحدي الفردي لهذا الدرس ولا يمكن استرجاعها.",
+            });
+            setSingleResultsResetOpen(false);
+            setSingleResultsResetConfirmText("");
+            setExpandedSingleAttempt(null);
+            setSingleChallengeResultsTopic(null);
+        } catch (error) {
+            console.error("Failed to reset single challenge results:", error);
+            toast({
+                variant: "destructive",
+                title: "تعذّر حذف النتائج",
+                description: error instanceof Error ? error.message : "حدث خطأ أثناء حذف النتائج. حاول مرة أخرى.",
             });
         }
     };
@@ -2098,36 +2142,57 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     className="flex h-[90dvh] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
                 >
                     <DialogHeader className="relative shrink-0 space-y-0 border-0 bg-gradient-to-bl from-primary/[0.12] via-primary/[0.04] to-transparent px-6 pb-5 pt-6 text-start">
-                        <div className="flex items-start gap-4">
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-background/90 text-primary shadow-md ring-1 ring-primary/10">
-                                <Trophy className="h-7 w-7" />
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="flex min-w-0 flex-1 items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-background/90 text-primary shadow-md ring-1 ring-primary/10">
+                                    <Trophy className="h-7 w-7" />
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-1 text-start">
+                                    <DialogTitle className="text-start text-xl font-black leading-snug sm:text-2xl">
+                                        نتائج التحدي الفردي
+                                    </DialogTitle>
+                                    {singleChallengeResultsTopic && (
+                                        <p className="truncate text-start text-sm font-semibold text-primary">
+                                            {singleChallengeResultsTopic.title}
+                                        </p>
+                                    )}
+                                    <DialogDescription className="text-start text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                                        تقرير تفصيلي لبيانات التحدي الفردي المجمعة: الدرجات، الزمن، المشاركين، النشاط، وتحليل الأسئلة.
+                                    </DialogDescription>
+                                </div>
                             </div>
-                            <div className="min-w-0 flex-1 space-y-1">
-                                <DialogTitle className="text-xl font-black leading-snug sm:text-2xl">
-                                    نتائج التحدي الفردي
-                                </DialogTitle>
-                                {singleChallengeResultsTopic && (
-                                    <p className="truncate text-sm font-semibold text-primary">
-                                        {singleChallengeResultsTopic.title}
-                                    </p>
+                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                {singleChallengeCollectedReport && (
+                                    <>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            dir="rtl"
+                                            className="gap-2 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
+                                            onClick={handleDownloadSingleReportPdf}
+                                            disabled={isSingleReportPdfDownloading}
+                                        >
+                                            <Download className="h-4 w-4 shrink-0" />
+                                            {isSingleReportPdfDownloading ? "جاري..." : "تنزيل PDF"}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            dir="rtl"
+                                            className="gap-2 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10"
+                                            onClick={() => {
+                                                setSingleResultsResetConfirmText("");
+                                                setSingleResultsResetOpen(true);
+                                            }}
+                                        >
+                                            <RotateCcw className="h-4 w-4 shrink-0" />
+                                            إعادة ضبط النتائج
+                                        </Button>
+                                    </>
                                 )}
-                                <DialogDescription className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                                    تقرير تفصيلي لبيانات التحدي الفردي المجمعة: الدرجات، الزمن، المشاركين، النشاط، وتحليل الأسئلة.
-                                </DialogDescription>
                             </div>
-                            {singleChallengeCollectedReport && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 gap-2 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
-                                    onClick={handleDownloadSingleReportPdf}
-                                    disabled={isSingleReportPdfDownloading}
-                                >
-                                    <Download className="h-4 w-4" />
-                                    {isSingleReportPdfDownloading ? "جاري..." : "تنزيل PDF"}
-                                </Button>
-                            )}
                         </div>
                     </DialogHeader>
 
@@ -2765,6 +2830,79 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     )}
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog
+                open={singleResultsResetOpen}
+                onOpenChange={(open) => {
+                    setSingleResultsResetOpen(open);
+                    if (!open) setSingleResultsResetConfirmText("");
+                }}
+            >
+                <AlertDialogContent dir="rtl" className="text-start sm:max-w-md">
+                    <AlertDialogHeader className="items-start text-start sm:text-start">
+                        <AlertDialogTitle className="w-full text-start text-destructive">
+                            إعادة ضبط نتائج التحدي الفردي؟
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-2 text-start">
+                            <span className="block">
+                                سيتم حذف جميع محاولات التحدي الفردي
+                                {singleChallengeResultsTopic ? ` لدرس «${singleChallengeResultsTopic.title}»` : ""}
+                                {" "}نهائياً، بما في ذلك الدرجات وتفاصيل الإجابات. لا يمكن التراجع عن هذا الإجراء.
+                            </span>
+                            <span className="block font-medium text-foreground">
+                                للتأكيد، اكتب{" "}
+                                <span className="font-black text-destructive">{SINGLE_RESULTS_RESET_CONFIRM_PHRASE}</span>
+                                {" "}في الحقل أدناه:
+                            </span>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="space-y-2 py-1 text-start">
+                        <Label
+                            htmlFor="single-results-reset-confirm"
+                            className="block w-full text-start text-xs text-muted-foreground"
+                        >
+                            نص التأكيد
+                        </Label>
+                        <Input
+                            id="single-results-reset-confirm"
+                            dir="rtl"
+                            className="text-start"
+                            value={singleResultsResetConfirmText}
+                            onChange={(e) => setSingleResultsResetConfirmText(e.target.value)}
+                            placeholder={SINGLE_RESULTS_RESET_CONFIRM_PHRASE}
+                            autoComplete="off"
+                            disabled={resetSingleResultsMutation.isPending}
+                        />
+                    </div>
+                    <AlertDialogFooter className="gap-2 sm:flex-row sm:justify-start sm:space-x-0">
+                        <AlertDialogAction
+                            dir="rtl"
+                            className="gap-2 bg-destructive hover:bg-destructive/90"
+                            disabled={
+                                resetSingleResultsMutation.isPending
+                                || singleResultsResetConfirmText.trim() !== SINGLE_RESULTS_RESET_CONFIRM_PHRASE
+                            }
+                            onClick={(e) => {
+                                e.preventDefault();
+                                void handleResetSingleChallengeResults();
+                            }}
+                        >
+                            {resetSingleResultsMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                            ) : (
+                                <Trash className="h-4 w-4 shrink-0" />
+                            )}
+                            حذف كل النتائج
+                        </AlertDialogAction>
+                        <AlertDialogCancel
+                            dir="rtl"
+                            disabled={resetSingleResultsMutation.isPending}
+                        >
+                            تراجع
+                        </AlertDialogCancel>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <Dialog open={!!singleShareDialogTopic} onOpenChange={(open) => !open && setSingleShareDialogTopic(null)}>
                 <DialogContent dir="rtl" className="sm:max-w-xl">

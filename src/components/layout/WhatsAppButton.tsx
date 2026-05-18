@@ -1,10 +1,14 @@
 import { motion } from "framer-motion";
-import { MessageCircle } from "lucide-react";
+import { useFloatingChromeHidden } from "@/contexts/FloatingChromeContext";
 
 const WhatsAppButton = () => {
+  const hidden = useFloatingChromeHidden();
+
   const phoneNumber = "966502418899";
   const message = encodeURIComponent("مرحباً، أود الاستفسار عن خدماتكم.");
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${message}`;
+
+  if (hidden) return null;
 
   return (
     <div className="fixed bottom-6 left-6 z-50 flex flex-col items-center gap-2">

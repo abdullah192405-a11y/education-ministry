@@ -51,6 +51,7 @@ import { supabase, publicClient } from "@/lib/supabase";
 import { useMutation } from "@tanstack/react-query";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
+import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 
 type GamePhase = "lobby" | "countdown" | "playing" | "question_result" | "leaderboard" | "final_results";
 
@@ -65,6 +66,7 @@ const GroupChallenge = () => {
 
     const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
     const [phase, setPhase] = useState<GamePhase>("lobby");
+    useHideFloatingChromeWhileActive(phase !== "lobby");
     const { data: topic, isLoading: isLoadingTopic, error: topicError } = useTopic(topicId || "");
     const content = topic;
     const { focus } = useContentVisibilityFocus();
@@ -2198,30 +2200,6 @@ const GroupChallenge = () => {
             >
                 {isHost && !showQuestionResult && renderHostLiveDashboard()}
 
-                {/* Progress & Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="text-sm text-muted-foreground">
-                            {currentIndex + 1}/{questions.length}
-                        </div>
-                        <Progress value={progress} className="w-32 h-2" />
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        {currentPlayer && showQuestionResult && (
-                            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10">
-                                <Trophy className="w-4 h-4 text-primary" />
-                                <span className="font-bold">{currentPlayer.score}</span>
-                            </div>
-                        )}
-                        {isHost && (
-                            <div className="px-4 py-2 rounded-full bg-secondary/10 text-secondary font-bold text-sm">
-                                وضع العرض (Host Mode)
-                            </div>
-                        )}
-                    </div>
-                </div>
-
                 {/* Timer */}
                 {!isSpinning && (
                     <div className="mb-6">
@@ -2237,6 +2215,30 @@ const GroupChallenge = () => {
                         />
                     </div>
                 )}
+
+                {/* Question progress & score */}
+                <div className="flex items-center justify-between gap-2 mb-6">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+                        <div className="text-sm text-muted-foreground shrink-0">
+                            {currentIndex + 1}/{questions.length}
+                        </div>
+                        <Progress value={progress} className="h-2 min-w-0 flex-1 sm:flex-none sm:w-32" />
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                        {currentPlayer && showQuestionResult && (
+                            <motion.div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-primary/10">
+                                <Trophy className="w-4 h-4 text-primary shrink-0" />
+                                <span className="font-bold tabular-nums">{currentPlayer.score}</span>
+                            </motion.div>
+                        )}
+                        {isHost && (
+                            <div className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-secondary/10 text-secondary font-bold text-xs sm:text-sm whitespace-nowrap">
+                                وضع العرض (Host Mode)
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 {/* Question Card */}
                 <Card className="p-6 md:p-8 mb-6">
@@ -2969,7 +2971,11 @@ const GroupChallenge = () => {
                 onClick={() => {
                     setMusicEnabled(prev => !prev);
                 }}
-                className="fixed top-24 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all"
+                className={`fixed left-4 z-50 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all ${
+                    phase === "lobby"
+                        ? "top-24 w-14 h-14"
+                        : "top-4 w-14 h-14 max-sm:top-auto max-sm:bottom-4 max-sm:w-12 max-sm:h-12"
+                }`}
             >
                 <AnimatePresence mode="wait">
                     {musicEnabled ? (
@@ -2984,8 +2990,8 @@ const GroupChallenge = () => {
                 </AnimatePresence>
             </motion.button>
 
-            <Header />
-            <main className="pt-32 pb-20 relative z-10">
+            {phase === "lobby" && <Header />}
+            <main className={`relative z-10 ${phase === "lobby" ? "pt-32 pb-20" : "pt-6 pb-20 max-sm:pb-24"}`}>
                 <AnimatePresence mode="wait">
                     {phase === "lobby" && renderLobby()}
                     {phase === "countdown" && renderCountdown()}
@@ -2994,7 +3000,7 @@ const GroupChallenge = () => {
                     {phase === "final_results" && renderFinalResults()}
                 </AnimatePresence>
             </main>
-            <Footer />
+            {phase === "lobby" && <Footer />}
         </div>
     );
 };

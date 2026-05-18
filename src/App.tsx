@@ -28,6 +28,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
 import ScrollToTop from "./components/ScrollToTop";
+import { FloatingChromeProvider } from "./contexts/FloatingChromeContext";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <FloatingChromeProvider>
         <div dir="rtl">
           <ScrollToTop />
           <Routes>
@@ -119,8 +121,9 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
+        <WhatsAppButton />
+        </FloatingChromeProvider>
       </BrowserRouter>
-      <WhatsAppButton />
     </TooltipProvider>
   </QueryClientProvider>
 );

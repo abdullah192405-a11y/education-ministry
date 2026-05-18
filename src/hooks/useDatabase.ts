@@ -1150,6 +1150,98 @@ export const useTeacherSingleChallengeResults = (teacherProfileId: string, limit
     });
 };
 
+/** Delete all single-challenge results for a teacher-owned topic and clear cached single stats. */
+export const useResetTopicSingleChallengeResults = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({
+            topicId,
+            teacherProfileId,
+        }: {
+            topicId: string;
+            teacherProfileId: string;
+        }) => {
+            const { data: ownership, error: ownershipError } = await supabase
+                .from("_TeacherTopics")
+                .select("A")
+                .eq("B", topicId)
+                .eq("A", teacherProfileId)
+                .maybeSingle();
+
+            if (ownershipError) throw ownershipError;
+            if (!ownership) {
+                throw new Error("غير مصرح بحذف نتائج هذا الدرس");
+            }
+
+            const { data: sessions, error: sessionsError } = await supabase
+                .from("challenge_sessions")
+                .select("id")
+                .eq("topic_id", topicId)
+                .eq("mode", "SINGLE");
+
+            if (sessionsError) throw sessionsError;
+
+            const sessionIds = (sessions || []).map((s: { id: string }) => s.id);
+
+            if (sessionIds.length > 0) {
+                const { error: deleteResultsError } = await supabase
+                    .from("challenge_results")
+                    .delete()
+                    .in("session_id", sessionIds);
+
+                if (deleteResultsError) throw deleteResultsError;
+            }
+
+            const { data: cachedReport, error: cachedReportError } = await supabase
+                .from("topic_content_reports")
+                .select("*")
+                .eq("topic_id", topicId)
+                .maybeSingle();
+
+            if (cachedReportError) throw cachedReportError;
+
+            if (cachedReport) {
+                const groupAttempts = Number(cachedReport.group_attempts || 0);
+                const now = new Date().toISOString();
+
+                if (groupAttempts <= 0) {
+                    const { error: deleteReportError } = await supabase
+                        .from("topic_content_reports")
+                        .delete()
+                        .eq("topic_id", topicId);
+                    if (deleteReportError) throw deleteReportError;
+                } else {
+                    const { error: updateReportError } = await supabase
+                        .from("topic_content_reports")
+                        .update({
+                            single_attempts: 0,
+                            unique_single_participants: 0,
+                            average_score_single: 0,
+                            total_attempts: groupAttempts,
+                            unique_participants: Number(cachedReport.unique_group_participants || 0),
+                            average_score_overall: Number(cachedReport.average_score_group || 0),
+                            question_analytics: [],
+                            updated_at: now,
+                            computed_at: now,
+                        })
+                        .eq("topic_id", topicId);
+                    if (updateReportError) throw updateReportError;
+                }
+            }
+
+            return { deletedSessionCount: sessionIds.length };
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({
+                queryKey: ["teacher_single_challenge_results", variables.teacherProfileId],
+            });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topic_content_report", variables.topicId] });
+            queryClient.invalidateQueries({ queryKey: ["topic_content_report_row", variables.topicId] });
+            queryClient.invalidateQueries({ queryKey: ["hosted_challenge_results"] });
+        },
+    });
+};
+
 /**
  * Full content report for one topic (teacher dashboard).
  * Calculates views + single/group challenge attempts and score metrics.

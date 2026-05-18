@@ -46,6 +46,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
+import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 
 type GameState = "intro" | "playing" | "results";
 
@@ -103,6 +104,7 @@ const SingleChallenge = () => {
     }, [joinDisplayName]);
 
     const [gameState, setGameState] = useState<GameState>("intro");
+    useHideFloatingChromeWhileActive(gameState !== "intro");
     const [questions, setQuestions] = useState<ChallengeQuestion[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [score, setScore] = useState(0);
@@ -1820,32 +1822,6 @@ const SingleChallenge = () => {
 
         return (
             <div className="max-w-3xl mx-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="text-sm text-muted-foreground">
-                            {currentIndex + 1}/{questions.length}
-                        </div>
-                        <Progress value={progress} className="w-32 h-2" />
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        {streak > 1 && (
-                            <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="flex items-center gap-1 px-3 py-1 rounded-full bg-orange-500/20 text-orange-500"
-                            >
-                                🔥 {streak}
-                            </motion.div>
-                        )}
-                        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10">
-                            <Trophy className="w-4 h-4 text-primary" />
-                            <span className="font-bold">{score}</span>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Timer */}
                 {!isSpinning && (
                     <div className="mb-6">
@@ -1861,6 +1837,32 @@ const SingleChallenge = () => {
                         />
                     </div>
                 )}
+
+                {/* Question progress & score */}
+                <div className="flex items-center justify-between gap-2 mb-6">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+                        <div className="text-sm text-muted-foreground shrink-0">
+                            {currentIndex + 1}/{questions.length}
+                        </div>
+                        <Progress value={progress} className="h-2 min-w-0 flex-1 sm:flex-none sm:w-32" />
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                        {streak > 1 && (
+                            <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full bg-orange-500/20 text-orange-500 shrink-0"
+                            >
+                                🔥 {streak}
+                            </motion.div>
+                        )}
+                        <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-primary/10">
+                            <Trophy className="w-4 h-4 text-primary shrink-0" />
+                            <span className="font-bold tabular-nums">{score}</span>
+                        </div>
+                    </div>
+                </div>
 
                 {/* Question Card */}
                 <Card className="p-6 md:p-8 mb-6">
@@ -2374,7 +2376,11 @@ const SingleChallenge = () => {
                 onClick={() => {
                     setMusicEnabled(prev => !prev);
                 }}
-                className="fixed top-24 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all"
+                className={`fixed left-4 z-50 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all ${
+                    gameState === "intro"
+                        ? "top-24 w-14 h-14"
+                        : "top-4 w-14 h-14 max-sm:top-auto max-sm:bottom-4 max-sm:w-12 max-sm:h-12"
+                }`}
             >
                 <AnimatePresence mode="wait">
                     {musicEnabled ? (
@@ -2389,8 +2395,8 @@ const SingleChallenge = () => {
                 </AnimatePresence>
             </motion.button>
 
-            <Header />
-            <main className="pt-24 pb-16 relative z-10">
+            {gameState === "intro" && <Header />}
+            <main className={`relative z-10 ${gameState === "intro" ? "pt-24 pb-16" : "pt-6 pb-16 max-sm:pb-24"}`}>
                 <div className="container mx-auto px-4">
                     {gameState === "intro" && (
                         <motion.div
@@ -2415,7 +2421,7 @@ const SingleChallenge = () => {
                     </AnimatePresence>
                 </div>
             </main>
-            <Footer />
+            {gameState === "intro" && <Footer />}
         </div>
     );
 };
