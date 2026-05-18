@@ -1,8 +1,15 @@
 {
+    "installCommand": "npm install && npx puppeteer browsers install chrome",
     "rewrites": [
         {
-            "source": "/(.*)",
+            "source": "/((?!api/).*)",
             "destination": "/index.html"
         }
-    ]
+    ],
+    "functions": {
+        "api/challenge-report-pdf.ts": {
+            "maxDuration": 60,
+            "memory": 1024
+        }
+    }
 }
