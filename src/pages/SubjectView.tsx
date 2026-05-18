@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Eye, Clock, ArrowRight, PlayCircle, ArrowLeft, User } from "lucide-react";
 import { useSubject } from "@/hooks/useDatabase";
+import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 
@@ -14,6 +15,7 @@ const SubjectView = () => {
     const { subjectId } = useParams();
     const { data: subject, isLoading, error } = useSubject(subjectId || "");
     const grade = subject?.grade;
+    const orderedTopics = sortTopicsByOrder(subject?.topics || []);
 
     if (isLoading) {
         return (
@@ -80,7 +82,7 @@ const SubjectView = () => {
                                         <div className="flex items-center gap-4">
                                             <Badge variant="secondary" className="gap-1">
                                                 <BookOpen className="w-3 h-3" />
-                                                {subject.topics?.length || 0} موضوع
+                                                {orderedTopics.length} موضوع
                                             </Badge>
                                             <Badge variant="outline">
                                                 {grade.name}
@@ -109,7 +111,7 @@ const SubjectView = () => {
                         </div>
 
                         <div className="space-y-4">
-                            {subject.topics?.map((topic: any, index: number) => (
+                            {orderedTopics.map((topic: any, index: number) => (
                                 <motion.div
                                     key={topic.id}
                                     initial={{ opacity: 0, x: -20 }}
@@ -206,7 +208,7 @@ const SubjectView = () => {
                             ))}
                         </div>
 
-                        {(subject.topics?.length || 0) === 0 && (
+                        {orderedTopics.length === 0 && (
                             <div className="text-center py-16">
                                 <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
                                 <p className="text-muted-foreground text-lg">لا توجد مواضيع متاحة حالياً</p>

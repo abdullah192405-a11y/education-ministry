@@ -266,6 +266,7 @@ const SingleChallenge = () => {
         setTotalTime(prev => prev + timeTaken);
         setQuestionResults(prev => [...prev, {
             questionId: currentQuestion.id,
+            questionText: currentQuestion.question,
             correct: false,
             timeTaken,
             pointsEarned: 0
@@ -298,6 +299,7 @@ const SingleChallenge = () => {
 
         setQuestionResults(prev => [...prev, {
             questionId: currentQuestion.id,
+            questionText: currentQuestion.question,
             correct: isCorrect,
             timeTaken,
             pointsEarned
@@ -472,6 +474,7 @@ const SingleChallenge = () => {
 
         setQuestionResults(prev => [...prev, {
             questionId: currentQuestion.id,
+            questionText: currentQuestion.question,
             correct: isCorrect,
             timeTaken,
             pointsEarned

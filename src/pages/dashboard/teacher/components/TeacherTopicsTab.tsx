@@ -6,7 +6,7 @@ import {
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
     FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download,
-    Users, Trophy, ChevronRight, TrendingUp,
+    Users, Trophy, ChevronRight, TrendingUp, ChevronUp, ChevronDown, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import {
     useCreateTopic,
     useUpdateTopic,
     useDeleteTopic,
+    useReorderTopics,
     useSaveTopicMedia,
     useSaveChallengeQuestions,
     useVisitorGradeClassMode,
@@ -45,8 +46,14 @@ import {
 } from "@/hooks/useDatabase";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
+import {
+    aggregateChallengeQuestionStats,
+    getQuestionResultsFromAttempt,
+    resolveQuestionLabel,
+} from "@/lib/challengeQuestionAnalytics";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { selectValueToPresetFields, type StudentChallengePresetValue } from "@/lib/topicChallengePreset";
+import { sortTopicsByOrder, getTopicSortOrder } from "@/lib/sortTopics";
 import ContentEditor from "./ContentEditor";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -95,6 +102,8 @@ interface ExtendedTopic {
     collect_single_challenge_participant_data?: boolean | null;
     student_challenge_mode?: string | null;
     student_challenge_category?: string | null;
+    sort_order?: number;
+    sortOrder?: number;
     createdAt: string;
     media?: any[];
     quiz?: any[];
@@ -238,44 +247,17 @@ const getAttemptLocalDateKey = (date: string | null) => {
     return Number.isFinite(parsed.getTime()) ? getLocalDateKey(parsed) : "";
 };
 
-const getQuestionResults = (result: unknown) => {
-    const rows = toRecord(result).question_results;
-    return Array.isArray(rows) ? rows.map((row) => toRecord(row)) : [];
-};
-
-const buildQuestionTextById = (topic: unknown) => {
-    const questionTextById = new Map<string, string>();
-    const topicRow = toRecord(topic);
-    const items = Array.isArray(topicRow.challengeItems)
-        ? topicRow.challengeItems
-        : Array.isArray(topicRow.challenge_questions)
-            ? topicRow.challenge_questions
-            : [];
-
-    items.forEach((item, index) => {
-        const question = toRecord(item);
-        const text = getStringField(question, ["question", "text", "title"]);
-        if (!text) return;
-
-        const id = String(question.id ?? index + 1);
-        questionTextById.set(id, text);
-        questionTextById.set(String(index + 1), text);
-    });
-
-    return questionTextById;
-};
-
 const getAttemptKey = (result: unknown, fallback = "") => {
     const row = toRecord(result);
     return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result)}-${fallback}`);
 };
 
-const getAttemptQuestionRows = (result: unknown, questionTextById: Map<string, string>) =>
-    getQuestionResults(result).map((question, index) => {
+const getAttemptQuestionRows = (result: unknown, topic: unknown) =>
+    getQuestionResultsFromAttempt(result).map((question, index) => {
         const questionId = String(question.questionId ?? question.question_id ?? question.id ?? index + 1);
         return {
             questionId,
-            label: questionTextById.get(questionId) || `سؤال ${questionId}`,
+            label: resolveQuestionLabel(question, index, topic),
             correct: Boolean(question.correct ?? question.isCorrect ?? question.is_correct),
             timeTaken: getNumberField(question, ["timeTaken", "time_taken"]),
             pointsEarned: getNumberField(question, ["pointsEarned", "points_earned"]),
@@ -362,6 +344,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const createTopicMutation = useCreateTopic();
     const updateTopicMutation = useUpdateTopic();
     const deleteTopicMutation = useDeleteTopic();
+    const reorderTopicsMutation = useReorderTopics();
     const saveMediaMutation = useSaveTopicMedia();
     const saveChallengeQuestionsMutation = useSaveChallengeQuestions();
 
@@ -379,6 +362,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const [singleChallengeResultsTopic, setSingleChallengeResultsTopic] = useState<ExtendedTopic | null>(null);
     const [expandedSingleAttempt, setExpandedSingleAttempt] = useState<unknown | null>(null);
     const [isSingleReportPdfDownloading, setIsSingleReportPdfDownloading] = useState(false);
+    const [reorderingTopicId, setReorderingTopicId] = useState<string | null>(null);
 
     const sortedSingleResultsForDialog = useMemo(() => {
         if (!singleChallengeResultsTopic) return [];
@@ -388,11 +372,6 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
     }, [singleChallengeResultsTopic, singleResultsByTopicId]);
-
-    const singleQuestionTextById = useMemo(
-        () => buildQuestionTextById(singleChallengeResultsTopic),
-        [singleChallengeResultsTopic]
-    );
 
     const singleChallengeCollectedReport = useMemo(() => {
         const list = sortedSingleResultsForDialog;
@@ -476,36 +455,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             .sort((a, b) => b.avg - a.avg || b.attempts - a.attempts)[0] || null;
         const todayActivity = dailyTrend[dailyTrend.length - 1] || null;
 
-        const questionMap = new Map<string, { questionId: string; attempts: number; correct: number; wrong: number; totalTime: number; points: number }>();
-        list.forEach((result: unknown) => {
-            getQuestionResults(result).forEach((question, index) => {
-                const id = String(question.questionId ?? question.question_id ?? question.id ?? index + 1);
-                const current = questionMap.get(id) || {
-                    questionId: id,
-                    attempts: 0,
-                    correct: 0,
-                    wrong: 0,
-                    totalTime: 0,
-                    points: 0,
-                };
-                const isCorrect = Boolean(question.correct ?? question.isCorrect ?? question.is_correct);
-                current.attempts += 1;
-                if (isCorrect) current.correct += 1;
-                else current.wrong += 1;
-                current.totalTime += getNumberField(question, ["timeTaken", "time_taken"]);
-                current.points += getNumberField(question, ["pointsEarned", "points_earned"]);
-                questionMap.set(id, current);
-            });
-        });
-
-        const questionAnalytics = Array.from(questionMap.values())
-            .map((question) => ({
-                ...question,
-                label: singleQuestionTextById.get(question.questionId) || `سؤال ${question.questionId}`,
-                accuracy: question.attempts ? Math.round((question.correct / question.attempts) * 100) : 0,
-                avgTime: question.attempts ? Math.round(question.totalTime / question.attempts) : 0,
-            }))
-            .sort((a, b) => a.accuracy - b.accuracy);
+        const questionAnalytics = aggregateChallengeQuestionStats(
+            list,
+            singleChallengeResultsTopic
+        ).sort((a, b) => a.accuracy - b.accuracy);
 
         const topAttempts = [...scoreRows]
             .sort((a, b) => b.score - a.score || a.timeTaken - b.timeTaken)
@@ -673,7 +626,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             recommendations,
             topAttempts,
         };
-    }, [sortedSingleResultsForDialog, singleQuestionTextById]);
+    }, [sortedSingleResultsForDialog, singleChallengeResultsTopic]);
 
     const buildSingleShareLink = (topicId: string, category: SingleShareCategory) => {
         const gradeSegment = currentGrade?.slug || selectedGradeId;
@@ -823,7 +776,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 quiz: topic.quizQuestions || topic.quiz || [],
                 challengeItems: topic.challengeItems || topic.challenge_questions || [],
             }));
-            setTopics(mapped);
+            setTopics(sortTopicsByOrder(mapped));
         }
     }, [subjectData]);
 
@@ -1068,6 +1021,40 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         setIsEditorOpen(true);
     };
 
+    const handleMoveTopic = async (topicId: string, direction: "up" | "down") => {
+        if (searchQuery.trim() || !selectedSubjectId) return;
+
+        const index = topics.findIndex((t) => t.id === topicId);
+        if (index < 0) return;
+
+        const swapIndex = direction === "up" ? index - 1 : index + 1;
+        if (swapIndex < 0 || swapIndex >= topics.length) return;
+
+        const previousTopics = topics;
+        const nextTopics = [...topics];
+        [nextTopics[index], nextTopics[swapIndex]] = [nextTopics[swapIndex], nextTopics[index]];
+        const withOrder = nextTopics.map((topic, sortIndex) => ({ ...topic, sort_order: sortIndex }));
+        setTopics(withOrder);
+        setReorderingTopicId(topicId);
+
+        try {
+            await reorderTopicsMutation.mutateAsync({
+                orders: withOrder.map((topic, sortIndex) => ({ id: topic.id, sort_order: sortIndex })),
+                subjectId: String(selectedSubjectId),
+            });
+            toast({ title: "تم تحديث ترتيب الدروس" });
+        } catch (error: any) {
+            setTopics(previousTopics);
+            toast({
+                title: "تعذر تغيير الترتيب",
+                description: error?.message || "حاول مرة أخرى",
+                variant: "destructive",
+            });
+        } finally {
+            setReorderingTopicId(null);
+        }
+    };
+
     const handleSaveTopic = async (topicData: any) => {
         const mediaItems = topicData.media || [];
         const challengeItems = topicData.challengeItems || [];
@@ -1114,6 +1101,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 }
             } else {
                 // Create new topic - use mutateAsync for proper error handling
+                const nextSortOrder =
+                    topics.length > 0
+                        ? Math.max(...topics.map((t) => getTopicSortOrder(t))) + 1
+                        : 0;
+
                 const newTopic = await createTopicMutation.mutateAsync({
                     subject_id: String(selectedSubjectId),
                     teacherId: teacherProfileId,
@@ -1121,6 +1113,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
                     duration: topicData.duration,
+                    sort_order: nextSortOrder,
                     discussions_enabled: topicData.discussionsEnabled ?? true,
                     collect_single_challenge_participant_data: topicData.collectSingleChallengeParticipantData === true,
                     student_challenge_mode: presetFields.student_challenge_mode,
@@ -1298,6 +1291,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             درس جديد
                         </Button>
                     </div>
+                    {!searchQuery.trim() && topics.length > 1 && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <ArrowUpDown className="w-3.5 h-3.5" />
+                            استخدم الأسهم لترتيب الدروس — يظهر نفس الترتيب للطلاب في «المواضيع التعليمية»
+                        </p>
+                    )}
 
                     {/* Delete Confirmation */}
                     <AnimatePresence>
@@ -1363,7 +1362,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             ))
                         ) : (
                         <>
-                        {filteredTopics.map((topic, i) => (
+                        {filteredTopics.map((topic, i) => {
+                            const topicIndex = topics.findIndex((t) => t.id === topic.id);
+                            return (
                             <motion.div
                                 key={topic.id}
                                 initial={{ opacity: 0, x: -20 }}
@@ -1373,6 +1374,46 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             >
                                 <Card className={`hover:shadow-md transition-shadow ${deleteConfirmId === topic.id ? "ring-2 ring-destructive" : ""}`}>
                                     <CardContent className="p-4 flex flex-col md:flex-row gap-4">
+                                        {!searchQuery.trim() && topics.length > 1 && topicIndex >= 0 && (
+                                            <div
+                                                className="flex md:flex-col items-center justify-center gap-1 shrink-0 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-1.5"
+                                                aria-label="ترتيب الدرس"
+                                            >
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-9 w-9 bg-background"
+                                                    disabled={topicIndex === 0 || reorderingTopicId !== null}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        void handleMoveTopic(topic.id, "up");
+                                                    }}
+                                                    title="تحريك لأعلى"
+                                                >
+                                                    <ChevronUp className="w-4 h-4" />
+                                                </Button>
+                                                <span className="text-xs font-bold text-primary tabular-nums">
+                                                    {topicIndex + 1}
+                                                </span>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-9 w-9 bg-background"
+                                                    disabled={topicIndex === topics.length - 1 || reorderingTopicId !== null}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        void handleMoveTopic(topic.id, "down");
+                                                    }}
+                                                    title="تحريك لأسفل"
+                                                >
+                                                    <ChevronDown className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        )}
                                         {/* Thumbnail */}
                                         <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0 relative group">
                                             <img
@@ -1658,7 +1699,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     </CardContent>
                                 </Card>
                             </motion.div>
-                        ))}
+                            );
+                        })}
 
                         {/* Empty State */}
                         {filteredTopics.length === 0 && (
@@ -2612,7 +2654,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                             const attemptKey = getAttemptKey(r, String(index));
                                             const expandedKey = expandedSingleAttempt ? getAttemptKey(expandedSingleAttempt, String(index)) : "";
                                             const isExpanded = expandedKey === attemptKey;
-                                            const questionRows = getAttemptQuestionRows(r, singleQuestionTextById);
+                                            const questionRows = getAttemptQuestionRows(r, singleChallengeResultsTopic);
                                             const scoreClass =
                                                 pct >= 75
                                                     ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"

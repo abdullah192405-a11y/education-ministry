@@ -9,6 +9,7 @@ import {
     parseVisitorGradeClassMode,
 } from "@/lib/contentVisibility";
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
+import { sortTopicsByOrder } from "@/lib/sortTopics";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -118,10 +119,12 @@ export const useGradeDetail = (slug: string, options?: OrgScopeOptions) => {
             // Map student_profiles count to students_count; decode صوت/رابط المخزّنة كـ TEXT
             const subjects = (data?.subjects || []).map((s: any) => ({
                 ...s,
-                topics: (s.topics || []).map((t: any) => ({
-                    ...t,
-                    mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(t)),
-                })),
+                topics: sortTopicsByOrder(
+                    (s.topics || []).map((t: any) => ({
+                        ...t,
+                        mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(t)),
+                    })),
+                ),
             }));
 
             return {
@@ -172,11 +175,13 @@ export const useSubject = (id: string, teacherId?: string, options?: OrgScopeOpt
             // Map challenge questions for each topic; decode وسائط الدرس
             return {
                 ...data,
-                topics: (data?.topics || []).map((topic: any) => ({
-                    ...topic,
-                    mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(topic)),
-                    challengeItems: (topic.challengeItems || []).map(mapChallengeQuestion),
-                })),
+                topics: sortTopicsByOrder(
+                    (data?.topics || []).map((topic: any) => ({
+                        ...topic,
+                        mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(topic)),
+                        challengeItems: (topic.challengeItems || []).map(mapChallengeQuestion),
+                    })),
+                ),
             };
         },
         enabled: !!id,
@@ -2272,7 +2277,35 @@ export const useUpdateTopic = () => {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["topic", data.id] });
             queryClient.invalidateQueries({ queryKey: ["subject", data.subject_id] });
+            queryClient.invalidateQueries({ queryKey: ["grade"] });
         }
+    });
+};
+
+/** Persist display order for all topics in a subject (lesson reordering in teacher dashboard). */
+export const useReorderTopics = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({
+            orders,
+        }: {
+            orders: { id: string; sort_order: number }[];
+            subjectId: string;
+        }) => {
+            const now = new Date().toISOString();
+            const results = await Promise.all(
+                orders.map(({ id, sort_order }) =>
+                    supabase.from("topics").update({ sort_order, updated_at: now }).eq("id", id),
+                ),
+            );
+            const failed = results.find((r) => r.error);
+            if (failed?.error) throw failed.error;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["subject", variables.subjectId] });
+            queryClient.invalidateQueries({ queryKey: ["grade"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
+        },
     });
 };
 
