@@ -48,6 +48,7 @@ import {
 import { useSound } from "@/hooks/useSound";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
+import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { useMutation } from "@tanstack/react-query";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
@@ -132,6 +133,7 @@ const GroupChallenge = () => {
     const saveAnswersMutation = useSaveAnswers();
     const { data: topicActivities } = useStudentTopicActivities(studentProfile?.id || "", 50);
     const [resultsSaved, setResultsSaved] = useState(false);
+    const [lessonRatingOpen, setLessonRatingOpen] = useState(false);
 
     // Refs for synchronization
     const phaseRef = useRef(phase);
@@ -896,6 +898,14 @@ const GroupChallenge = () => {
 
         saveResults();
     }, [phase, resultsSaved, currentUser?.id, topicId, content, studentProfile?.id, subjectProgress]);
+
+    useEffect(() => {
+        if (phase === "final_results" && topicId) {
+            const timer = setTimeout(() => setLessonRatingOpen(true), 6500);
+            return () => clearTimeout(timer);
+        }
+        setLessonRatingOpen(false);
+    }, [phase, topicId]);
 
     // Handle animations sequentially when arriving at final results
     useEffect(() => {
@@ -3001,6 +3011,15 @@ const GroupChallenge = () => {
                 </AnimatePresence>
             </main>
             {phase === "lobby" && <Footer />}
+
+            {topicId && (
+                <LessonEmojiRatingDialog
+                    topicId={topicId}
+                    userId={currentUser?.id}
+                    open={lessonRatingOpen}
+                    onOpenChange={setLessonRatingOpen}
+                />
+            )}
         </div>
     );
 };

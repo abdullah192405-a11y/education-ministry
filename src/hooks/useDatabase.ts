@@ -10,6 +10,7 @@ import {
 } from "@/lib/contentVisibility";
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
+import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -525,7 +526,7 @@ export const useTopicRatings = (topicId: string) => {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("topic_ratings")
-                .select("id, user_id, rating, comment, created_at")
+                .select("id, user_id, guest_id, rating, comment, created_at")
                 .eq("topic_id", topicId)
                 .order("created_at", { ascending: false });
             if (error) throw error;
@@ -538,19 +539,31 @@ export const useTopicRatings = (topicId: string) => {
 export const useUpsertTopicRating = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: { topicId: string; userId: string; rating: number; comment?: string | null }) => {
+        mutationFn: async (payload: {
+            topicId: string;
+            userId?: string | null;
+            guestId?: string | null;
+            rating: number;
+            comment?: string | null;
+        }) => {
             const now = new Date().toISOString();
+            const userId = payload.userId?.trim() || null;
+            const guestId = payload.guestId?.trim() || null;
+            const raterKey = buildTopicRatingRaterKey({ userId, guestId });
+
             const { data, error } = await supabase
                 .from("topic_ratings")
                 .upsert(
                     {
                         topic_id: payload.topicId,
-                        user_id: payload.userId,
+                        user_id: userId,
+                        guest_id: userId ? null : guestId,
+                        rater_key: raterKey,
                         rating: payload.rating,
-                        comment: payload.comment || null,
+                        comment: payload.comment ?? null,
                         updated_at: now,
                     },
-                    { onConflict: "topic_id,user_id" }
+                    { onConflict: "topic_id,rater_key" }
                 )
                 .select()
                 .single();

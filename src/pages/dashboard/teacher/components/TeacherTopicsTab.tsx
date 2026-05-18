@@ -44,7 +44,10 @@ import {
     useTeacherSingleChallengeResults,
     useTeacherTopicContentReport,
     useResetTopicSingleChallengeResults,
+    useTopicRatings,
 } from "@/hooks/useDatabase";
+import { aggregateTopicLessonRatings } from "@/lib/topicRatingStats";
+import LessonRatingSummaryCard from "@/components/LessonRatingSummaryCard";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
 import {
@@ -389,6 +392,22 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
     }, [singleChallengeResultsTopic, singleResultsByTopicId]);
+
+    const singleTopicIdForRatings = singleChallengeResultsTopic?.id
+        ? String(singleChallengeResultsTopic.id)
+        : "";
+    const { data: singleTopicRatings = [] } = useTopicRatings(singleTopicIdForRatings);
+    const lessonRatingSummary = useMemo(
+        () => aggregateTopicLessonRatings(singleTopicRatings),
+        [singleTopicRatings]
+    );
+
+    const contentReportTopicId = selectedTopicStats?.id ? String(selectedTopicStats.id) : "";
+    const { data: contentReportTopicRatings = [] } = useTopicRatings(contentReportTopicId);
+    const contentReportLessonRating = useMemo(
+        () => aggregateTopicLessonRatings(contentReportTopicRatings),
+        [contentReportTopicRatings]
+    );
 
     const singleChallengeCollectedReport = useMemo(() => {
         const list = sortedSingleResultsForDialog;
@@ -752,7 +771,21 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 sessionDate: new Date().toLocaleDateString("ar-SA", { dateStyle: "full" }),
                 sessionTime: new Date().toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" }),
                 mergedSessionsNote: `تقرير مجمع لكل محاولات رابط التحدي الفردي. إجمالي المحاولات: ${singleChallengeCollectedReport.count}، متوسط الأداء: ${singleChallengeCollectedReport.averageScore}%، معدل النجاح: ${singleChallengeCollectedReport.passRate}%.`,
+                lessonRating:
+                    lessonRatingSummary.total > 0 ? lessonRatingSummary : undefined,
                 analysisRows: [
+                    ...(lessonRatingSummary.total > 0
+                        ? [
+                              {
+                                  label: "تقييم الدرس (متوسط)",
+                                  value: `${lessonRatingSummary.average.toFixed(1)} / 5`,
+                              },
+                              {
+                                  label: "عدد تقييمات الدرس",
+                                  value: lessonRatingSummary.total,
+                              },
+                          ]
+                        : []),
                     { label: "الوسيط", value: `${singleChallengeCollectedReport.medianScore}%` },
                     { label: "أدنى نتيجة", value: `${singleChallengeCollectedReport.lowestScore}%` },
                     { label: "Q1", value: `${singleChallengeCollectedReport.q1Score}%` },
@@ -1882,6 +1915,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                             ))}
                                         </div>
 
+                                        <LessonRatingSummaryCard
+                                            summary={contentReportLessonRating}
+                                            emptyMessage="لا توجد تقييمات بعد لهذا الدرس."
+                                        />
+
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <Card className="border-blue-200 bg-blue-50/50">
                                                 <CardHeader className="pb-2">
@@ -2214,6 +2252,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         </div>
                                     ))}
                                 </div>
+
+                                <LessonRatingSummaryCard summary={lessonRatingSummary} />
 
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     <Card className="border-primary/20">

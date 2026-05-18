@@ -29,6 +29,7 @@ import {
     useCreateChallengeSession,
 } from "@/hooks/useDatabase";
 import { getTopicChallengePreset, navigateToTopicChallenge } from "@/lib/topicChallengePreset";
+import { findMyTopicRating, getOrCreateTopicRatingGuestId } from "@/lib/topicRatingGuest";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
@@ -110,6 +111,7 @@ const TopicView = () => {
         type: string;
     } | null>>({});
     const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+    const [topicRatingGuestId] = useState(() => getOrCreateTopicRatingGuestId());
     const hasIncrementedView = useRef(false);
     const discussionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
     const replyAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -347,10 +349,10 @@ const TopicView = () => {
         ratingsTotal > 0
             ? ratingsList.reduce((sum: number, r: any) => sum + Number(r.rating || 0), 0) / ratingsTotal
             : 0;
-    const myRating =
-        Number(
-            (ratingsList.find((r: any) => currentUserId && r.user_id === currentUserId)?.rating) || 0
-        ) || 0;
+    const myRating = findMyTopicRating(ratingsList, {
+        userId: currentUserId,
+        guestId: currentUserId ? null : topicRatingGuestId,
+    });
 
     const isUuid = (value?: string | null) => {
         if (!value) return false;
@@ -499,14 +501,11 @@ const TopicView = () => {
     };
 
     const handleRateTopic = async (value: number) => {
-        if (!currentUserId) {
-            toast({ title: "سجّل الدخول أولًا", description: "يلزم تسجيل الدخول للتقييم." });
-            return;
-        }
         try {
             await upsertTopicRatingMutation.mutateAsync({
                 topicId: topic.id,
                 userId: currentUserId,
+                guestId: currentUserId ? null : topicRatingGuestId,
                 rating: value,
             });
         } catch (e) {

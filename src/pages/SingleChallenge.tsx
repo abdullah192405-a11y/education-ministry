@@ -52,6 +52,7 @@ import {
     buildSingleChallengeShareUrl,
     openWhatsAppShare,
 } from "@/lib/challengeShareMessage";
+import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 
 type GameState = "intro" | "playing" | "results";
 
@@ -109,6 +110,7 @@ const SingleChallenge = () => {
     const saveAnswersMutation = useSaveAnswers();
     const updatePlayerSessionMutation = useUpdatePlayerSession();
     const [resultsSaved, setResultsSaved] = useState(false);
+    const [lessonRatingOpen, setLessonRatingOpen] = useState(false);
     const [guestDisplayName, setGuestDisplayName] = useState("");
 
     useEffect(() => {
@@ -1108,6 +1110,14 @@ const SingleChallenge = () => {
             ...extra,
         };
     };
+
+    useEffect(() => {
+        if (gameState === "results" && topicId) {
+            setLessonRatingOpen(true);
+        } else {
+            setLessonRatingOpen(false);
+        }
+    }, [gameState, topicId]);
 
     // Recompute session badges when results screen is shown (includes prior attempts when logged in)
     useEffect(() => {
@@ -2478,6 +2488,15 @@ const SingleChallenge = () => {
                 </div>
             </main>
             {gameState === "intro" && <Footer />}
+
+            {topicId && (
+                <LessonEmojiRatingDialog
+                    topicId={topicId}
+                    userId={currentUser?.id}
+                    open={lessonRatingOpen}
+                    onOpenChange={setLessonRatingOpen}
+                />
+            )}
         </div>
     );
 };

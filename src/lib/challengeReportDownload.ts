@@ -53,6 +53,18 @@ export type ChallengeRecommendationReport = {
     }>;
 };
 
+export type ChallengeReportLessonRating = {
+    total: number;
+    average: number;
+    distribution: Array<{
+        value: number;
+        emoji: string;
+        label: string;
+        count: number;
+        percent: number;
+    }>;
+};
+
 export type ChallengeReportCsvOptions = {
     topicTitle: string;
     lessonTitle?: string;
@@ -63,6 +75,7 @@ export type ChallengeReportCsvOptions = {
     sessionTime?: string;
     mergedSessionsNote?: string;
     analysisRows?: Array<{ label: string; value: string | number }>;
+    lessonRating?: ChallengeReportLessonRating;
     recommendations?: string[];
     recommendationReport?: ChallengeRecommendationReport;
     charts?: ChallengeReportChartOptions;
@@ -120,6 +133,24 @@ export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): vo
             ])
         );
     });
+
+    if (opts.lessonRating && opts.lessonRating.total > 0) {
+        lines.push("");
+        lines.push(join(["تقييم الدرس"]));
+        lines.push(
+            join([
+                "إجمالي التقييمات",
+                opts.lessonRating.total,
+                "المتوسط / 5",
+                opts.lessonRating.average.toFixed(1),
+            ])
+        );
+        lines.push(join(["الإيموجي", "التسمية", "العدد", "النسبة %"]));
+        for (const row of opts.lessonRating.distribution) {
+            if (row.count <= 0) continue;
+            lines.push(join([row.emoji, row.label, row.count, row.percent]));
+        }
+    }
 
     if (opts.questionRows && opts.questionRows.length > 0) {
         lines.push("");

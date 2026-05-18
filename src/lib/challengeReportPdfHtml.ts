@@ -20,6 +20,18 @@ type ChallengeRecommendationReport = {
     }>;
 };
 
+type ChallengeReportLessonRating = {
+    total: number;
+    average: number;
+    distribution: Array<{
+        value: number;
+        emoji: string;
+        label: string;
+        count: number;
+        percent: number;
+    }>;
+};
+
 type ChallengeReportOptions = {
     topicTitle: string;
     lessonTitle?: string;
@@ -30,6 +42,7 @@ type ChallengeReportOptions = {
     sessionTime?: string;
     mergedSessionsNote?: string;
     analysisRows?: Array<{ label: string; value: string | number }>;
+    lessonRating?: ChallengeReportLessonRating;
     recommendations?: string[];
     recommendationReport?: ChallengeRecommendationReport;
     charts?: Record<string, Array<Record<string, unknown>> | undefined>;
@@ -171,6 +184,42 @@ function renderReportMeta(opts: ChallengeReportOptions, generatedAt: string): st
     return rows
         .map(([label, value]) => `<span><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`)
         .join("");
+}
+
+function renderLessonRatings(lessonRating?: ChallengeReportLessonRating): string {
+    if (!lessonRating?.total) return "";
+
+    const rows = lessonRating.distribution.filter((row) => row.count > 0);
+  const maxCount = Math.max(...rows.map((row) => row.count), 1);
+
+    return `
+        <section class="section page-break-avoid">
+            <h2>تقييم الدرس</h2>
+            <p class="lesson-rating-summary">
+                <strong>${lessonRating.total}</strong> تقييم — المتوسط
+                <strong>${lessonRating.average.toFixed(1)}</strong> / 5
+            </p>
+            <div class="lesson-rating-bars">
+                ${lessonRating.distribution
+                    .map((row) => {
+                        const width = row.count > 0 ? Math.max(8, Math.round((row.count / maxCount) * 100)) : 0;
+                        return `
+                            <div class="lesson-rating-row">
+                                <div class="lesson-rating-label">
+                                    <span class="lesson-rating-emoji">${row.emoji}</span>
+                                    <span>${escapeHtml(row.label)}</span>
+                                </div>
+                                <div class="lesson-rating-track">
+                                    <div class="lesson-rating-fill" style="width:${width}%"></div>
+                                </div>
+                                <div class="lesson-rating-meta">${row.count} (${row.percent}%)</div>
+                            </div>
+                        `;
+                    })
+                    .join("")}
+            </div>
+        </section>
+    `;
 }
 
 function renderAnalysisRows(rows?: Array<{ label: string; value: string | number }>): string {
@@ -707,6 +756,48 @@ export function buildChallengeReportHtml(
             color: #4c1d95;
             font-size: 19px;
         }
+        .lesson-rating-summary {
+            margin-bottom: 12px;
+            color: #475569;
+            font-size: 12px;
+        }
+        .lesson-rating-bars {
+            display: grid;
+            gap: 8px;
+        }
+        .lesson-rating-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 72px;
+            gap: 10px;
+            align-items: center;
+        }
+        .lesson-rating-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .lesson-rating-emoji {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .lesson-rating-track {
+            height: 10px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            overflow: hidden;
+        }
+        .lesson-rating-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #a78bfa, #7c3aed);
+        }
+        .lesson-rating-meta {
+            font-size: 10px;
+            color: #64748b;
+            text-align: left;
+        }
         .section {
             margin-top: 18px;
             break-inside: avoid;
@@ -1053,6 +1144,7 @@ export function buildChallengeReportHtml(
     </header>
 
     ${renderMetricCards(summary)}
+    ${renderLessonRatings(opts.lessonRating)}
     ${renderAnalysisRows(opts.analysisRows)}
     ${renderCharts(opts.charts)}
     ${renderParticipants(results)}
