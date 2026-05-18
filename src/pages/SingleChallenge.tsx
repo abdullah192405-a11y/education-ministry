@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
     ChevronLeft, Trophy, Zap, Clock, Target,
-    CheckCircle2, XCircle, RotateCcw, Home, Share2,
+    CheckCircle2, XCircle, RotateCcw, Home, Share2, Check,
     ArrowLeft, ArrowRight, GripVertical, Sparkles, ArrowUp, ArrowDown,
     Volume2, VolumeX, Music, Trash2
 } from "lucide-react";
@@ -35,7 +35,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
     getWheelSubQuestion,
     getLevelFromScore,
-    availableBadges,
+    evaluateSessionBadges,
+    type ChallengeBadgeContext,
     type ChallengeQuestion,
     type SinglePlayerResult,
     type Badge
@@ -135,6 +136,8 @@ const SingleChallenge = () => {
 
     // Music control
     const [musicEnabled, setMusicEnabled] = useState(true);
+    const [showAnalysis, setShowAnalysis] = useState(false);
+    const [earnedSessionBadges, setEarnedSessionBadges] = useState<Badge[]>([]);
 
     const soundOverrides = useMemo(() => ({
         correct: content?.correct_sound_url?.trim() || undefined,
@@ -221,6 +224,8 @@ const SingleChallenge = () => {
         setQuestionResults([]);
         setTotalTime(0);
         setResultsSaved(false);
+        setShowAnalysis(false);
+        setEarnedSessionBadges([]);
 
         startQuestion(0);
     };
@@ -258,6 +263,7 @@ const SingleChallenge = () => {
 
     const handleTimeout = () => {
         const timeTaken = currentQuestion.timeLimit;
+        setTotalTime(prev => prev + timeTaken);
         setQuestionResults(prev => [...prev, {
             questionId: currentQuestion.id,
             correct: false,
@@ -828,15 +834,29 @@ const SingleChallenge = () => {
                 // 0. Pre-check: Was this topic already completed?
                 // This must happen BEFORE we save the new activity!
                 console.log("[Save] Step 0: Checking for previous completions...");
-                const { data: previousCompletions } = await supabase
+                const { data: priorTopicActivities } = await supabase
                     .from("student_topic_activities")
-                    .select("id")
+                    .select("id, percentage, completed")
                     .eq("student_id", studentProfile.id)
-                    .eq("topic_id", topicId)
-                    .eq("completed", true);
+                    .eq("topic_id", topicId);
 
-                const wasTopicAlreadyCompleted = (previousCompletions || []).length > 0;
+                const priorRows = priorTopicActivities || [];
+                const completedPrior = priorRows.filter((a) => a.completed);
+                const wasTopicAlreadyCompleted = completedPrior.length > 0;
+                const previousBestPercentage =
+                    completedPrior.length > 0
+                        ? Math.max(...completedPrior.map((a) => Number(a.percentage) || 0))
+                        : null;
+
+                const sessionBadges = evaluateSessionBadges(
+                    buildBadgeContext({
+                        isFirstAttemptOnTopic: !wasTopicAlreadyCompleted,
+                        previousBestPercentage,
+                        topicAttemptCount: priorRows.length + 1,
+                    })
+                );
                 console.log("[Save] Was topic already completed?", wasTopicAlreadyCompleted);
+                console.log("[Save] Session badges:", sessionBadges.map((b) => b.id));
 
                 // 1. Get or Create challenge session
                 console.log("[Save] Step 1: Getting/Creating challenge session...");
@@ -1014,10 +1034,10 @@ const SingleChallenge = () => {
                 }
 
                 // 6. Award badges
-                if (results.badges.length > 0) {
-                    const badgeSlugs = results.badges
+                if (sessionBadges.length > 0) {
+                    const badgeSlugs = sessionBadges
                         .filter(Boolean)
-                        .map(b => b.id); // badge ids in challengeTypes map to slugs in DB
+                        .map(b => b.id); // badge id = slug in badges table
                     if (badgeSlugs.length > 0) {
                         try {
                             console.log("[Save] Step 6: Awarding badges...", badgeSlugs);
@@ -1074,31 +1094,81 @@ const SingleChallenge = () => {
         questions,
     ]);
 
+    const buildBadgeContext = (extra?: Partial<ChallengeBadgeContext>): ChallengeBadgeContext => {
+        const correctAnswers = questionResults.filter((r) => r.correct).length;
+        return {
+            correctAnswers,
+            totalQuestions: questions.length,
+            totalTimeSeconds: totalTime,
+            longestStreak,
+            ...extra,
+        };
+    };
+
+    // Recompute session badges when results screen is shown (includes prior attempts when logged in)
+    useEffect(() => {
+        if (gameState !== "results" || questions.length === 0) {
+            if (gameState !== "results") setEarnedSessionBadges([]);
+            return;
+        }
+
+        const base = buildBadgeContext();
+        setEarnedSessionBadges(evaluateSessionBadges(base));
+
+        if (!studentProfile?.id || !topicId) return;
+
+        let cancelled = false;
+        (async () => {
+            const { data: priorActivities } = await supabase
+                .from("student_topic_activities")
+                .select("percentage, completed")
+                .eq("student_id", studentProfile.id)
+                .eq("topic_id", topicId);
+
+            if (cancelled) return;
+
+            const rows = priorActivities || [];
+            const completedPrior = rows.filter((a) => a.completed);
+            const previousBest =
+                completedPrior.length > 0
+                    ? Math.max(...completedPrior.map((a) => Number(a.percentage) || 0))
+                    : null;
+
+            setEarnedSessionBadges(
+                evaluateSessionBadges(
+                    buildBadgeContext({
+                        isFirstAttemptOnTopic: completedPrior.length === 0,
+                        previousBestPercentage: previousBest,
+                        topicAttemptCount: rows.length + 1,
+                    })
+                )
+            );
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        gameState,
+        questionResults,
+        questions.length,
+        totalTime,
+        longestStreak,
+        studentProfile?.id,
+        topicId,
+    ]);
+
     // Calculate results
     const getResults = (): SinglePlayerResult => {
         const correctAnswers = questionResults.filter(r => r.correct).length;
         const totalQuestions = questions.length;
         const maxScore = questions.reduce((acc, q) => acc + q.points, 0);
         const percentage = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
-
-        const earnedBadges: Badge[] = [];
-
-        if (percentage === 100) {
-            earnedBadges.push(availableBadges.find(b => b.id === "perfect")!);
-        }
-        if (percentage >= 90) {
-            earnedBadges.push(availableBadges.find(b => b.id === "scholar")!);
-        }
-        if (longestStreak >= 5) {
-            earnedBadges.push(availableBadges.find(b => b.id === "streak_master")!);
-        }
-        if (totalTime < 120) {
-            earnedBadges.push(availableBadges.find(b => b.id === "quick_learner")!);
-        }
         const avgTime = totalQuestions > 0 ? totalTime / totalQuestions : 0;
-        if (avgTime < 3 && avgTime > 0) {
-            earnedBadges.push(availableBadges.find(b => b.id === "speed_demon")!);
-        }
+        const badges =
+            gameState === "results"
+                ? earnedSessionBadges
+                : evaluateSessionBadges(buildBadgeContext());
 
         return {
             totalQuestions,
@@ -1112,7 +1182,7 @@ const SingleChallenge = () => {
             longestStreak,
             accuracy: percentage,
             questionResults,
-            badges: earnedBadges.filter(Boolean),
+            badges,
             level: getLevelFromScore(percentage).level
         };
     };
@@ -2124,64 +2194,153 @@ const SingleChallenge = () => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 1 }}
-                        className="flex flex-wrap gap-4 justify-center relative z-20 pb-10"
+                        className="flex flex-col sm:flex-row gap-4 justify-center relative z-20 pb-10 max-w-md mx-auto"
                     >
                         <Button
                             onClick={handleStartGame}
                             variant="outline"
                             size="lg"
-                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
+                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3 w-full sm:flex-1"
                         >
                             <RotateCcw className="w-5 h-5 text-primary" />
                             <span>إعادة التحدي</span>
                         </Button>
 
                         <Button
-                            asChild
-                            variant="outline"
-                            size="lg"
-                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
-                        >
-                            <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`} className="flex items-center">
-                                <Home className="w-5 h-5 text-secondary" />
-                                <span>المحتوى</span>
-                            </Link>
-                        </Button>
-
-                        <Button
-                            asChild
+                            onClick={() => setShowAnalysis(true)}
                             size="lg"
                             variant="hero"
-                            className="rounded-[2rem] px-12 h-16 text-lg shadow-[0_20px_40px_-10px_rgba(var(--primary),0.4)] font-black transition-all hover:scale-105 active:scale-95 gap-3"
+                            className="rounded-[2rem] px-10 h-16 text-lg shadow-[0_20px_40px_-10px_rgba(var(--primary),0.4)] font-black transition-all hover:scale-105 active:scale-95 gap-3 w-full sm:flex-1"
                         >
-                            <Link to="/dashboard/student" className="flex items-center">
-                                <Trophy className="w-5 h-5" />
-                                <span>لوحة التحكم</span>
-                            </Link>
-                        </Button>
-
-                        <Button
-                            onClick={handleWhatsAppShare}
-                            size="lg"
-                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3 bg-[#25D366] hover:bg-[#20bd5a] text-white border-transparent"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                            </svg>
-                            <span>واتساب</span>
-                        </Button>
-
-                        <Button
-                            onClick={handleShare}
-                            size="lg"
-                            variant="outline"
-                            className="rounded-[2rem] px-10 h-16 text-lg border-2 font-bold transition-all hover:scale-105 active:scale-95 gap-3"
-                        >
-                            <Share2 className="w-5 h-5 text-primary" />
-                            <span>مشاركة</span>
+                            <Zap className="w-5 h-5" />
+                            <span>تحليل نتيجتي</span>
                         </Button>
                     </motion.div>
                 </Card>
+
+                {/* Analysis & Share Modal */}
+                <AnimatePresence>
+                    {showAnalysis && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4"
+                        >
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setShowAnalysis(false)}
+                                className="absolute inset-0 bg-black/60 backdrop-blur-md"
+                            />
+                            <motion.div
+                                initial={{ y: "100%", opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: "100%", opacity: 0 }}
+                                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                                className="relative bg-white dark:bg-slate-900 w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[85vh] overflow-hidden rounded-t-[1.75rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col min-h-0"
+                            >
+                                <div className="shrink-0 px-4 pt-3 pb-3 sm:p-8 sm:pb-4 border-b dark:border-slate-800 flex items-start gap-3 bg-slate-50 dark:bg-slate-800/50">
+                                    <div className="flex-1 min-w-0 pt-1 sm:pt-0">
+                                        <h2 className="text-xl sm:text-3xl font-black mb-0.5 sm:mb-1 leading-tight">تحليل نتيجتي</h2>
+                                        <p className="text-xs sm:text-sm text-muted-foreground leading-snug">تفاصيل أدائك ومشاركة النتيجة</p>
+                                    </div>
+                                    <Button variant="ghost" size="icon" onClick={() => setShowAnalysis(false)} className="shrink-0 rounded-full w-10 h-10 sm:w-12 sm:h-12">
+                                        <XCircle className="w-6 h-6 sm:w-8 sm:h-8" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:p-8 sm:pt-6 space-y-4 sm:space-y-6">
+                                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                                        <div className="p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 text-center min-w-0">
+                                            <div className="text-xl sm:text-3xl font-black text-green-600 dark:text-green-400 tabular-nums">
+                                                {results.correctAnswers}
+                                            </div>
+                                            <div className="text-[10px] sm:text-xs font-bold text-green-600/70 mt-0.5 sm:mt-1">صح</div>
+                                        </div>
+                                        <div className="p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 text-center min-w-0">
+                                            <div className="text-xl sm:text-3xl font-black text-red-600 dark:text-red-400 tabular-nums">
+                                                {results.wrongAnswers}
+                                            </div>
+                                            <div className="text-[10px] sm:text-xs font-bold text-red-600/70 mt-0.5 sm:mt-1">خطأ</div>
+                                        </div>
+                                        <div className="p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-primary/5 border border-primary/10 text-center min-w-0">
+                                            <div className="text-xl sm:text-3xl font-black text-primary tabular-nums">
+                                                {Math.round(results.averageTimePerQuestion)}s
+                                            </div>
+                                            <div className="text-[10px] sm:text-xs font-bold text-primary/70 mt-0.5 sm:mt-1 leading-tight">
+                                                <span className="sm:hidden">السرعة</span>
+                                                <span className="hidden sm:inline">متوسط السرعة</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3 sm:space-y-4">
+                                        {questionResults.map((qr, i) => {
+                                            const q = questions.find((item) => item.id === qr.questionId) ?? questions[i];
+                                            return (
+                                                <div key={`${qr.questionId}-${i}`} className="p-3 sm:p-5 rounded-xl sm:rounded-[1.5rem] border bg-slate-50/50 dark:bg-slate-800/50 dark:border-slate-700/50">
+                                                    <div className="flex items-start justify-between gap-2 sm:gap-4 mb-2 sm:mb-3">
+                                                        <h4 className="flex-1 min-w-0 font-bold text-sm sm:text-lg leading-snug text-right break-words">{q?.question || `سؤال ${i + 1}`}</h4>
+                                                        {qr.correct ? (
+                                                            <span className="shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg shadow-green-500/30">
+                                                                <Check className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                            </span>
+                                                        ) : (
+                                                            <span className="shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg shadow-red-500/30">
+                                                                <Check className="w-4 h-4 sm:w-5 sm:h-5 rotate-45" />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {q?.explanation && (
+                                                        <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 text-right leading-relaxed break-words">{q.explanation}</p>
+                                                    )}
+                                                    <div className="pt-3 sm:pt-4 border-t dark:border-slate-700 flex items-center justify-between gap-2 text-[11px] sm:text-xs font-bold text-muted-foreground">
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            <Clock className="w-3 h-3" />
+                                                            {Math.round(qr.timeTaken)} ث
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <Zap className="w-3 h-3 text-amber-500" />
+                                                            {qr.pointsEarned} نقطة
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="shrink-0 p-4 sm:p-6 pt-3 sm:pt-4 bg-slate-50 dark:bg-slate-800/80 border-t dark:border-slate-800 space-y-2.5 sm:space-y-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:gap-3">
+                                        <Button
+                                            onClick={handleWhatsAppShare}
+                                            className="h-11 sm:h-14 rounded-xl sm:rounded-2xl text-sm sm:text-lg font-bold gap-1.5 sm:gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white px-2 sm:flex-1"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 sm:w-5 sm:h-5 shrink-0">
+                                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                            </svg>
+                                            <span className="truncate sm:hidden">واتساب</span>
+                                            <span className="truncate hidden sm:inline">مشاركة عبر واتساب</span>
+                                        </Button>
+                                        <Button
+                                            onClick={handleShare}
+                                            variant="outline"
+                                            className="h-11 sm:h-14 rounded-xl sm:rounded-2xl text-sm sm:text-lg font-bold gap-1.5 sm:gap-2 px-2 sm:flex-1"
+                                        >
+                                            <Share2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                                            مشاركة
+                                        </Button>
+                                    </div>
+                                    <Button variant="ghost" onClick={() => setShowAnalysis(false)} className="w-full h-10 sm:h-12 rounded-xl sm:rounded-2xl text-sm sm:text-base font-bold">
+                                        إغلاق
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </motion.div>
         );
     };

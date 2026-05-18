@@ -172,17 +172,87 @@ export const categoryLabels: Record<ChallengeCategory, { name: string; descripti
     }
 };
 
-// Default badges
+// Default badges (`id` = slug in `badges` table)
 export const availableBadges: Badge[] = [
-    { id: "perfect", name: "مثالي", icon: "\u{1F3C6}", description: "أجبت على جميع الأسئلة بشكل صحيح", condition: "100% accuracy" },
-    { id: "speed_demon", name: "البرق", icon: "\u{26A1}", description: "أجبت خلال 3 ثواني على جميع الأسئلة", condition: "avg time < 3s" },
-    { id: "streak_master", name: "متسلسل", icon: "\u{1F525}", description: "حققت 5 إجابات صحيحة متتالية", condition: "5 streak" },
-    { id: "first_try", name: "المحاولة الأولى", icon: "\u{1F31F}", description: "أكملت التحدي من أول مرة", condition: "first attempt" },
-    { id: "scholar", name: "العالِم", icon: "\u{1F4DA}", description: "حصلت على أكثر من 90%", condition: "score > 90%" },
-    { id: "improver", name: "المتطور", icon: "\u{1F4C8}", description: "تحسنت نتيجتك عن المحاولة السابقة", condition: "improved" },
-    { id: "quick_learner", name: "سريع التعلم", icon: "\u{1F9E0}", description: "أكملت التحدي في أقل من دقيقتين", condition: "time < 2min" },
-    { id: "persistent", name: "المثابر", icon: "\u{1F4AA}", description: "أعدت المحاولة 3 مرات", condition: "3 attempts" }
+    { id: "perfect", name: "مثالي", icon: "\u{1F3C6}", description: "أجبت على جميع الأسئلة بشكل صحيح", condition: "100%" },
+    { id: "expert", name: "خبير", icon: "\u{1F4DA}", description: "حصلت على 90% فأكثر", condition: "90%+" },
+    { id: "streak", name: "متسلسل", icon: "\u{1F525}", description: "حققت 5 إجابات صحيحة متتالية", condition: "5 streak" },
+    { id: "lightning", name: "برق", icon: "\u{26A1}", description: "متوسط وقت إجابتك 6 ثوانٍ أو أقل", condition: "fast answers" },
+    { id: "quick_learner", name: "سريع التعلم", icon: "\u{1F9E0}", description: "أكملت التحدي في أقل من دقيقتين", condition: "under 2 min" },
+    { id: "first_try", name: "المحاولة الأولى", icon: "\u{1F31F}", description: "أكملت الدرس من أول محاولة", condition: "first completion" },
+    { id: "improver", name: "المتطور", icon: "\u{1F4C8}", description: "تجاوزت أفضل نتيجة سابقة لك", condition: "improved score" },
+    { id: "persistent", name: "المثابر", icon: "\u{1F4AA}", description: "هذه محاولتك الثالثة فأكثر على الدرس", condition: "3+ attempts" },
 ];
+
+export type ChallengeBadgeContext = {
+    correctAnswers: number;
+    totalQuestions: number;
+    totalTimeSeconds: number;
+    longestStreak: number;
+    isFirstAttemptOnTopic?: boolean;
+    previousBestPercentage?: number | null;
+    topicAttemptCount?: number;
+};
+
+/** Session badges shown after a challenge and persisted via `badges.slug`. */
+export const evaluateSessionBadges = (ctx: ChallengeBadgeContext): Badge[] => {
+    const {
+        correctAnswers,
+        totalQuestions,
+        totalTimeSeconds,
+        longestStreak,
+        isFirstAttemptOnTopic,
+        previousBestPercentage,
+        topicAttemptCount = 1,
+    } = ctx;
+
+    if (totalQuestions <= 0) return [];
+
+    const percentage = Math.round((correctAnswers / totalQuestions) * 100);
+    const avgTimePerQuestion =
+        totalTimeSeconds > 0 ? totalTimeSeconds / totalQuestions : 0;
+
+    const earned = new Map<string, Badge>();
+    const grant = (slug: string) => {
+        const badge = availableBadges.find((b) => b.id === slug);
+        if (badge) earned.set(slug, badge);
+    };
+
+    if (percentage === 100) {
+        grant("perfect");
+    } else if (percentage >= 90) {
+        grant("expert");
+    }
+
+    if (longestStreak >= 5) {
+        grant("streak");
+    }
+
+    if (totalTimeSeconds > 0 && totalTimeSeconds < 120) {
+        grant("quick_learner");
+    }
+
+    if (totalQuestions >= 3 && avgTimePerQuestion > 0 && avgTimePerQuestion <= 6) {
+        grant("lightning");
+    }
+
+    if (isFirstAttemptOnTopic === true) {
+        grant("first_try");
+    }
+
+    if (
+        previousBestPercentage != null &&
+        percentage > previousBestPercentage
+    ) {
+        grant("improver");
+    }
+
+    if (topicAttemptCount >= 3) {
+        grant("persistent");
+    }
+
+    return Array.from(earned.values());
+};
 
 // Level system
 export const getLevelFromScore = (percentage: number): { level: string; color: string; emoji: string } => {

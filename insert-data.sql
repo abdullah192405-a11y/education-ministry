@@ -10,5 +10,6 @@ VALUES
   ('خبير', 'expert', '🏆', 'High score', 'Score above 90% on 5 challenges', true, NOW()),
   ('متعلم', 'learner', '📚', 'Complete 10 challenges', 'Complete 10 challenges', true, NOW()),
   ('برق', 'lightning', '⚡', 'Speed demon', 'Answer 5 questions in under 30 seconds', true, NOW()),
-  ('متسلسل', 'streak', '🔥', 'Long streak', 'Get 5 consecutive correct answers', true, NOW())
+  ('متسلسل', 'streak', '🔥', 'Long streak', 'Get 5 consecutive correct answers', true, NOW()),
+  ('سريع التعلم', 'quick_learner', '🧠', 'Finish under 2 minutes', 'Complete a challenge in under 2 minutes', true, NOW())
 ON CONFLICT (slug) DO NOTHING;
