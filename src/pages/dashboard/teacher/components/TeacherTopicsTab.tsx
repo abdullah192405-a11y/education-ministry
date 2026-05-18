@@ -46,6 +46,7 @@ import {
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
+import { selectValueToPresetFields, type StudentChallengePresetValue } from "@/lib/topicChallengePreset";
 import ContentEditor from "./ContentEditor";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -92,6 +93,8 @@ interface ExtendedTopic {
     answering_background_sound_url?: string | null;
     discussions_enabled?: boolean;
     collect_single_challenge_participant_data?: boolean | null;
+    student_challenge_mode?: string | null;
+    student_challenge_category?: string | null;
     createdAt: string;
     media?: any[];
     quiz?: any[];
@@ -1070,6 +1073,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         const challengeItems = topicData.challengeItems || [];
 
         try {
+            const presetFields = selectValueToPresetFields(
+                (topicData.studentChallengePreset as StudentChallengePresetValue) || "free"
+            );
+
             if (editingTopic) {
                 // Update existing topic - use mutateAsync for proper error handling
                 const updatedTopic = await updateTopicMutation.mutateAsync({
@@ -1081,6 +1088,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         duration: topicData.duration,
                         discussions_enabled: topicData.discussionsEnabled ?? true,
                         collect_single_challenge_participant_data: topicData.collectSingleChallengeParticipantData === true,
+                        student_challenge_mode: presetFields.student_challenge_mode,
+                        student_challenge_category: presetFields.student_challenge_category,
                         correct_sound_url: topicData.correctSoundUrl || null,
                         wrong_sound_url: topicData.wrongSoundUrl || null,
                         answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -1114,6 +1123,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     duration: topicData.duration,
                     discussions_enabled: topicData.discussionsEnabled ?? true,
                     collect_single_challenge_participant_data: topicData.collectSingleChallengeParticipantData === true,
+                    student_challenge_mode: presetFields.student_challenge_mode,
+                    student_challenge_category: presetFields.student_challenge_category,
                     correct_sound_url: topicData.correctSoundUrl || null,
                     wrong_sound_url: topicData.wrongSoundUrl || null,
                     answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
@@ -1259,6 +1270,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
                         discussionsEnabled: editingTopic.discussions_enabled ?? true,
                         collectSingleChallengeParticipantData: editingTopic.collect_single_challenge_participant_data === true,
+                        studentChallengeMode: editingTopic.student_challenge_mode ?? null,
+                        studentChallengeCategory: editingTopic.student_challenge_category ?? null,
                         views: editingTopic.views,
                         createdAt: editingTopic.createdAt
                     } : undefined}

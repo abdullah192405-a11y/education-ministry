@@ -236,6 +236,9 @@ model Topic {
   isActive    Boolean  @default(true) @map("is_active")
   /// When true, guests must enter name/extra info before single-player challenge; results stored for teacher.
   collectSingleChallengeParticipantData Boolean @default(false) @map("collect_single_challenge_participant_data")
+  /// When both are set, students skip challenge pickers (single/group + activity category).
+  studentChallengeMode     String? @map("student_challenge_mode")
+  studentChallengeCategory String? @map("student_challenge_category")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

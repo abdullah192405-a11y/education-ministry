@@ -25,6 +25,9 @@ export interface EducationalContent {
     discussionsEnabled?: boolean;
     /** When true, guests must enter a name (and optional details) before the single challenge; results are stored for the teacher. */
     collectSingleChallengeParticipantData?: boolean;
+    /** When both are set, students skip challenge mode/category pickers and go straight to this path. */
+    studentChallengeMode?: ChallengeMode | null;
+    studentChallengeCategory?: ChallengeCategory | null;
     quiz?: any[]; // Keep for compatibility if needed
     views: number;
     createdAt: string;

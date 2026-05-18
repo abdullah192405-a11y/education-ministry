@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
@@ -28,6 +28,7 @@ import {
     type ChallengeMode,
     type ChallengeCategory
 } from "@/data/challengeTypes";
+import { getTopicChallengePreset, navigateToTopicChallenge } from "@/lib/topicChallengePreset";
 
 const ChallengeModeSelect = () => {
     const { gradeId, subjectId, topicId } = useParams();
@@ -51,9 +52,59 @@ const ChallengeModeSelect = () => {
     const [playerName, setPlayerName] = useState<string>("");
     const [copied, setCopied] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
+    const [isApplyingPreset, setIsApplyingPreset] = useState(false);
+    const [presetRedirectFailed, setPresetRedirectFailed] = useState(false);
+    const presetAppliedRef = useRef(false);
 
     const { data: currentUser } = useUser();
     const createSessionMutation = useCreateChallengeSession();
+    const studentChallengePreset = topic ? getTopicChallengePreset(topic as Record<string, unknown>) : null;
+
+    useEffect(() => {
+        if (
+            isLoading ||
+            !topic ||
+            !gradeId ||
+            !subjectId ||
+            !topicId ||
+            !studentChallengePreset ||
+            presetAppliedRef.current ||
+            presetRedirectFailed
+        ) {
+            return;
+        }
+
+        presetAppliedRef.current = true;
+        setIsApplyingPreset(true);
+
+        navigateToTopicChallenge({
+            preset: studentChallengePreset,
+            gradeId,
+            subjectId,
+            topicId,
+            navigate,
+            currentUser,
+            createSession: (args) => createSessionMutation.mutateAsync(args),
+        }).catch((error: unknown) => {
+            console.error("Failed to apply teacher challenge preset", error);
+            presetAppliedRef.current = false;
+            setPresetRedirectFailed(true);
+            alert("تعذر بدء التحدي المحدد من المعلم. يمكنك الاختيار يدوياً أدناه.");
+        }).finally(() => {
+            setIsApplyingPreset(false);
+        });
+    }, [
+        isLoading,
+        topic,
+        gradeId,
+        subjectId,
+        topicId,
+        studentChallengePreset,
+        presetRedirectFailed,
+        navigate,
+        currentUser,
+        createSessionMutation,
+    ]);
 
     if (isLoading) {
         return (
@@ -63,6 +114,27 @@ const ChallengeModeSelect = () => {
                     <div className="container mx-auto px-4 text-center py-20">
                         <Skeleton className="h-12 w-64 mx-auto mb-4" />
                         <Skeleton className="h-32 w-full max-w-2xl mx-auto" />
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    // Only when teacher set a specific path — otherwise show normal mode/category pickers below
+    if (
+        studentChallengePreset &&
+        !presetRedirectFailed &&
+        (isApplyingPreset || !presetAppliedRef.current)
+    ) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <Skeleton className="h-12 w-64 mx-auto mb-4" />
+                        <Skeleton className="h-32 w-full max-w-2xl mx-auto" />
+                        <p className="text-muted-foreground mt-6">جاري تجهيز التحدي...</p>
                     </div>
                 </main>
                 <Footer />

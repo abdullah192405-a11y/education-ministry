@@ -25,8 +25,10 @@ import {
     useTopicDiscussions,
     useTopicRatings,
     useUpdateTopic,
-    useUser
+    useUser,
+    useCreateChallengeSession,
 } from "@/hooks/useDatabase";
+import { getTopicChallengePreset, navigateToTopicChallenge } from "@/lib/topicChallengePreset";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
@@ -77,6 +79,8 @@ const TopicView = () => {
     const { toast } = useToast();
     const { data: topic, isLoading, error } = useTopic(topicId || "");
     const { data: user } = useUser();
+    const createSessionMutation = useCreateChallengeSession();
+    const [isJoiningChallenge, setIsJoiningChallenge] = useState(false);
     const { data: discussions = [], isLoading: discussionsLoading } = useTopicDiscussions(topicId || "");
     const { data: topicLiveSessionsData = [] } = useTopicLiveSessions(topicId || "");
     const topicLiveSessions = topicLiveSessionsData as TopicLiveSession[];
@@ -256,8 +260,36 @@ const TopicView = () => {
         }
     };
 
-    const handleJoinChallenge = () => {
-        navigate(`/grade/${grade.slug}/subject/${subject.id}/topic/${topic.id}/challenge`);
+    const handleJoinChallenge = async () => {
+        if (!grade?.slug || !subject?.id || !topic?.id) return;
+
+        const preset = getTopicChallengePreset(topic as Record<string, unknown>);
+        if (!preset) {
+            navigate(`/grade/${grade.slug}/subject/${subject.id}/topic/${topic.id}/challenge`);
+            return;
+        }
+
+        setIsJoiningChallenge(true);
+        try {
+            await navigateToTopicChallenge({
+                preset,
+                gradeId: grade.slug,
+                subjectId: subject.id,
+                topicId: topic.id,
+                navigate,
+                currentUser: user,
+                createSession: (args) => createSessionMutation.mutateAsync(args),
+            });
+        } catch (error) {
+            console.error("Failed to start preset challenge", error);
+            toast({
+                title: "تعذر بدء التحدي",
+                description: "حاول مرة أخرى أو تواصل مع المعلم.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsJoiningChallenge(false);
+        }
     };
 
     const formatRelativeArabicTime = (iso: string) => {
@@ -944,10 +976,11 @@ const TopicView = () => {
                                 <Button
                                     onClick={handleJoinChallenge}
                                     variant="hero"
+                                    disabled={isJoiningChallenge}
                                     className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base"
                                 >
                                     <Gamepad2 className="w-3 h-3 md:w-4 md:h-4" />
-                                    انضم للتحدي
+                                    {isJoiningChallenge ? "جاري التجهيز..." : "انضم للتحدي"}
                                 </Button>
                             )}
                         </div>
@@ -955,9 +988,14 @@ const TopicView = () => {
                         {/* Quick Challenge Access */}
                         {hasViewedAllMedia && currentMediaIndex < totalMedia - 1 && (
                             <div className="text-center mt-4">
-                                <Button variant="ghost" onClick={handleJoinChallenge} className="gap-2">
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleJoinChallenge}
+                                    disabled={isJoiningChallenge}
+                                    className="gap-2"
+                                >
                                     <Play className="w-4 h-4" />
-                                    الانتقال للتحدي مباشرة
+                                    {isJoiningChallenge ? "جاري التجهيز..." : "الانتقال للتحدي مباشرة"}
                                 </Button>
                             </div>
                         )}

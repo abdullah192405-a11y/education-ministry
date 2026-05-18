@@ -43,7 +43,7 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight flex flex-col items-center gap-2 md:gap-4"
           >
-            <span className="text-foreground">تصميم. تلعيب. قياس.</span>
+            <span className="text-foreground">تعليم. تلعيب. قياس.</span>
             <span className="text-primary">تحديات غامرة!</span>
           </motion.h1>
 

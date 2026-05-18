@@ -29,6 +29,12 @@ import {
     Headphones, Link2, Sparkles,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
+import {
+    getTopicChallengePreset,
+    presetToSelectValue,
+    STUDENT_CHALLENGE_PRESET_OPTIONS,
+    type StudentChallengePresetValue,
+} from "@/lib/topicChallengePreset";
 import QuestionGameEditor from "./QuestionGameEditor";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -177,6 +183,14 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [discussionsEnabled, setDiscussionsEnabled] = useState(content?.discussionsEnabled ?? true);
     const [collectSingleChallengeParticipantData, setCollectSingleChallengeParticipantData] = useState(
         content?.collectSingleChallengeParticipantData ?? false
+    );
+    const [studentChallengePreset, setStudentChallengePreset] = useState<StudentChallengePresetValue>(
+        presetToSelectValue(
+            getTopicChallengePreset({
+                student_challenge_mode: content?.studentChallengeMode,
+                student_challenge_category: content?.studentChallengeCategory,
+            })
+        )
     );
     const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>(
         content?.correctSoundUrl ? [{ label: "مخصص محفوظ", url: content.correctSoundUrl }] : []
@@ -547,6 +561,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
                 discussionsEnabled,
                 collectSingleChallengeParticipantData,
+                studentChallengePreset,
                 media: mediaList,
                 quiz: [], // Legacy - keeping for compatibility
                 views: content?.views || 0,
@@ -876,6 +891,31 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                             <p className="text-xs text-muted-foreground">
                                 الوضع الافتراضي عند إنشاء درس جديد: <span className="font-semibold">مفعّل</span>
                             </p>
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                            <div className="space-y-2">
+                                <Label htmlFor="student-challenge-preset">مسار التحدي للطلاب</Label>
+                                <Select
+                                    value={studentChallengePreset}
+                                    onValueChange={(v) => setStudentChallengePreset(v as StudentChallengePresetValue)}
+                                >
+                                    <SelectTrigger id="student-challenge-preset">
+                                        <SelectValue placeholder="اختر مسار التحدي" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {STUDENT_CHALLENGE_PRESET_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    عند اختيار مسار محدد، ينتقل الطالب مباشرة إلى هذا التحدي عند الضغط على «انضم للتحدي» دون عرض خيارات أخرى.
+                                    اترك «الطلاب يختارون» للسماح بالاختيار كالمعتاد.
+                                </p>
+                            </div>
                         </div>
 
                         <div className="rounded-lg border p-4 space-y-3">
