@@ -2,11 +2,11 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type { Browser } from "puppeteer-core";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { buildChallengeReportHtml } from "../../src/lib/challengeReportPdfHtml";
+import { buildChallengeReportHtml } from "../src/lib/challengeReportPdfHtml";
 import {
   buildFallbackRecommendationReport,
   generateChallengeRecommendationReport,
-} from "../../src/lib/challengeReportRecommendations";
+} from "../src/lib/challengeReportRecommendations";
 
 const MAX_REPORT_BODY_BYTES = 10 * 1024 * 1024;
 const LOCAL_PUPPETEER_CACHE = path.resolve(process.cwd(), ".cache/puppeteer");

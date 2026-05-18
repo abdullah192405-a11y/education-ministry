@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { componentTagger } from "lovable-tagger";
-import { handleChallengeReportPdfRequest } from "./api/_lib/challengeReportPdfHandler";
+import { handleChallengeReportPdfRequest } from "./server/challengeReportPdfHandler";
 
 type MiddlewareStack = {
   use: (

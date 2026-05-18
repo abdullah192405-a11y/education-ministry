@@ -11,9 +11,9 @@
         }
     ],
     "functions": {
-        "api/challenge-report-pdf.ts": {
+        "api/challenge-report-pdf.js": {
             "maxDuration": 60,
-            "memory": 1024,
+            "memory": 3008,
             "includeFiles": "node_modules/@sparticuz/chromium/**"
         }
     }
