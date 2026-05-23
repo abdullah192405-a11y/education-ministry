@@ -1,4 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TFunction } from "@/contexts/LanguageContext";
+import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -29,14 +32,16 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    useSubject,
     useGrades,
+    useTeacherClassAccess,
+    useTeacherAllTopics,
     useCreateTopic,
     useUpdateTopic,
     useDeleteTopic,
     useReorderTopics,
     useSaveTopicMedia,
     useSaveChallengeQuestions,
+    useCreateTopicLiveSession,
     useVisitorGradeClassMode,
     useUser,
     useTeacherProfile,
@@ -47,8 +52,14 @@ import {
     useTopicRatings,
 } from "@/hooks/useDatabase";
 import { aggregateTopicLessonRatings } from "@/lib/topicRatingStats";
+import { localizeLessonRatingSummary } from "@/lib/lessonRatingLabels";
 import LessonRatingSummaryCard from "@/components/LessonRatingSummaryCard";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
+import {
+    applyTeacherClassAccessToGrades,
+    getAllowedSubjectIdsFromGrades,
+} from "@/lib/teacherClassAccess";
+import { orgAdminScopedOrganizationId } from "@/lib/accountCapabilities";
 import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
 import {
     aggregateChallengeQuestionStats,
@@ -57,8 +68,14 @@ import {
 } from "@/lib/challengeQuestionAnalytics";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { selectValueToPresetFields, type StudentChallengePresetValue } from "@/lib/topicChallengePreset";
+import { resolveWheelSpinSoundUrl } from "@/lib/wheelSpinSounds";
 import { sortTopicsByOrder, getTopicSortOrder } from "@/lib/sortTopics";
 import ContentEditor from "./ContentEditor";
+import {
+    hasLiveSessionDraft,
+    liveSessionDraftToPayload,
+    type PendingLiveSessionDraft,
+} from "@/lib/topicLiveSession";
 import { useToast } from "@/components/ui/use-toast";
 import {
     Dialog,
@@ -113,6 +130,7 @@ interface ExtendedTopic {
     correct_sound_url?: string | null;
     wrong_sound_url?: string | null;
     answering_background_sound_url?: string | null;
+    wheel_spin_sound_url?: string | null;
     discussions_enabled?: boolean;
     collect_single_challenge_participant_data?: boolean | null;
     student_challenge_mode?: string | null;
@@ -130,30 +148,14 @@ interface ExtendedTopic {
 
 type SingleShareCategory = "activities" | "games" | "mixed";
 
-const SINGLE_SHARE_OPTIONS: Array<{ category: SingleShareCategory; label: string }> = [
-    { category: "activities", label: "الأنشطة التفاعلية فقط" },
-    { category: "games", label: "الأنشطة التلعيبية فقط" },
-    { category: "mixed", label: "الكل (مختلط)" },
+const getSingleShareOptions = (t: TFunction): Array<{ category: SingleShareCategory; label: string }> => [
+    { category: "activities", label: t("dash.teacher.topics.shareActivitiesOnly") },
+    { category: "games", label: t("dash.teacher.topics.shareGamesOnly") },
+    { category: "mixed", label: t("dash.teacher.topics.shareMixed") },
 ];
 
 const toRecord = (value: unknown): Record<string, unknown> =>
     value && typeof value === "object" ? value as Record<string, unknown> : {};
-
-const clampScorePercent = (score: number) => Math.max(0, Math.min(100, Math.round(score)));
-
-const getScorePercent = (result: unknown) => {
-    const row = toRecord(result);
-    const percentage = Number(row.percentage);
-    if (Number.isFinite(percentage)) return clampScorePercent(percentage);
-
-    const score = Number(row.score);
-    const maxScore = Number(row.max_score ?? row.maxScore);
-    if (Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) {
-        return clampScorePercent((score / maxScore) * 100);
-    }
-
-    return Number.isFinite(score) ? clampScorePercent(score) : 0;
-};
 
 const getTopicActivityCount = (topic: unknown) => {
     const row = toRecord(topic);
@@ -227,12 +229,12 @@ const getStringField = (row: unknown, keys: string[]) => {
     return "";
 };
 
-const getParticipantName = (result: unknown) => {
+const getParticipantName = (result: unknown, guestLabel: string) => {
     const row = toRecord(result);
     const user = getNestedRecord(row, "user");
     return getStringField(user, ["name"])
         || getStringField(row, ["participant_display_name", "name"])
-        || "زائر";
+        || guestLabel;
 };
 
 const isRegisteredAttempt = (result: unknown) => {
@@ -264,7 +266,7 @@ const getAttemptLocalDateKey = (date: string | null) => {
 
 const getAttemptKey = (result: unknown, fallback = "") => {
     const row = toRecord(result);
-    return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result)}-${fallback}`);
+    return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result, guestLabel)}-${fallback}`);
 };
 
 const getAttemptQuestionRows = (result: unknown, topic: unknown) =>
@@ -280,18 +282,23 @@ const getAttemptQuestionRows = (result: unknown, topic: unknown) =>
         };
     });
 
-const formatSeconds = (seconds: number) => {
-    if (!Number.isFinite(seconds) || seconds <= 0) return "—";
-    if (seconds < 60) return `${Math.round(seconds)} ث`;
-    const minutes = Math.floor(seconds / 60);
-    const rest = Math.round(seconds % 60);
-    return rest > 0 ? `${minutes} د ${rest} ث` : `${minutes} د`;
-};
-
-const SINGLE_RESULTS_RESET_CONFIRM_PHRASE = "حذف النتائج";
-
 const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
+    const { t, dir, locale, language } = useDashboardLocale();
     const { toast } = useToast();
+
+    const formatSeconds = useCallback((seconds: number) => {
+        if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+        if (seconds < 60) return t("dash.teacher.topics.secondsShort", { n: Math.round(seconds) });
+        const minutes = Math.floor(seconds / 60);
+        const rest = Math.round(seconds % 60);
+        return rest > 0
+            ? t("dash.teacher.topics.minutesSeconds", { m: minutes, s: rest })
+            : t("dash.teacher.topics.minutesShort", { n: minutes });
+    }, [t]);
+
+    const singleShareOptions = useMemo(() => getSingleShareOptions(t), [t]);
+    const singleResultsResetConfirmPhrase = t("dash.teacher.topics.resetConfirmPhrase");
+    const guestLabel = t("dash.teacher.topics.guest");
     const [selectedTopicStats, setSelectedTopicStats] = useState<ExtendedTopic | null>(null);
     const { data: currentUser } = useUser();
     const { data: currentTeacherProfile } = useTeacherProfile(currentUser?.id || "");
@@ -317,12 +324,27 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         effectiveTeacherProfileId
     );
 
-    // Get all grades (respect platform visibility for visitors/teachers)
-    const { data: grades } = useGrades();
+    const organizationId = orgAdminScopedOrganizationId(currentUser ?? undefined);
+    const { data: grades } = useGrades({
+        organizationId: organizationId ?? undefined,
+    });
+    const { data: classAccess } = useTeacherClassAccess(effectiveTeacherProfileId);
+    const { data: allTeacherTopics, isLoading: isLoadingTeacherTopics } = useTeacherAllTopics(
+        effectiveTeacherProfileId,
+    );
     const { mode: visitorGradeMode } = useVisitorGradeClassMode();
-    const visibleGrades = useMemo(
-        () => filterGradesForPublicCatalog(grades as any[] | undefined, visitorGradeMode),
-        [grades, visitorGradeMode],
+    const visibleGrades = useMemo(() => {
+        const catalog = filterGradesForPublicCatalog(grades as any[] | undefined, visitorGradeMode);
+        return applyTeacherClassAccessToGrades(
+            catalog,
+            classAccess,
+            currentTeacherProfile?.grade_id,
+        );
+    }, [grades, visitorGradeMode, classAccess, currentTeacherProfile?.grade_id]);
+
+    const allowedSubjectIds = useMemo(
+        () => getAllowedSubjectIdsFromGrades(visibleGrades),
+        [visibleGrades],
     );
 
     // Selected grade state - defaults to prop or empty
@@ -347,15 +369,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     // Auto-select first subject when grade changes or subjects load
     useEffect(() => {
         if (availableSubjects.length > 0) {
-            // If the currently selected subject is not in the new grade's subjects, reset it
-            const isValidSubject = availableSubjects.some((s: any) => s.id === selectedSubjectId);
+            const isValidSubject =
+                availableSubjects.some((s: any) => s.id === selectedSubjectId) &&
+                allowedSubjectIds.has(selectedSubjectId);
             if (!isValidSubject) {
                 setSelectedSubjectId(availableSubjects[0].id);
             }
         } else {
             setSelectedSubjectId("");
         }
-    }, [selectedGradeId, availableSubjects]);
+    }, [selectedGradeId, availableSubjects, allowedSubjectIds, selectedSubjectId]);
 
     // Mutations
     const createTopicMutation = useCreateTopic();
@@ -364,9 +387,28 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const reorderTopicsMutation = useReorderTopics();
     const saveMediaMutation = useSaveTopicMedia();
     const saveChallengeQuestionsMutation = useSaveChallengeQuestions();
+    const createLiveSessionMutation = useCreateTopicLiveSession();
 
-    // Get current subject data from database
-    const { data: subjectData, isLoading: isLoadingSubject } = useSubject(String(selectedSubjectId), teacherProfileId);
+    const mapDbTopicToExtended = (topic: any): ExtendedTopic => ({
+        ...topic,
+        thumbnail: topic.thumbnail || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop",
+        views: Number(topic.views || 0),
+        createdAt: topic.created_at || topic.createdAt || "",
+        status: "published" as const,
+        mediaCount: topic.mediaItems?.length || topic.media?.length || 0,
+        quizCount: topic.challengeItems?.length || topic.challenge_questions?.length || topic.quiz?.length || 0,
+        media: (topic.mediaItems || topic.media || []).map((m: any) => ({
+            ...m,
+            type: m.type?.toLowerCase() || "text",
+            fileName: m.file_name || m.fileName,
+            pdfBase64: m.pdf_base64 || m.pdfBase64,
+        })),
+        quiz: topic.quizQuestions || topic.quiz || [],
+        challengeItems: (topic.challengeItems || topic.challenge_questions || []).map((q: any) => ({
+            ...q,
+            type: q.type?.toLowerCase() || "multiple_choice",
+        })),
+    });
 
     // State
     const [topics, setTopics] = useState<ExtendedTopic[]>([]);
@@ -415,8 +457,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
         const scoreRows = list.map((result: unknown) => ({
             result,
-            name: getParticipantName(result),
-            score: getScorePercent(result),
+            name: getParticipantName(result, guestLabel),
+            score: getChallengeResultScorePercent(result),
             correct: getNumberField(result, ["correct_answers", "correctAnswers"]),
             wrong: getNumberField(result, ["wrong_answers", "wrongAnswers"]),
             totalQuestions: getNumberField(result, ["total_questions", "totalQuestions"]),
@@ -441,15 +483,15 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         const guestAttempts = scoreRows.length - registeredAttempts;
 
         const scoreDistribution = [
-            { label: "أقل من 50", count: scoreRows.filter((row) => row.score < 50).length, fill: "#ef4444" },
-            { label: "50-69", count: scoreRows.filter((row) => row.score >= 50 && row.score < 70).length, fill: "#f59e0b" },
-            { label: "70-89", count: scoreRows.filter((row) => row.score >= 70 && row.score < 90).length, fill: "#3b82f6" },
-            { label: "90-100", count: highPerformers, fill: "#10b981" },
+            { label: t("dash.teacher.topics.scoreBelow50"), count: scoreRows.filter((row) => row.score < 50).length, fill: "#ef4444" },
+            { label: t("dash.teacher.topics.score5069"), count: scoreRows.filter((row) => row.score >= 50 && row.score < 70).length, fill: "#f59e0b" },
+            { label: t("dash.teacher.topics.score7089"), count: scoreRows.filter((row) => row.score >= 70 && row.score < 90).length, fill: "#3b82f6" },
+            { label: t("dash.teacher.topics.score90100"), count: highPerformers, fill: "#10b981" },
         ];
 
         const participantTypeData = [
-            { name: "مسجل", value: registeredAttempts, color: "#2563eb" },
-            { name: "زائر", value: guestAttempts, color: "#8b5cf6" },
+            { name: t("dash.teacher.topics.registered"), value: registeredAttempts, color: "#2563eb" },
+            { name: t("dash.teacher.topics.guest"), value: guestAttempts, color: "#8b5cf6" },
         ].filter((item) => item.value > 0);
 
         const today = new Date();
@@ -466,8 +508,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             const participants = new Set(attempts.map((row) => row.name)).size;
             const totalTime = attempts.reduce((sum, row) => sum + row.timeTaken, 0);
             return {
-                day: day.toLocaleDateString("ar-SA", { weekday: "short" }),
-                date: day.toLocaleDateString("ar-SA", { day: "numeric", month: "short" }),
+                day: day.toLocaleDateString(locale, { weekday: "short" }),
+                date: day.toLocaleDateString(locale, { day: "numeric", month: "short" }),
                 key,
                 attempts: attempts.length,
                 participants,
@@ -509,13 +551,13 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             }));
 
         const answerOutcomeData = [
-            { name: "صحيح", value: totalCorrect, color: "#10b981" },
-            { name: "خطأ", value: totalWrong, color: "#ef4444" },
+            { name: t("dash.teacher.topics.correct"), value: totalCorrect, color: "#10b981" },
+            { name: t("dash.teacher.topics.wrong"), value: totalWrong, color: "#ef4444" },
         ].filter((item) => item.value > 0);
 
         const questionAccuracyChartData = questionAnalytics.map((question, index) => ({
             ...question,
-            shortLabel: `س${index + 1}`,
+            shortLabel: t("dash.teacher.topics.questionShort", { n: index + 1 }),
         }));
         const questionTimeChartData = [...questionAccuracyChartData]
             .sort((a, b) => b.avgTime - a.avgTime)
@@ -538,21 +580,21 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         );
         const scoreTimeCorrelationLabel =
             Math.abs(scoreTimeCorrelation) < 0.2
-                ? "ضعيف"
+                ? t("dash.teacher.topics.correlation.weak")
                 : scoreTimeCorrelation > 0
-                    ? "طردي"
-                    : "عكسي";
+                    ? t("dash.teacher.topics.correlation.positive")
+                    : t("dash.teacher.topics.correlation.negative");
         const lowOutlierThreshold = q1Score - (1.5 * iqrScore);
         const highOutlierThreshold = q3Score + (1.5 * iqrScore);
         const lowOutliers = scoreRows.filter((row) => row.score < lowOutlierThreshold);
         const highOutliers = scoreRows.filter((row) => row.score > highOutlierThreshold);
 
         const scoreBoxData = [
-            { label: "أدنى", value: Math.round(Math.min(...scores)), fill: "#ef4444" },
+            { label: t("dash.teacher.topics.lowest"), value: Math.round(Math.min(...scores)), fill: "#ef4444" },
             { label: "Q1", value: Math.round(q1Score), fill: "#f59e0b" },
-            { label: "وسيط", value: getMedianScore(scores), fill: "#3b82f6" },
+            { label: t("dash.teacher.topics.medianShort"), value: getMedianScore(scores), fill: "#3b82f6" },
             { label: "Q3", value: Math.round(q3Score), fill: "#6366f1" },
-            { label: "أعلى", value: Math.round(Math.max(...scores)), fill: "#10b981" },
+            { label: t("dash.teacher.topics.highest"), value: Math.round(Math.max(...scores)), fill: "#10b981" },
         ];
 
         const scoreTimeScatterData = timeScoreRows.map((row) => ({
@@ -564,48 +606,48 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         const averageTimeForSegments = withTime.length ? getAverage(withTime.map((row) => row.timeTaken)) : 0;
         const learnerSegments = [
             {
-                name: "سريع ومتقن",
+                name: t("dash.teacher.topics.segment.fastPrecise"),
                 count: scoreRows.filter((row) => row.score >= 80 && (!averageTimeForSegments || row.timeTaken <= averageTimeForSegments)).length,
                 fill: "#10b981",
             },
             {
-                name: "سريع ويحتاج تثبيت",
+                name: t("dash.teacher.topics.segment.fastNeedsWork"),
                 count: scoreRows.filter((row) => row.score < 80 && (!averageTimeForSegments || row.timeTaken <= averageTimeForSegments)).length,
                 fill: "#f59e0b",
             },
             {
-                name: "متأن ومتقن",
+                name: t("dash.teacher.topics.segment.slowPrecise"),
                 count: scoreRows.filter((row) => row.score >= 80 && row.timeTaken > averageTimeForSegments).length,
                 fill: "#3b82f6",
             },
             {
-                name: "متعثر وبطيء",
+                name: t("dash.teacher.topics.segment.slowStruggling"),
                 count: scoreRows.filter((row) => row.score < 80 && row.timeTaken > averageTimeForSegments).length,
                 fill: "#ef4444",
             },
         ].filter((segment) => segment.count > 0);
 
         const questionDifficultyData = [
-            { name: "صعبة", count: questionAnalytics.filter((q) => q.accuracy < 50).length, fill: "#ef4444" },
-            { name: "متوسطة", count: questionAnalytics.filter((q) => q.accuracy >= 50 && q.accuracy < 80).length, fill: "#f59e0b" },
-            { name: "سهلة", count: questionAnalytics.filter((q) => q.accuracy >= 80).length, fill: "#10b981" },
+            { name: t("dash.teacher.topics.difficulty.hard"), count: questionAnalytics.filter((q) => q.accuracy < 50).length, fill: "#ef4444" },
+            { name: t("dash.teacher.topics.difficulty.medium"), count: questionAnalytics.filter((q) => q.accuracy >= 50 && q.accuracy < 80).length, fill: "#f59e0b" },
+            { name: t("dash.teacher.topics.difficulty.easy"), count: questionAnalytics.filter((q) => q.accuracy >= 80).length, fill: "#10b981" },
         ].filter((item) => item.count > 0);
 
         const recommendations = [
             supportNeeded > 0
-                ? `يوجد ${supportNeeded} محاولة أقل من 50%؛ يفضل مراجعة المفاهيم الأساسية مع هذه المجموعة.`
-                : "لا توجد محاولات منخفضة جدًا؛ مستوى الدعم العاجل منخفض.",
+                ? t("dash.teacher.topics.insight.supportAttempts", { n: supportNeeded })
+                : t("dash.teacher.topics.insight.noLowAttempts"),
             stdDevScore >= 20
-                ? "التشتت مرتفع بين الطلاب؛ قسّم الطلاب إلى مجموعات دعم/إثراء بدل نشاط واحد للجميع."
-                : "التشتت محدود؛ يمكن تقديم تغذية راجعة موحدة مع تدخلات فردية بسيطة.",
+                ? t("dash.teacher.topics.insight.highDispersion")
+                : t("dash.teacher.topics.insight.lowDispersion"),
             weakestQuestion
-                ? `ابدأ بالمراجعة من السؤال الأضعف: "${weakestQuestion.label}" لأن دقته ${weakestQuestion.accuracy}%.`
+                ? `${t("dash.teacher.topics.insight.reviewWeakest")}"${weakestQuestion.label}"${t("dash.teacher.topics.insight.weakestBecause", { accuracy: weakestQuestion.accuracy })}`
                 : "",
             scoreTimeCorrelation < -0.3
-                ? "العلاقة عكسية بين الوقت والدرجة: الطلاب الأبطأ غالبًا يواجهون صعوبة، فاختصر السؤال أو أضف مثالًا تمهيديًا."
+                ? t("dash.teacher.topics.insight.negativeTime")
                 : scoreTimeCorrelation > 0.3
-                    ? "العلاقة طردية بين الوقت والدرجة: التفكير الأطول يساعد، فشجع الطلاب على التمهل."
-                    : "لا توجد علاقة قوية بين الزمن والدرجة؛ ركّز على جودة السؤال والمفهوم أكثر من السرعة.",
+                    ? t("dash.teacher.topics.insight.positiveTime")
+                    : t("dash.teacher.topics.insight.noTimeRelation"),
         ].filter(Boolean);
 
         return {
@@ -662,7 +704,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             recommendations,
             topAttempts,
         };
-    }, [sortedSingleResultsForDialog, singleChallengeResultsTopic]);
+    }, [sortedSingleResultsForDialog, singleChallengeResultsTopic, t, locale, guestLabel]);
 
     const buildSingleShareLink = (topicId: string, category: SingleShareCategory) => {
         const gradeSegment = currentGrade?.slug || selectedGradeId;
@@ -689,12 +731,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             anchor.click();
             anchor.remove();
             URL.revokeObjectURL(objectUrl);
-            toast({ title: "تم التنزيل", description: "تم تنزيل رمز QR بنجاح." });
+            toast({ title: t("dash.teacher.topics.toast.downloaded"), description: t("dash.teacher.topics.toast.qrDownloaded") });
         } catch (error) {
             console.error("Failed to download QR:", error);
             toast({
-                title: "تعذر تنزيل QR",
-                description: "حدث خطأ أثناء تنزيل رمز QR. حاول مرة أخرى.",
+                title: t("dash.teacher.topics.toast.qrFailed"),
+                description: t("dash.teacher.topics.toast.qrError"),
                 variant: "destructive",
             });
         }
@@ -702,7 +744,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
     const handleResetSingleChallengeResults = async () => {
         if (!singleChallengeResultsTopic) return;
-        if (singleResultsResetConfirmText.trim() !== SINGLE_RESULTS_RESET_CONFIRM_PHRASE) return;
+        if (singleResultsResetConfirmText.trim() !== singleResultsResetConfirmPhrase) return;
 
         try {
             await resetSingleResultsMutation.mutateAsync({
@@ -710,8 +752,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 teacherProfileId: effectiveTeacherProfileId,
             });
             toast({
-                title: "تمت إعادة ضبط النتائج",
-                description: "حُذفت جميع نتائج التحدي الفردي لهذا الدرس ولا يمكن استرجاعها.",
+                title: t("dash.teacher.topics.toast.resetSuccess"),
+                description: t("dash.teacher.topics.toast.resetDesc"),
             });
             setSingleResultsResetOpen(false);
             setSingleResultsResetConfirmText("");
@@ -721,8 +763,8 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             console.error("Failed to reset single challenge results:", error);
             toast({
                 variant: "destructive",
-                title: "تعذّر حذف النتائج",
-                description: error instanceof Error ? error.message : "حدث خطأ أثناء حذف النتائج. حاول مرة أخرى.",
+                title: t("dash.teacher.topics.toast.resetFailed"),
+                description: error instanceof Error ? error.message : t("dash.teacher.topics.toast.resetErr"),
             });
         }
     };
@@ -733,25 +775,25 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         setIsSingleReportPdfDownloading(true);
         try {
             toast({
-                title: "جاري إنشاء التقرير الذكي",
-                description: "يقوم Gemini الآن بتحليل نتائج التحدي وتوليد توصيات تعليمية مفصلة، قد يستغرق ذلك لحظات.",
+                title: t("dash.teacher.topics.generatingReport"),
+                description: t("dash.teacher.topics.generatingReportDesc"),
             });
             const pdfResults = sortedSingleResultsForDialog.map((result: unknown) => {
                 const row = toRecord(result);
                 const user = getNestedRecord(row, "user");
                 return {
                     ...row,
-                    name: getParticipantName(result),
+                    name: getParticipantName(result, guestLabel),
                     user: {
                         ...user,
                         id: user.id || row.user_id || null,
                     },
-                    percentage: getScorePercent(result),
-                    score: getNumberField(result, ["score"]) || getScorePercent(result),
+                    percentage: getChallengeResultScorePercent(result),
+                    score: getNumberField(result, ["score"]) || getChallengeResultScorePercent(result),
                     correct_answers: getNumberField(result, ["correct_answers", "correctAnswers"]),
                     wrong_answers: getNumberField(result, ["wrong_answers", "wrongAnswers"]),
                     time_taken: getNumberField(result, ["time_taken", "timeTaken"]),
-                    participant_display_name: getParticipantName(result),
+                    participant_display_name: getParticipantName(result, guestLabel),
                 };
             });
 
@@ -763,41 +805,44 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             }));
 
             await downloadChallengeReportPdf({
-                topicTitle: `تقرير التحدي الفردي: ${singleChallengeResultsTopic.title}`,
+                language,
+                topicTitle: t("dash.teacher.topics.pdfReportTitle", { title: singleChallengeResultsTopic.title }),
                 lessonTitle: singleChallengeResultsTopic.title,
                 className: currentGrade?.name,
-                subjectName: subjectData?.name,
+                subjectName: selectedSubjectName,
                 teacherName: currentUser?.name || (currentTeacherProfile as any)?.name,
-                sessionDate: new Date().toLocaleDateString("ar-SA", { dateStyle: "full" }),
-                sessionTime: new Date().toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" }),
-                mergedSessionsNote: `تقرير مجمع لكل محاولات رابط التحدي الفردي. إجمالي المحاولات: ${singleChallengeCollectedReport.count}، متوسط الأداء: ${singleChallengeCollectedReport.averageScore}%، معدل النجاح: ${singleChallengeCollectedReport.passRate}%.`,
+                sessionDate: new Date().toLocaleDateString(locale, { dateStyle: "full" }),
+                sessionTime: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+                mergedSessionsNote: t("dash.teacher.topics.pdfReportSummary", { count: singleChallengeCollectedReport.count, avg: singleChallengeCollectedReport.averageScore, pass: singleChallengeCollectedReport.passRate }),
                 lessonRating:
-                    lessonRatingSummary.total > 0 ? lessonRatingSummary : undefined,
+                    lessonRatingSummary.total > 0
+                        ? localizeLessonRatingSummary(lessonRatingSummary, language)
+                        : undefined,
                 analysisRows: [
                     ...(lessonRatingSummary.total > 0
                         ? [
                               {
-                                  label: "تقييم الدرس (متوسط)",
+                                  label: t("dash.teacher.topics.lessonRating"),
                                   value: `${lessonRatingSummary.average.toFixed(1)} / 5`,
                               },
                               {
-                                  label: "عدد تقييمات الدرس",
+                                  label: t("dash.teacher.topics.ratingCount"),
                                   value: lessonRatingSummary.total,
                               },
                           ]
                         : []),
-                    { label: "الوسيط", value: `${singleChallengeCollectedReport.medianScore}%` },
-                    { label: "أدنى نتيجة", value: `${singleChallengeCollectedReport.lowestScore}%` },
+                    { label: t("dash.teacher.topics.median"), value: `${singleChallengeCollectedReport.medianScore}%` },
+                    { label: t("dash.teacher.topics.lowestScore"), value: `${singleChallengeCollectedReport.lowestScore}%` },
                     { label: "Q1", value: `${singleChallengeCollectedReport.q1Score}%` },
                     { label: "Q3", value: `${singleChallengeCollectedReport.q3Score}%` },
                     { label: "IQR", value: singleChallengeCollectedReport.iqrScore },
-                    { label: "الانحراف المعياري", value: singleChallengeCollectedReport.stdDevScore },
-                    { label: "معامل التشتت", value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
-                    { label: "ارتباط الزمن/الدرجة", value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
-                    { label: "محاولات الأسبوع", value: singleChallengeCollectedReport.weeklyAttempts },
-                    { label: "نجاح الأسبوع", value: `${singleChallengeCollectedReport.weeklyPassRate}%` },
-                    { label: "نتائج ممتازة", value: singleChallengeCollectedReport.highPerformers },
-                    { label: "يحتاجون دعم", value: singleChallengeCollectedReport.supportNeeded },
+                    { label: t("dash.teacher.topics.stdDev"), value: singleChallengeCollectedReport.stdDevScore },
+                    { label: t("dash.teacher.topics.dispersionCoef"), value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
+                    { label: t("dash.teacher.topics.correlation.timeScore"), value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
+                    { label: t("dash.teacher.topics.weeklyAttempts"), value: singleChallengeCollectedReport.weeklyAttempts },
+                    { label: t("dash.teacher.topics.weeklySuccess"), value: `${singleChallengeCollectedReport.weeklyPassRate}%` },
+                    { label: t("dash.teacher.topics.excellentScores"), value: singleChallengeCollectedReport.highPerformers },
+                    { label: t("dash.teacher.topics.needsSupport"), value: singleChallengeCollectedReport.supportNeeded },
                 ],
                 recommendations: singleChallengeCollectedReport.recommendations,
                 charts: {
@@ -818,14 +863,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             });
 
             toast({
-                title: "تم تنزيل PDF",
-                description: "تم إنشاء تقرير عربي منسق بخط عربي قابل للقراءة والبحث.",
+                title: t("dash.teacher.topics.toast.pdfDownloaded"),
+                description: t("dash.teacher.challengesTab.toastPdfSaved"),
             });
         } catch (error) {
             console.error("Failed to download single challenge PDF:", error);
             toast({
-                title: "تعذر تنزيل PDF",
-                description: "حدث خطأ أثناء إنشاء التقرير. حاول مرة أخرى.",
+                title: t("dash.teacher.topics.toast.pdfFailed"),
+                description: t("dash.teacher.topics.toast.reportFailed"),
                 variant: "destructive",
             });
         } finally {
@@ -833,29 +878,19 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         }
     };
 
-    // Sync DB topics to local state
+    // Only this teacher's topics for the selected (allowed) subject
     useEffect(() => {
-        if (subjectData?.topics) {
-            const mapped = subjectData.topics.map((topic: any) => ({
-                ...topic,
-                thumbnail: topic.thumbnail || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop",
-                views: Number(topic.views || 0),
-                createdAt: topic.created_at || topic.createdAt || "",
-                status: "published" as const,
-                mediaCount: topic.mediaItems?.length || topic.media?.length || 0,
-                quizCount: topic.challengeItems?.length || topic.challenge_questions?.length || topic.quiz?.length || 0,
-                media: (topic.mediaItems || topic.media || []).map((m: any) => ({
-                    ...m,
-                    type: m.type?.toLowerCase() || "text",
-                    fileName: m.file_name || m.fileName,
-                    pdfBase64: m.pdf_base64 || m.pdfBase64,
-                })),
-                quiz: topic.quizQuestions || topic.quiz || [],
-                challengeItems: topic.challengeItems || topic.challenge_questions || [],
-            }));
-            setTopics(sortTopicsByOrder(mapped));
+        if (!selectedSubjectId || !allowedSubjectIds.has(selectedSubjectId)) {
+            setTopics([]);
+            return;
         }
-    }, [subjectData]);
+        const forSubject = (allTeacherTopics || []).filter(
+            (topic: any) =>
+                String(topic.subject_id) === String(selectedSubjectId) ||
+                String(topic.subject?.id) === String(selectedSubjectId),
+        );
+        setTopics(sortTopicsByOrder(forSubject.map(mapDbTopicToExtended)));
+    }, [allTeacherTopics, selectedSubjectId, allowedSubjectIds]);
 
     // Filter topics based on search
     const filteredTopics = topics.filter(topic =>
@@ -978,7 +1013,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         };
 
         const markAttempt = (topicId: string, result: any, mode: "single" | "group", participantKey: string | null) => {
-            const score = getScorePercent(result);
+            const score = getChallengeResultScorePercent(result);
             const mainAgg = ensureMainScoreAgg(topicId);
             mainAgg.total += score;
             mainAgg.count += 1;
@@ -1089,6 +1124,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
     // CRUD Handlers
     const handleCreateTopic = () => {
+        if (!selectedSubjectId || !allowedSubjectIds.has(selectedSubjectId)) {
+            toast({
+                title: t("dash.common.error"),
+                description: t("dash.teacher.topics.noSubjectAccess"),
+                variant: "destructive",
+            });
+            return;
+        }
         setEditingTopic(null);
         setIsEditorOpen(true);
     };
@@ -1119,12 +1162,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 orders: withOrder.map((topic, sortIndex) => ({ id: topic.id, sort_order: sortIndex })),
                 subjectId: String(selectedSubjectId),
             });
-            toast({ title: "تم تحديث ترتيب الدروس" });
+            toast({ title: t("dash.teacher.topics.toast.reordered") });
         } catch (error: any) {
             setTopics(previousTopics);
             toast({
-                title: "تعذر تغيير الترتيب",
-                description: error?.message || "حاول مرة أخرى",
+                title: t("dash.teacher.topics.toast.reorderFailed"),
+                description: error?.message || t("dash.teacher.topics.tryAgain"),
                 variant: "destructive",
             });
         } finally {
@@ -1132,9 +1175,35 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         }
     };
 
+    const persistPendingLiveSession = async (
+        topicId: string,
+        draft: PendingLiveSessionDraft | null | undefined,
+        lessonTitle: string
+    ) => {
+        if (!hasLiveSessionDraft(draft) || !effectiveTeacherProfileId) return;
+
+        const payload = liveSessionDraftToPayload(
+            draft!,
+            lessonTitle.trim()
+                ? t("dash.teacher.live.sessionTitle", { title: lessonTitle.trim() })
+                : null
+        );
+        await createLiveSessionMutation.mutateAsync({
+            topicId,
+            teacherId: effectiveTeacherProfileId,
+            provider: payload.provider,
+            meetingUrl: payload.meetingUrl,
+            title: payload.title,
+            startsAt: payload.startsAt,
+            endsAt: payload.endsAt,
+            notes: payload.notes,
+        });
+    };
+
     const handleSaveTopic = async (topicData: any) => {
         const mediaItems = topicData.media || [];
         const challengeItems = topicData.challengeItems || [];
+        const pendingLiveSessions = (topicData.pendingLiveSessions || []) as PendingLiveSessionDraft[];
 
         try {
             const presetFields = selectValueToPresetFields(
@@ -1157,22 +1226,29 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         correct_sound_url: topicData.correctSoundUrl || null,
                         wrong_sound_url: topicData.wrongSoundUrl || null,
                         answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
+                        wheel_spin_sound_url: topicData.wheelSpinSoundUrl || null,
                     }
                 });
 
                 const topicId = updatedTopic?.id || editingTopic.id;
                 try {
-                    // Always save media items to DB (handles add, update and delete cases)
-                    await saveMediaMutation.mutateAsync({ topicId, media: mediaItems });
+                    // Only replace media when the teacher changed resources in the editor
+                    if (topicData.mediaDirty === true) {
+                        await saveMediaMutation.mutateAsync({ topicId, media: mediaItems });
+                    }
                     // Always save challenge questions to DB
                     await saveChallengeQuestionsMutation.mutateAsync({ topicId, questions: challengeItems });
-                    toast({ title: "تم تحديث الدرس بنجاح ✓" });
+                    for (const draft of pendingLiveSessions) {
+                        await persistPendingLiveSession(topicId, draft, topicData.title || "");
+                    }
+                    toast({ title: t("dash.teacher.topics.toast.updated") });
                     setIsEditorOpen(false);
+                    setEditingTopic(null);
                 } catch (err: any) {
                     console.error("Error saving topic details:", err);
                     toast({
-                        title: "خطأ في حفظ المكونات",
-                        description: err.message || "حدث خطأ أثناء حفظ الوسائط أو الأسئلة.",
+                        title: t("dash.teacher.topics.toast.saveComponentsFailed"),
+                        description: err.message || t("dash.teacher.topics.toast.mediaErr"),
                         variant: "destructive"
                     });
                 }
@@ -1183,9 +1259,13 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         ? Math.max(...topics.map((t) => getTopicSortOrder(t))) + 1
                         : 0;
 
+                if (!selectedSubjectId || !allowedSubjectIds.has(selectedSubjectId)) {
+                    throw new Error(t("dash.teacher.topics.noSubjectAccess"));
+                }
+
                 const newTopic = await createTopicMutation.mutateAsync({
                     subject_id: String(selectedSubjectId),
-                    teacherId: teacherProfileId,
+                    teacherId: effectiveTeacherProfileId,
                     title: topicData.title,
                     description: topicData.description,
                     thumbnail: topicData.thumbnail,
@@ -1198,6 +1278,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     correct_sound_url: topicData.correctSoundUrl || null,
                     wrong_sound_url: topicData.wrongSoundUrl || null,
                     answering_background_sound_url: topicData.answeringBackgroundSoundUrl || null,
+                    wheel_spin_sound_url: topicData.wheelSpinSoundUrl || null,
                     views: 0
                 });
 
@@ -1212,25 +1293,27 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         if (challengeItems.length > 0) {
                             await saveChallengeQuestionsMutation.mutateAsync({ topicId, questions: challengeItems });
                         }
-                        toast({ title: "تم إنشاء الدرس بنجاح ✓" });
+                        for (const draft of pendingLiveSessions) {
+                            await persistPendingLiveSession(topicId, draft, topicData.title || "");
+                        }
+                        toast({ title: t("dash.teacher.topics.toast.created") });
                         setIsEditorOpen(false);
+                        setEditingTopic(null);
                     } catch (err: any) {
                         console.error("Error saving new topic details:", err);
                         toast({
-                            title: "تم إنشاء الدرس ولكن مع خطأ",
-                            description: "تم إنشاء الدرس، لكن فشل حفظ الوسائط أو الأسئلة.",
+                            title: t("dash.teacher.topics.toast.createdPartial"),
+                            description: err.message || t("dash.teacher.topics.toast.mediaSaveFailed"),
                             variant: "destructive"
                         });
-                        // Still close editor, let them retry editing
-                        setIsEditorOpen(false);
                     }
                 }
             }
         } catch (error: any) {
             console.error("Error saving topic:", error);
             toast({
-                title: "خطأ غير متوقع",
-                description: error.message || "حدث خطأ أثناء محاولة الحفظ.",
+                title: t("dash.teacher.topics.toast.unexpected"),
+                description: error.message || t("dash.teacher.topics.toast.saveFailed"),
                 variant: "destructive"
             });
         }
@@ -1239,7 +1322,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
     const handleDeleteTopic = (id: string) => {
         deleteTopicMutation.mutate(id, {
             onSuccess: () => {
-                toast({ title: "تم حذف الدرس بنجاح" });
+                toast({ title: t("dash.teacher.topics.toast.deleted") });
                 setDeleteConfirmId(null);
             }
         });
@@ -1257,17 +1340,26 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
         }, {
             onSuccess: () => {
                 toast({
-                    title: newStatus === "published" ? "تم نشر الدرس" : "تم تحويل الدرس إلى مسودة",
+                    title: newStatus === "published" ? t("dash.teacher.topics.toast.published") : t("dash.teacher.topics.toast.drafted"),
                     description: topic.title,
                 });
             }
         });
     };
 
-    const selectedSubjectName = availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
+    const selectedSubjectName =
+        availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
+    const canManageSelectedSubject =
+        !!selectedSubjectId && allowedSubjectIds.has(selectedSubjectId);
+    const isLoadingTopicsList = isLoadingTeacherTopics;
 
     return (
         <div className="space-y-6">
+            {!visibleGrades?.length && (
+                <p className="text-sm rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-foreground">
+                    {t("dash.teacher.topics.noClassAccess")}
+                </p>
+            )}
             {/* Grade & Subject Selector */}
             <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
                 <CardContent className="p-4">
@@ -1276,11 +1368,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                             <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-[120px]">
                                 <GraduationCap className="w-5 h-5" />
-                                <span>الصف الدراسي:</span>
+                                <span>{t("dash.teacher.topics.gradeLabel")}</span>
                             </div>
                             <Select value={selectedGradeId} onValueChange={(val) => { setSelectedGradeId(val); setSelectedSubjectId(""); }}>
                                 <SelectTrigger className="w-full sm:w-64 bg-white">
-                                    <SelectValue placeholder="اختر الصف" />
+                                    <SelectValue placeholder={t("dash.teacher.topics.selectGrade")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {visibleGrades?.map((grade: any) => (
@@ -1293,15 +1385,20 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         </div>
 
                         {/* Subject picker */}
-                        {selectedGradeId && (
+                        {selectedGradeId && availableSubjects.length > 0 && (
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-[120px]">
                                     <BookMarked className="w-5 h-5" />
-                                    <span>المادة الدراسية:</span>
+                                    <span>{t("dash.teacher.topics.subjectLabel")}</span>
                                 </div>
-                                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId}>
+                                <Select
+                                    value={selectedSubjectId}
+                                    onValueChange={(val) => {
+                                        if (allowedSubjectIds.has(val)) setSelectedSubjectId(val);
+                                    }}
+                                >
                                     <SelectTrigger className="w-full sm:w-64 bg-white">
-                                        <SelectValue placeholder="اختر المادة" />
+                                        <SelectValue placeholder={t("dash.teacher.topics.selectSubject")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {availableSubjects.map((subject: any) => (
@@ -1325,6 +1422,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
             {/* Editor View */}
             {isEditorOpen ? (
                 <ContentEditor
+                    teacherProfileId={effectiveTeacherProfileId}
+                    lessonPagePath={
+                        editingTopic?.id && currentGrade?.slug && selectedSubjectId
+                            ? `/grade/${currentGrade.slug}/subject/${selectedSubjectId}/topic/${editingTopic.id}`
+                            : ""
+                    }
                     content={editingTopic ? {
                         id: editingTopic.id,
                         title: editingTopic.title,
@@ -1338,6 +1441,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         correctSoundUrl: editingTopic.correct_sound_url || "",
                         wrongSoundUrl: editingTopic.wrong_sound_url || "",
                         answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
+                        wheelSpinSoundUrl: resolveWheelSpinSoundUrl(editingTopic.wheel_spin_sound_url),
                         discussionsEnabled: editingTopic.discussions_enabled ?? true,
                         collectSingleChallengeParticipantData: editingTopic.collect_single_challenge_participant_data === true,
                         studentChallengeMode: editingTopic.student_challenge_mode ?? null,
@@ -1357,21 +1461,23 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                         <div className="relative w-full md:w-96">
                             <Input
-                                placeholder="بحث في الدروس..."
+                                placeholder={t("dash.teacher.topics.searchPlaceholder")}
                                 className="pr-9"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <Button className="gap-2" onClick={handleCreateTopic} disabled={!selectedSubjectId}>
-                            <Plus className="w-4 h-4" />
-                            درس جديد
-                        </Button>
+                        <Button
+                            className="gap-2"
+                            onClick={handleCreateTopic}
+                            disabled={!canManageSelectedSubject}
+                        >
+                            <Plus className="w-4 h-4" />{t("dash.teacher.topics.newLesson")}</Button>
                     </div>
                     {!searchQuery.trim() && topics.length > 1 && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                             <ArrowUpDown className="w-3.5 h-3.5" />
-                            استخدم الأسهم لترتيب الدروس — يظهر نفس الترتيب للطلاب في «المواضيع التعليمية»
+                            {t("dash.teacher.topics.reorderHint")}
                         </p>
                     )}
 
@@ -1390,19 +1496,15 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                 <AlertTriangle className="w-6 h-6 text-destructive" />
                                             </div>
                                             <div className="flex-1">
-                                                <h3 className="font-bold text-destructive">تأكيد الحذف</h3>
+                                                <h3 className="font-bold text-destructive">{t("dash.teacher.topics.deleteConfirmTitle")}</h3>
                                                 <p className="text-sm text-muted-foreground">
-                                                    هل أنت متأكد من حذف هذا الدرس؟ لا يمكن التراجع عن هذا الإجراء.
+                                                    {t("dash.teacher.topics.deleteConfirmDesc")}
                                                 </p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <Button variant="outline" size="sm" onClick={() => setDeleteConfirmId(null)}>
-                                                    إلغاء
-                                                </Button>
+                                                <Button variant="outline" size="sm" onClick={() => setDeleteConfirmId(null)}>{t("dash.common.cancel")}</Button>
                                                 <Button variant="destructive" size="sm" onClick={() => handleDeleteTopic(deleteConfirmId)}>
-                                                    <Trash className="w-4 h-4 ml-1" />
-                                                    حذف
-                                                </Button>
+                                                    <Trash className="w-4 h-4 ml-1" />{t("dash.common.delete")}</Button>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -1413,7 +1515,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                     {/* Topics List */}
                     <div className="grid grid-cols-1 gap-4">
-                        {isLoadingSubject ? (
+                        {isLoadingTopicsList ? (
                             Array.from({ length: 3 }).map((_, i) => (
                                 <Card key={i} className="overflow-hidden">
                                     <CardContent className="p-4 flex flex-col md:flex-row gap-4">
@@ -1454,7 +1556,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         {!searchQuery.trim() && topics.length > 1 && topicIndex >= 0 && (
                                             <div
                                                 className="flex md:flex-col items-center justify-center gap-1 shrink-0 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-1.5"
-                                                aria-label="ترتيب الدرس"
+                                                aria-label={t("dash.teacher.topics.lessonOrder")}
                                             >
                                                 <Button
                                                     type="button"
@@ -1467,7 +1569,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         e.stopPropagation();
                                                         void handleMoveTopic(topic.id, "up");
                                                     }}
-                                                    title="تحريك لأعلى"
+                                                    title={t("dash.teacher.topics.moveUp")}
                                                 >
                                                     <ChevronUp className="w-4 h-4" />
                                                 </Button>
@@ -1485,7 +1587,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         e.stopPropagation();
                                                         void handleMoveTopic(topic.id, "down");
                                                     }}
-                                                    title="تحريك لأسفل"
+                                                    title={t("dash.teacher.topics.moveDown")}
                                                 >
                                                     <ChevronDown className="w-4 h-4" />
                                                 </Button>
@@ -1505,14 +1607,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     : "bg-warning text-warning-foreground"
                                                     }`}
                                             >
-                                                {topic.status === "published" ? "✓ منشور" : "مسودة"}
+                                                {topic.status === "published" ? t("dash.teacher.topics.publishedBadge") : t("dash.teacher.topics.draft")}
                                             </button>
                                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Link to={`/grade/${selectedGradeId}/subject/${selectedSubjectId}/topic/${topic.id}`}>
                                                     <Button size="sm" variant="secondary" className="gap-2">
-                                                        <Eye className="w-4 h-4" />
-                                                        معاينة
-                                                    </Button>
+                                                        <Eye className="w-4 h-4" />{t("dash.teacher.topics.preview")}</Button>
                                                 </Link>
                                             </div>
                                         </div>
@@ -1535,16 +1635,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
                                                             <DropdownMenuItem className="gap-2" onClick={() => handleEditTopic(topic)}>
-                                                                <Edit className="w-4 h-4" />
-                                                                تعديل
-                                                            </DropdownMenuItem>
+                                                                <Edit className="w-4 h-4" />{t("dash.common.edit")}</DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="gap-2 text-destructive"
                                                                 onClick={() => setDeleteConfirmId(topic.id)}
                                                             >
-                                                                <Trash className="w-4 h-4" />
-                                                                حذف
-                                                            </DropdownMenuItem>
+                                                                <Trash className="w-4 h-4" />{t("dash.common.delete")}</DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </div>
@@ -1562,15 +1658,15 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     )}
                                                     <div className="flex items-center gap-1">
                                                         <Video className="w-4 h-4" />
-                                                        {topic.mediaCount} موارد
+                                                        {t("dash.teacher.topics.resourcesCount", { n: topic.mediaCount ?? 0 })}
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         <ListChecks className="w-4 h-4" />
-                                                        {topic.quizCount} سؤال/لعبة
+                                                        {t("dash.teacher.topics.questionsCount", { n: topic.quizCount ?? 0 })}
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         <Eye className="w-4 h-4" />
-                                                        {getTopicViewerCount(topic)} مشاهدة
+                                                        {t("dash.teacher.topics.viewsCount", { n: getTopicViewerCount(topic) })}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1582,18 +1678,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     className="gap-2"
                                                     onClick={() => handleEditTopic(topic)}
                                                 >
-                                                    <Edit className="w-4 h-4" />
-                                                    تعديل المحتوى
-                                                </Button>
+                                                    <Edit className="w-4 h-4" />{t("dash.teacher.topics.editContent")}</Button>
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     className="gap-2 text-primary hover:text-primary"
                                                     onClick={() => setSelectedTopicStats(topic)}
                                                 >
-                                                    <BarChart3 className="w-4 h-4" />
-                                                    إحصائيات المحتوى
-                                                </Button>
+                                                    <BarChart3 className="w-4 h-4" />{t("dash.teacher.topics.contentStats")}</Button>
                                                 <div className="flex flex-1 min-w-[min(100%,14rem)] gap-2">
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -1601,9 +1693,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 className="flex-1 min-w-0 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                                                 disabled={topic.status === "draft"}
                                                             >
-                                                                <Gamepad2 className="w-4 h-4 shrink-0" />
-                                                                إنشاء تحدي
-                                                            </Button>
+                                                                <Gamepad2 className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.createChallenge")}</Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end" className="w-52">
                                                             <DropdownMenuItem
@@ -1617,9 +1707,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                     })
                                                                 }
                                                             >
-                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />
-                                                                أنشطة تفاعلية
-                                                            </DropdownMenuItem>
+                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="gap-2 cursor-pointer"
                                                                 onClick={() =>
@@ -1631,9 +1719,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                     })
                                                                 }
                                                             >
-                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />
-                                                                أنشطة تلعيبية
-                                                            </DropdownMenuItem>
+                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="gap-2 cursor-pointer font-semibold"
                                                                 onClick={() =>
@@ -1646,7 +1732,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 }
                                                             >
                                                                 <Target className="w-4 h-4 text-emerald-500 shrink-0" />
-                                                                الكل (مختلط)
+                                                                {t("dash.teacher.topics.shareMixed")}
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
@@ -1657,9 +1743,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 className="flex-1 min-w-0 gap-2 border-primary/35 text-primary hover:bg-primary/10"
                                                                 disabled={topic.status === "draft"}
                                                             >
-                                                                <Calendar className="w-4 h-4 shrink-0" />
-                                                                تحدي مجدول
-                                                            </Button>
+                                                                <Calendar className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.scheduledChallenge")}</Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end" className="w-56">
                                                             <DropdownMenuItem
@@ -1674,9 +1758,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                     })
                                                                 }
                                                             >
-                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />
-                                                                أنشطة تفاعلية
-                                                            </DropdownMenuItem>
+                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="gap-2 cursor-pointer"
                                                                 onClick={() =>
@@ -1689,9 +1771,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                     })
                                                                 }
                                                             >
-                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />
-                                                                أنشطة تلعيبية
-                                                            </DropdownMenuItem>
+                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="gap-2 cursor-pointer font-semibold"
                                                                 onClick={() =>
@@ -1705,7 +1785,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 }
                                                             >
                                                                 <Target className="w-4 h-4 text-emerald-500 shrink-0" />
-                                                                الكل (مختلط)
+                                                                {t("dash.teacher.topics.shareMixed")}
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
@@ -1716,12 +1796,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 className="flex-1 min-w-0 gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
                                                                 disabled={topic.status === "draft"}
                                                             >
-                                                                <QrCode className="w-4 h-4 shrink-0" />
-                                                                QR فردي
-                                                            </Button>
+                                                                <QrCode className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.singleQr")}</Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end" className="w-56">
-                                                            {SINGLE_SHARE_OPTIONS.map((option) => (
+                                                            {singleShareOptions.map((option) => (
                                                                 <DropdownMenuItem
                                                                     key={option.category}
                                                                     className="gap-2 cursor-pointer"
@@ -1744,7 +1822,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     <Button
                                                         type="button"
                                                         variant="outline"
-                                                        dir="rtl"
+                                                        dir={dir}
                                                         className="group relative h-auto w-full overflow-hidden rounded-2xl border-primary/25 bg-gradient-to-br from-primary/[0.09] via-primary/[0.02] to-transparent py-4 px-4 shadow-sm transition-all hover:border-primary/45 hover:shadow-md hover:from-primary/[0.12] sm:max-w-md"
                                                         onClick={() => setSingleChallengeResultsTopic(topic)}
                                                     >
@@ -1754,11 +1832,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                     <Trophy className="h-6 w-6" />
                                                                 </span>
                                                                 <span className="flex min-w-0 flex-col gap-0.5 text-start">
-                                                                    <span className="font-bold leading-tight text-foreground">
-                                                                        نتائج التحدي الفردي
-                                                                    </span>
+                                                                    <span className="font-bold leading-tight text-foreground">{t("dash.teacher.topics.singleResultsTitle")}</span>
                                                                     <span className="text-xs font-normal text-muted-foreground">
-                                                                        أسماء المحاولات والدرجات — الأحدث أولاً
+                                                                        {t("dash.teacher.topics.attemptNamesScores")}
                                                                     </span>
                                                                 </span>
                                                             </span>
@@ -1784,18 +1860,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             <Card className="p-12 text-center">
                                 <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
                                 <h3 className="text-xl font-bold mb-2">
-                                    {searchQuery ? "لا توجد نتائج" : "لا توجد دروس"}
+                                    {searchQuery ? t("dash.teacher.topics.noResults") : t("dash.teacher.topics.noLessons")}
                                 </h3>
                                 <p className="text-muted-foreground mb-4">
                                     {searchQuery
-                                        ? `لم نجد دروساً تطابق "${searchQuery}"`
-                                        : "ابدأ بإضافة درس جديد لمادتك"}
+                                        ? t("dash.teacher.topics.noSearchResults", { query: searchQuery })
+                                        : t("dash.teacher.topics.noLessonsDesc")}
                                 </p>
                                 {!searchQuery && (
                                     <Button onClick={handleCreateTopic} className="gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        إضافة درس جديد
-                                    </Button>
+                                        <Plus className="w-4 h-4" />{t("dash.teacher.topics.addNewLesson")}</Button>
                                 )}
                             </Card>
                         )}
@@ -1807,31 +1881,31 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     {topics.length > 0 && (
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-base">إحصائيات الدروس</CardTitle>
+                                <CardTitle className="text-base">{t("dash.teacher.topics.statsTitle")}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="text-center">
                                         <div className="text-2xl font-bold text-primary">{topics.length}</div>
-                                        <div className="text-xs text-muted-foreground">إجمالي الدروس</div>
+                                        <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.totalLessons")}</div>
                                     </div>
                                     <div className="text-center">
                                         <div className="text-2xl font-bold text-success">
                                             {topics.filter(t => t.status === "published").length}
                                         </div>
-                                        <div className="text-xs text-muted-foreground">منشور</div>
+                                        <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.published")}</div>
                                     </div>
                                     <div className="text-center">
                                         <div className="text-2xl font-bold text-blue-500">
                                             {topics.reduce((sum, t) => sum + (t.mediaCount || 0), 0)}
                                         </div>
-                                        <div className="text-xs text-muted-foreground">موارد تعليمية</div>
+                                        <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.resources")}</div>
                                     </div>
                                     <div className="text-center">
                                         <div className="text-2xl font-bold text-purple-500">
                                             {topics.reduce((sum, t) => sum + (t.quizCount || 0), 0)}
                                         </div>
-                                        <div className="text-xs text-muted-foreground">أسئلة وألعاب</div>
+                                        <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.questionsGames")}</div>
                                     </div>
                                 </div>
                             </CardContent>
@@ -1840,11 +1914,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 </>
             )}
             <Dialog open={!!selectedTopicStats} onOpenChange={(open) => !open && setSelectedTopicStats(null)}>
-                <DialogContent dir="rtl" className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogContent dir={dir} className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>تقرير المحتوى الكامل: {selectedTopicStats?.title}</DialogTitle>
+                        <DialogTitle>{t("dash.teacher.topics.contentReportTitle", { title: selectedTopicStats?.title ?? "" })}</DialogTitle>
                         <DialogDescription>
-                            تقرير تفصيلي لأداء المحتوى يشمل المشاهدات، محاولات التحدي، متوسط الدرجات، والنشاط الزمني.
+                            {t("dash.teacher.topics.contentReportDesc")}
                         </DialogDescription>
                     </DialogHeader>
                     {selectedTopicStats && (
@@ -1883,23 +1957,23 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     ? Math.round((metrics.groupAttempts / metrics.totalAttempts) * 100)
                                     : 0;
                                 const modeChartData = [
-                                    { name: "فردي", value: metrics.singleAttempts, color: "#3b82f6" },
-                                    { name: "جماعي", value: metrics.groupAttempts, color: "#10b981" },
+                                    { name: t("dash.teacher.topics.single"), value: metrics.singleAttempts, color: "#3b82f6" },
+                                    { name: t("dash.teacher.topics.group"), value: metrics.groupAttempts, color: "#10b981" },
                                 ].filter((d) => d.value > 0);
                                 const scoreChartData = [
-                                    { label: "متوسط", value: metrics.averageScoreOverall },
-                                    { label: "وسيط", value: metrics.medianScore },
-                                    { label: "أعلى", value: metrics.highestScore },
-                                    { label: "أدنى", value: metrics.lowestScore },
+                                    { label: t("dash.teacher.topics.average"), value: metrics.averageScoreOverall },
+                                    { label: t("dash.teacher.topics.medianShort"), value: metrics.medianScore },
+                                    { label: t("dash.teacher.topics.highest"), value: metrics.highestScore },
+                                    { label: t("dash.teacher.topics.lowest"), value: metrics.lowestScore },
                                 ];
 
                                 const quickCards = [
-                                    { label: "إجمالي المشاهدات", value: metrics.viewers },
-                                    { label: "مشاهدون فريدون", value: metrics.uniqueViewers },
-                                    { label: "إجمالي المحاولات", value: metrics.totalAttempts },
-                                    { label: "متوسط الأداء العام", value: `${metrics.averageScoreOverall}%` },
-                                    { label: "أعلى نتيجة", value: `${metrics.highestScore}%` },
-                                    { label: "معدل النجاح", value: `${metrics.passRate}%` },
+                                    { label: t("dash.teacher.topics.totalViews"), value: metrics.viewers },
+                                    { label: t("dash.teacher.topics.uniqueViewers"), value: metrics.uniqueViewers },
+                                    { label: t("dash.teacher.topics.totalAttempts"), value: metrics.totalAttempts },
+                                    { label: t("dash.teacher.topics.avgPerformance"), value: `${metrics.averageScoreOverall}%` },
+                                    { label: t("dash.teacher.topics.highestScore"), value: `${metrics.highestScore}%` },
+                                    { label: t("dash.teacher.topics.passRate"), value: `${metrics.passRate}%` },
                                 ];
 
                                 return (
@@ -1917,25 +1991,25 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                         <LessonRatingSummaryCard
                                             summary={contentReportLessonRating}
-                                            emptyMessage="لا توجد تقييمات بعد لهذا الدرس."
+                                            emptyMessage={t("dash.teacher.topics.noRatings")}
                                         />
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <Card className="border-blue-200 bg-blue-50/50">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">تفاصيل التحدي الفردي</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.singleDetails")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-2 text-sm">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">عدد المحاولات</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.attempts")}</span>
                                                         <span className="font-bold">{metrics.singleAttempts}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">عدد المستخدمين (فريد)</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.uniqueUsers")}</span>
                                                         <span className="font-bold">{metrics.uniqueSingleParticipants}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">متوسط الدرجات</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.avgScore")}</span>
                                                         <span className="font-bold">{metrics.averageScoreSingle}%</span>
                                                     </div>
                                                 </CardContent>
@@ -1943,19 +2017,19 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                             <Card className="border-emerald-200 bg-emerald-50/50">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">تفاصيل التحدي الجماعي</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.groupDetails")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-2 text-sm">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">عدد المحاولات</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.attempts")}</span>
                                                         <span className="font-bold">{metrics.groupAttempts}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">عدد المستخدمين (فريد)</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.uniqueUsers")}</span>
                                                         <span className="font-bold">{metrics.uniqueGroupParticipants}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">متوسط الدرجات</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.avgScore")}</span>
                                                         <span className="font-bold">{metrics.averageScoreGroup}%</span>
                                                     </div>
                                                 </CardContent>
@@ -1965,7 +2039,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <Card className="border-primary/20">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">مخطط المحاولات (فردي/جماعي)</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.attemptsChart")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent>
                                                     {modeChartData.length > 0 ? (
@@ -1992,17 +2066,17 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         </div>
                                                     ) : (
                                                         <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
-                                                            لا توجد بيانات كافية للرسم
+                                                            {t("dash.teacher.topics.noChartData")}
                                                         </div>
                                                     )}
                                                     <div className="flex items-center justify-center gap-4 mt-2 text-xs">
                                                         <div className="flex items-center gap-1">
                                                             <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                                            فردي ({metrics.singleAttempts})
+                                                            {t("dash.teacher.topics.singleAttempts", { n: metrics.singleAttempts })}
                                                         </div>
                                                         <div className="flex items-center gap-1">
                                                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                                            جماعي ({metrics.groupAttempts})
+                                                            {t("dash.teacher.topics.groupAttempts", { n: metrics.groupAttempts })}
                                                         </div>
                                                     </div>
                                                 </CardContent>
@@ -2010,7 +2084,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                             <Card className="border-primary/20">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">مخطط الدرجات</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.scoreChart")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent>
                                                     <div className="h-56" dir="ltr">
@@ -2030,19 +2104,19 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                         <Card className="border-muted">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm">ملخص التقرير</CardTitle>
+                                                <CardTitle className="text-sm">{t("dash.teacher.topics.reportSummary")}</CardTitle>
                                             </CardHeader>
                                             <CardContent className="text-sm space-y-2">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-muted-foreground">إجمالي الطلاب المشاركين في التحديات</span>
+                                                    <span className="text-muted-foreground">{t("dash.teacher.topics.totalParticipants")}</span>
                                                     <span className="font-bold">{metrics.uniqueParticipants}</span>
                                                 </div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-muted-foreground">آخر محاولة</span>
+                                                    <span className="text-muted-foreground">{t("dash.teacher.topics.lastAttempt")}</span>
                                                     <span className="font-bold">
                                                         {metrics.lastAttemptAt
                                                             ? new Date(metrics.lastAttemptAt).toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" })
-                                                            : "لا توجد"}
+                                                            : t("dash.teacher.topics.none")}
                                                     </span>
                                                 </div>
                                             </CardContent>
@@ -2050,14 +2124,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                         <Card className="border-primary/20">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm">تحليل الأسئلة</CardTitle>
+                                                <CardTitle className="text-sm">{t("dash.teacher.topics.questionAnalysis")}</CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-4">
                                                 {Array.isArray(metrics.questionAnalytics) && metrics.questionAnalytics.length > 0 ? (
                                                     <>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                             <div className="rounded-xl border bg-red-50/50 p-3">
-                                                                <div className="text-xs text-muted-foreground mb-1">الأكثر خطأ</div>
+                                                                <div className="text-xs text-muted-foreground mb-1">{t("dash.teacher.topics.mostWrong")}</div>
                                                                 <div className="font-bold text-sm line-clamp-1">
                                                                     {(() => {
                                                                         const mostWrong = [...metrics.questionAnalytics].sort((a: any, b: any) => b.wrong - a.wrong)[0];
@@ -2066,7 +2140,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                 </div>
                                                             </div>
                                                             <div className="rounded-xl border bg-emerald-50/50 p-3">
-                                                                <div className="text-xs text-muted-foreground mb-1">الأكثر صحة</div>
+                                                                <div className="text-xs text-muted-foreground mb-1">{t("dash.teacher.topics.mostCorrect")}</div>
                                                                 <div className="font-bold text-sm line-clamp-1">
                                                                     {(() => {
                                                                         const mostCorrect = [...metrics.questionAnalytics].sort((a: any, b: any) => b.correct - a.correct)[0];
@@ -2078,11 +2152,11 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                                         <div className="rounded-xl border overflow-hidden">
                                                             <div className="grid grid-cols-12 bg-muted/50 px-3 py-2 text-xs font-bold text-muted-foreground">
-                                                                <div className="col-span-5">السؤال</div>
-                                                                <div className="col-span-2 text-center">المحاولات</div>
-                                                                <div className="col-span-2 text-center">صحيح</div>
-                                                                <div className="col-span-1 text-center">خطأ</div>
-                                                                <div className="col-span-2 text-center">الدقة</div>
+                                                                <div className="col-span-5">{t("dash.teacher.topics.question")}</div>
+                                                                <div className="col-span-2 text-center">{t("dash.teacher.topics.attempts")}</div>
+                                                                <div className="col-span-2 text-center">{t("dash.teacher.topics.correct")}</div>
+                                                                <div className="col-span-1 text-center">{t("dash.teacher.topics.wrong")}</div>
+                                                                <div className="col-span-2 text-center">{t("dash.teacher.topics.accuracy")}</div>
                                                             </div>
                                                             <div className="max-h-64 overflow-y-auto">
                                                                 {metrics.questionAnalytics.map((q: any) => (
@@ -2099,7 +2173,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </>
                                                 ) : (
                                                     <div className="text-sm text-muted-foreground text-center py-6 border rounded-xl border-dashed">
-                                                        لا توجد بيانات كافية لتحليل الأسئلة بعد
+                                                        {t("dash.teacher.topics.noQuestionAnalysisData")}
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -2108,23 +2182,23 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <Card className="border-amber-200 bg-amber-50/40">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">تحليل التوزيع</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.distributionAnalysis")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-2 text-sm">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">أدنى نتيجة</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.lowestScore")}</span>
                                                         <span className="font-bold">{metrics.lowestScore}%</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">الوسيط (Median)</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.median")}</span>
                                                         <span className="font-bold">{metrics.medianScore}%</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">نتائج ممتازة (+90)</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.excellent90Plus")}</span>
                                                         <span className="font-bold">{metrics.highPerformersCount}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">نتائج منخفضة (&lt;50)</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.lowScores")}</span>
                                                         <span className="font-bold">{metrics.lowPerformersCount}</span>
                                                     </div>
                                                 </CardContent>
@@ -2132,27 +2206,27 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                             <Card className="border-violet-200 bg-violet-50/40">
                                                 <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm">تحليل النشاط</CardTitle>
+                                                    <CardTitle className="text-sm">{t("dash.teacher.topics.activityAnalysis")}</CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-2 text-sm">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">محاولات اليوم</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.todayAttempts")}</span>
                                                         <span className="font-bold">{metrics.attemptsToday}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">محاولات آخر 7 أيام</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.last7Attempts")}</span>
                                                         <span className="font-bold">{metrics.attemptsLast7Days}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">أيام نشاط آخر 30 يوم</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.activeDays30")}</span>
                                                         <span className="font-bold">{metrics.activityDaysLast30Days}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">نسبة محاولات الفردي</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.singleAttemptPct")}</span>
                                                         <span className="font-bold">{singleShare}%</span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-muted-foreground">نسبة محاولات الجماعي</span>
+                                                        <span className="text-muted-foreground">{t("dash.teacher.topics.groupAttemptPct")}</span>
                                                         <span className="font-bold">{groupShare}%</span>
                                                     </div>
                                                 </CardContent>
@@ -2176,7 +2250,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                 }}
             >
                 <DialogContent
-                    dir="rtl"
+                    dir={dir}
                     className="flex h-[90dvh] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
                 >
                     <DialogHeader className="relative shrink-0 space-y-0 border-0 bg-gradient-to-bl from-primary/[0.12] via-primary/[0.04] to-transparent px-6 pb-5 pt-6 text-start">
@@ -2186,16 +2260,14 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     <Trophy className="h-7 w-7" />
                                 </div>
                                 <div className="min-w-0 flex-1 space-y-1 text-start">
-                                    <DialogTitle className="text-start text-xl font-black leading-snug sm:text-2xl">
-                                        نتائج التحدي الفردي
-                                    </DialogTitle>
+                                    <DialogTitle className="text-start text-xl font-black leading-snug sm:text-2xl">{t("dash.teacher.topics.singleResultsTitle")}</DialogTitle>
                                     {singleChallengeResultsTopic && (
                                         <p className="truncate text-start text-sm font-semibold text-primary">
                                             {singleChallengeResultsTopic.title}
                                         </p>
                                     )}
                                     <DialogDescription className="text-start text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                                        تقرير تفصيلي لبيانات التحدي الفردي المجمعة: الدرجات، الزمن، المشاركين، النشاط، وتحليل الأسئلة.
+                                        {t("dash.teacher.topics.singleReportDesc")}
                                     </DialogDescription>
                                 </div>
                             </div>
@@ -2206,28 +2278,26 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            dir="rtl"
+                                            dir={dir}
                                             className="gap-2 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
                                             onClick={handleDownloadSingleReportPdf}
                                             disabled={isSingleReportPdfDownloading}
                                         >
                                             <Download className="h-4 w-4 shrink-0" />
-                                            {isSingleReportPdfDownloading ? "جاري..." : "تنزيل PDF"}
+                                            {isSingleReportPdfDownloading ? t("dash.teacher.topics.loading") : t("dash.teacher.topics.downloadPdf")}
                                         </Button>
                                         <Button
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            dir="rtl"
+                                            dir={dir}
                                             className="gap-2 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10"
                                             onClick={() => {
                                                 setSingleResultsResetConfirmText("");
                                                 setSingleResultsResetOpen(true);
                                             }}
                                         >
-                                            <RotateCcw className="h-4 w-4 shrink-0" />
-                                            إعادة ضبط النتائج
-                                        </Button>
+                                            <RotateCcw className="h-4 w-4 shrink-0" />{t("dash.teacher.topics.resetResultsBtn")}</Button>
                                     </>
                                 )}
                             </div>
@@ -2235,16 +2305,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     </DialogHeader>
 
                     {singleChallengeResultsTopic && singleChallengeCollectedReport && (
-                        <ScrollArea dir="rtl" className="min-h-0 flex-1">
+                        <ScrollArea dir={dir} className="min-h-0 flex-1">
                             <div className="space-y-4 p-4 sm:p-6">
                                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
                                     {[
-                                        { label: "محاولات", value: singleChallengeCollectedReport.count, color: "text-foreground" },
-                                        { label: "مشاركون", value: singleChallengeCollectedReport.uniqueParticipants, color: "text-primary" },
-                                        { label: "المتوسط", value: `${singleChallengeCollectedReport.averageScore}%`, color: "text-emerald-700" },
-                                        { label: "الأفضل", value: `${singleChallengeCollectedReport.bestScore}%`, color: "text-amber-700" },
-                                        { label: "الوسيط", value: `${singleChallengeCollectedReport.medianScore}%`, color: "text-blue-700" },
-                                        { label: "معدل النجاح", value: `${singleChallengeCollectedReport.passRate}%`, color: "text-violet-700" },
+                                        { label: t("dash.teacher.topics.attempts"), value: singleChallengeCollectedReport.count, color: "text-foreground" },
+                                        { label: t("dash.teacher.topics.participants"), value: singleChallengeCollectedReport.uniqueParticipants, color: "text-primary" },
+                                        { label: t("dash.teacher.topics.average"), value: `${singleChallengeCollectedReport.averageScore}%`, color: "text-emerald-700" },
+                                        { label: t("dash.teacher.topics.best"), value: `${singleChallengeCollectedReport.bestScore}%`, color: "text-amber-700" },
+                                        { label: t("dash.teacher.topics.median"), value: `${singleChallengeCollectedReport.medianScore}%`, color: "text-blue-700" },
+                                        { label: t("dash.teacher.topics.passRate"), value: `${singleChallengeCollectedReport.passRate}%`, color: "text-violet-700" },
                                     ].map((card) => (
                                         <div key={card.label} className="rounded-2xl border bg-background/80 p-3 text-center shadow-sm">
                                             <div className={`text-xl font-black tabular-nums ${card.color}`}>{card.value}</div>
@@ -2258,7 +2328,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     <Card className="border-primary/20">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">توزيع الدرجات</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.scoreDistribution")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="h-56" dir="ltr">
@@ -2281,30 +2351,30 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                     <Card className="border-primary/20">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">النشاط آخر 7 أيام</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.activity7days")}</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                                                 <div className="rounded-xl border bg-background/80 p-2 text-center">
                                                     <div className="text-lg font-black text-primary">{singleChallengeCollectedReport.weeklyAttempts}</div>
-                                                    <div className="text-muted-foreground">محاولات الأسبوع</div>
+                                                    <div className="text-muted-foreground">{t("dash.teacher.topics.weeklyAttempts")}</div>
                                                 </div>
                                                 <div className="rounded-xl border bg-background/80 p-2 text-center">
                                                     <div className="text-lg font-black text-emerald-700">{singleChallengeCollectedReport.weeklyAverageScore}%</div>
-                                                    <div className="text-muted-foreground">متوسط الأسبوع</div>
+                                                    <div className="text-muted-foreground">{t("dash.teacher.topics.weeklyAvg")}</div>
                                                 </div>
                                                 <div className="rounded-xl border bg-background/80 p-2 text-center">
                                                     <div className="text-lg font-black text-violet-700">{singleChallengeCollectedReport.weeklyActiveDays}</div>
-                                                    <div className="text-muted-foreground">أيام نشطة</div>
+                                                    <div className="text-muted-foreground">{t("dash.teacher.topics.activeDays")}</div>
                                                 </div>
                                                 <div className="rounded-xl border bg-background/80 p-2 text-center">
                                                     <div className="text-lg font-black text-amber-700">
                                                         {singleChallengeCollectedReport.weeklyAttempts > 0 ? `${singleChallengeCollectedReport.weeklyPassRate}%` : "—"}
                                                     </div>
-                                                    <div className="text-muted-foreground">نجاح الأسبوع (70%+)</div>
+                                                    <div className="text-muted-foreground">{t("dash.teacher.topics.weeklySuccess70")}</div>
                                                     {singleChallengeCollectedReport.weeklyAttempts > 0 && (
                                                         <div className="mt-0.5 text-[10px] text-muted-foreground">
-                                                            {singleChallengeCollectedReport.weeklyPassedAttempts} من {singleChallengeCollectedReport.weeklyAttempts} محاولات
+                                                            {t("dash.teacher.topics.attemptsOf", { passed: singleChallengeCollectedReport.weeklyPassedAttempts, total: singleChallengeCollectedReport.weeklyAttempts })}
                                                         </div>
                                                     )}
                                                 </div>
@@ -2317,38 +2387,38 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         <YAxis yAxisId="left" allowDecimals={false} />
                                                         <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
                                                         <RechartsTooltip />
-                                                        <Line yAxisId="left" type="monotone" dataKey="attempts" name="المحاولات" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-                                                        <Line yAxisId="right" type="monotone" dataKey="avg" name="المتوسط" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
-                                                        <Line yAxisId="right" type="monotone" dataKey="passRate" name="نسبة النجاح" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+                                                        <Line yAxisId="left" type="monotone" dataKey="attempts" name={t("dash.teacher.topics.attempts")} stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
+                                                        <Line yAxisId="right" type="monotone" dataKey="avg" name={t("dash.teacher.topics.average")} stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                                                        <Line yAxisId="right" type="monotone" dataKey="passRate" name={t("dash.teacher.topics.successRate")} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
                                                     </LineChart>
                                                 </ResponsiveContainer>
                                             </div>
                                             <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
                                                 <div className="rounded-xl border bg-blue-50/60 p-3">
-                                                    <div className="font-bold text-blue-900">أكثر يوم نشاطًا</div>
+                                                    <div className="font-bold text-blue-900">{t("dash.teacher.topics.busiestDay")}</div>
                                                     <div className="mt-1 text-muted-foreground">
                                                         {singleChallengeCollectedReport.busiestDay?.attempts
-                                                            ? `${singleChallengeCollectedReport.busiestDay.day} (${singleChallengeCollectedReport.busiestDay.date}) — ${singleChallengeCollectedReport.busiestDay.attempts} محاولات`
-                                                            : "لا توجد محاولات في آخر 7 أيام"}
+                                                            ? t("dash.teacher.topics.busiestDayDetail", { day: singleChallengeCollectedReport.busiestDay.day, date: singleChallengeCollectedReport.busiestDay.date, attempts: singleChallengeCollectedReport.busiestDay.attempts })
+                                                            : t("dash.teacher.topics.noAttempts7days")}
                                                     </div>
                                                 </div>
                                                 <div className="rounded-xl border bg-emerald-50/60 p-3">
-                                                    <div className="font-bold text-emerald-900">أفضل يوم أداء</div>
+                                                    <div className="font-bold text-emerald-900">{t("dash.teacher.topics.bestDay")}</div>
                                                     <div className="mt-1 text-muted-foreground">
                                                         {singleChallengeCollectedReport.bestActivityDay
-                                                            ? `${singleChallengeCollectedReport.bestActivityDay.day} (${singleChallengeCollectedReport.bestActivityDay.date}) — متوسط ${singleChallengeCollectedReport.bestActivityDay.avg}%`
-                                                            : "لا توجد بيانات أداء كافية"}
+                                                            ? t("dash.teacher.topics.bestDayDetail", { day: singleChallengeCollectedReport.bestActivityDay.day, date: singleChallengeCollectedReport.bestActivityDay.date, avg: singleChallengeCollectedReport.bestActivityDay.avg })
+                                                            : t("dash.teacher.topics.noPerformanceData")}
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="rounded-xl border overflow-hidden">
                                                 <div className="grid grid-cols-6 bg-muted/50 px-3 py-2 text-[11px] font-bold text-muted-foreground">
-                                                    <div>اليوم</div>
-                                                    <div className="text-center">التاريخ</div>
-                                                    <div className="text-center">محاولات</div>
-                                                    <div className="text-center">مشاركون</div>
-                                                    <div className="text-center">متوسط</div>
-                                                    <div className="text-center">نجاح</div>
+                                                    <div>{t("dash.teacher.topics.today")}</div>
+                                                    <div className="text-center">{t("dash.teacher.topics.date")}</div>
+                                                    <div className="text-center">{t("dash.teacher.topics.attempts")}</div>
+                                                    <div className="text-center">{t("dash.teacher.topics.participants")}</div>
+                                                    <div className="text-center">{t("dash.teacher.topics.average")}</div>
+                                                    <div className="text-center">{t("dash.teacher.topics.success")}</div>
                                                 </div>
                                                 {singleChallengeCollectedReport.dailyTrend.map((day) => (
                                                     <div key={day.key} className="grid grid-cols-6 border-t px-3 py-2 text-[11px]">
@@ -2368,7 +2438,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                                     <Card className="border-violet-200 bg-violet-50/40 lg:col-span-1">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">نوع المشاركين</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.participantType")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             {singleChallengeCollectedReport.participantTypeData.length > 0 ? (
@@ -2385,51 +2455,51 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </ResponsiveContainer>
                                                 </div>
                                             ) : (
-                                                <div className="py-10 text-center text-sm text-muted-foreground">لا توجد بيانات</div>
+                                                <div className="py-10 text-center text-sm text-muted-foreground">{t("dash.teacher.topics.noData")}</div>
                                             )}
                                             <div className="flex justify-center gap-4 text-xs">
-                                                <span>مسجل: {singleChallengeCollectedReport.registeredAttempts}</span>
-                                                <span>زائر: {singleChallengeCollectedReport.guestAttempts}</span>
+                                                <span>{t("dash.teacher.topics.registered")}: {singleChallengeCollectedReport.registeredAttempts}</span>
+                                                <span>{t("dash.teacher.topics.guest")}: {singleChallengeCollectedReport.guestAttempts}</span>
                                             </div>
                                         </CardContent>
                                     </Card>
 
                                     <Card className="border-emerald-200 bg-emerald-50/40 lg:col-span-2">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">تفاصيل الأداء والزمن</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.performanceDetails")}</CardTitle>
                                         </CardHeader>
                                         <CardContent className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black text-emerald-700">{singleChallengeCollectedReport.answerAccuracy}%</div>
-                                                <div className="text-xs text-muted-foreground">دقة الإجابات</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.answerAccuracy")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black">{singleChallengeCollectedReport.totalCorrect}/{singleChallengeCollectedReport.totalCorrect + singleChallengeCollectedReport.totalWrong}</div>
-                                                <div className="text-xs text-muted-foreground">صحيح من الإجمالي</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.correctFromTotal")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black">{formatSeconds(singleChallengeCollectedReport.averageTime)}</div>
-                                                <div className="text-xs text-muted-foreground">متوسط الزمن</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.avgTime")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black">{formatSeconds(singleChallengeCollectedReport.fastestTime)}</div>
-                                                <div className="text-xs text-muted-foreground">أسرع محاولة</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.fastestAttempt")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black text-amber-700">{singleChallengeCollectedReport.highPerformers}</div>
-                                                <div className="text-xs text-muted-foreground">ممتاز +90</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.excellent90")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black text-rose-700">{singleChallengeCollectedReport.supportNeeded}</div>
-                                                <div className="text-xs text-muted-foreground">يحتاج دعم &lt;50</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.needsSupport50")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black">{singleChallengeCollectedReport.lowestScore}%</div>
-                                                <div className="text-xs text-muted-foreground">أدنى نتيجة</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.lowestScore")}</div>
                                             </div>
                                             <div className="rounded-xl border bg-background/70 p-3 text-center">
                                                 <div className="font-black">{singleChallengeCollectedReport.averageStreak}</div>
-                                                <div className="text-xs text-muted-foreground">متوسط السلسلة</div>
+                                                <div className="text-xs text-muted-foreground">{t("dash.teacher.topics.avgStreak")}</div>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -2437,28 +2507,28 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                 <Card className="border-blue-200 bg-blue-50/30">
                                     <CardHeader className="pb-2">
-                                        <CardTitle className="text-sm">قراءة تحليلية سريعة</CardTitle>
+                                        <CardTitle className="text-sm">{t("dash.teacher.topics.quickAnalysis")}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
                                         <div className="rounded-xl border bg-background/80 p-3">
-                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أضعف سؤال</div>
-                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.weakestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">{t("dash.teacher.topics.weakestQuestion")}</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.weakestQuestion?.label || t("dash.teacher.topics.noData")}</div>
                                             <div className="mt-1 text-xs text-rose-700">
-                                                دقة {singleChallengeCollectedReport.weakestQuestion?.accuracy ?? 0}%
+                                                {t("dash.teacher.topics.accuracyPct", { n: singleChallengeCollectedReport.weakestQuestion?.accuracy ?? 0 })}
                                             </div>
                                         </div>
                                         <div className="rounded-xl border bg-background/80 p-3">
-                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أقوى سؤال</div>
-                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.strongestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">{t("dash.teacher.topics.strongestQuestion")}</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.strongestQuestion?.label || t("dash.teacher.topics.noData")}</div>
                                             <div className="mt-1 text-xs text-emerald-700">
-                                                دقة {singleChallengeCollectedReport.strongestQuestion?.accuracy ?? 0}%
+                                                {t("dash.teacher.topics.accuracyPct", { n: singleChallengeCollectedReport.strongestQuestion?.accuracy ?? 0 })}
                                             </div>
                                         </div>
                                         <div className="rounded-xl border bg-background/80 p-3">
-                                            <div className="mb-1 text-xs font-bold text-muted-foreground">أبطأ سؤال</div>
-                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.slowestQuestion?.label || "لا توجد بيانات"}</div>
+                                            <div className="mb-1 text-xs font-bold text-muted-foreground">{t("dash.teacher.topics.slowestQuestion")}</div>
+                                            <div className="line-clamp-2 font-bold">{singleChallengeCollectedReport.slowestQuestion?.label || t("dash.teacher.topics.noData")}</div>
                                             <div className="mt-1 text-xs text-amber-700">
-                                                متوسط الزمن {formatSeconds(singleChallengeCollectedReport.slowestQuestion?.avgTime || 0)}
+                                                {t("dash.teacher.topics.avgTimeFormat", { time: formatSeconds(singleChallengeCollectedReport.slowestQuestion?.avgTime || 0) })}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -2466,7 +2536,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                 <Card className="border-slate-200 bg-slate-50/60">
                                     <CardHeader className="pb-2">
-                                        <CardTitle className="text-sm">تحليل إحصائي متقدم</CardTitle>
+                                        <CardTitle className="text-sm">{t("dash.teacher.topics.advancedStats")}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4 lg:grid-cols-6">
@@ -2474,9 +2544,9 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                 { label: "Q1", value: `${singleChallengeCollectedReport.q1Score}%` },
                                                 { label: "Q3", value: `${singleChallengeCollectedReport.q3Score}%` },
                                                 { label: "IQR", value: `${singleChallengeCollectedReport.iqrScore}` },
-                                                { label: "الانحراف المعياري", value: `${singleChallengeCollectedReport.stdDevScore}` },
-                                                { label: "معامل التشتت", value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
-                                                { label: "ارتباط الزمن/الدرجة", value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
+                                                { label: t("dash.teacher.topics.stdDev"), value: `${singleChallengeCollectedReport.stdDevScore}` },
+                                                { label: t("dash.teacher.topics.dispersionCoef"), value: `${singleChallengeCollectedReport.coefficientOfVariation}%` },
+                                                { label: t("dash.teacher.topics.correlation.timeScore"), value: `${singleChallengeCollectedReport.scoreTimeCorrelation} (${singleChallengeCollectedReport.scoreTimeCorrelationLabel})` },
                                             ].map((metric) => (
                                                 <div key={metric.label} className="rounded-xl border bg-background/80 p-3 text-center">
                                                     <div className="font-black text-slate-800">{metric.value}</div>
@@ -2486,7 +2556,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         </div>
 
                                         <div className="rounded-xl border bg-background/80 p-3">
-                                            <div className="mb-2 text-sm font-bold">توصيات مبنية على البيانات</div>
+                                            <div className="mb-2 text-sm font-bold">{t("dash.teacher.topics.dataRecommendations")}</div>
                                             <ul className="space-y-1 text-sm text-muted-foreground">
                                                 {singleChallengeCollectedReport.recommendations.map((item, index) => (
                                                     <li key={index} className="flex gap-2">
@@ -2502,7 +2572,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     <Card className="border-slate-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">ملخص الربعيات والمدى</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.quartileSummary")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="h-56" dir="ltr">
@@ -2512,7 +2582,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         <XAxis dataKey="label" />
                                                         <YAxis domain={[0, 100]} />
                                                         <RechartsTooltip />
-                                                        <Bar dataKey="value" name="القيمة" radius={[6, 6, 0, 0]}>
+                                                        <Bar dataKey="value" name={t("dash.teacher.topics.value")} radius={[6, 6, 0, 0]}>
                                                             {singleChallengeCollectedReport.scoreBoxData.map((entry) => (
                                                                 <Cell key={entry.label} fill={entry.fill} />
                                                             ))}
@@ -2525,7 +2595,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                     <Card className="border-slate-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">علاقة الزمن بالدرجة</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.timeScoreRelation")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             {singleChallengeCollectedReport.scoreTimeScatterData.length > 1 ? (
@@ -2533,16 +2603,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <ScatterChart>
                                                             <CartesianGrid strokeDasharray="3 3" />
-                                                            <XAxis type="number" dataKey="time" name="الوقت" unit="ث" />
-                                                            <YAxis type="number" dataKey="score" name="الدرجة" unit="%" domain={[0, 100]} />
+                                                            <XAxis type="number" dataKey="time" name={t("dash.teacher.topics.time")} unit="s" />
+                                                            <YAxis type="number" dataKey="score" name={t("dash.teacher.topics.score")} unit="%" domain={[0, 100]} />
                                                             <ReferenceLine y={80} stroke="#10b981" strokeDasharray="4 4" />
                                                             <RechartsTooltip cursor={{ strokeDasharray: "3 3" }} />
-                                                            <Scatter data={singleChallengeCollectedReport.scoreTimeScatterData} fill="#6366f1" name="محاولة" />
+                                                            <Scatter data={singleChallengeCollectedReport.scoreTimeScatterData} fill="#6366f1" name={t("dash.teacher.topics.attempt")} />
                                                         </ScatterChart>
                                                     </ResponsiveContainer>
                                                 </div>
                                             ) : (
-                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات زمن كافية لتحليل العلاقة</div>
+                                                <div className="py-12 text-center text-sm text-muted-foreground">{t("dash.teacher.topics.noTimeRelationData")}</div>
                                             )}
                                         </CardContent>
                                     </Card>
@@ -2551,7 +2621,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     <Card className="border-cyan-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">شرائح المتعلمين</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.learnerSegments")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="h-56" dir="ltr">
@@ -2561,7 +2631,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                                                         <YAxis allowDecimals={false} />
                                                         <RechartsTooltip />
-                                                        <Bar dataKey="count" name="العدد" radius={[6, 6, 0, 0]}>
+                                                        <Bar dataKey="count" name={t("dash.teacher.topics.count")} radius={[6, 6, 0, 0]}>
                                                             {singleChallengeCollectedReport.learnerSegments.map((entry) => (
                                                                 <Cell key={entry.name} fill={entry.fill} />
                                                             ))}
@@ -2574,7 +2644,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                     <Card className="border-rose-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">تصنيف صعوبة الأسئلة</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.questionDifficulty")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             {singleChallengeCollectedReport.questionDifficultyData.length > 0 ? (
@@ -2591,7 +2661,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </ResponsiveContainer>
                                                 </div>
                                             ) : (
-                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات أسئلة كافية</div>
+                                                <div className="py-12 text-center text-sm text-muted-foreground">{t("dash.teacher.topics.noQuestionData")}</div>
                                             )}
                                         </CardContent>
                                     </Card>
@@ -2600,7 +2670,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     <Card className="border-emerald-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">الصحيح مقابل الخطأ</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.correctVsWrong")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             {singleChallengeCollectedReport.answerOutcomeData.length > 0 ? (
@@ -2617,18 +2687,18 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                     </ResponsiveContainer>
                                                 </div>
                                             ) : (
-                                                <div className="py-12 text-center text-sm text-muted-foreground">لا توجد بيانات إجابات كافية</div>
+                                                <div className="py-12 text-center text-sm text-muted-foreground">{t("dash.teacher.topics.noAnswerData")}</div>
                                             )}
                                             <div className="flex justify-center gap-4 text-xs">
-                                                <span>صحيح: {singleChallengeCollectedReport.totalCorrect}</span>
-                                                <span>خطأ: {singleChallengeCollectedReport.totalWrong}</span>
+                                                <span>{t("dash.teacher.topics.correct")}: {singleChallengeCollectedReport.totalCorrect}</span>
+                                                <span>{t("dash.teacher.topics.wrong")}: {singleChallengeCollectedReport.totalWrong}</span>
                                             </div>
                                         </CardContent>
                                     </Card>
 
                                     <Card className="border-amber-200">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">أفضل درجات المشاركين</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.bestScores")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="h-56" dir="ltr">
@@ -2638,7 +2708,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                                                         <YAxis domain={[0, 100]} />
                                                         <RechartsTooltip />
-                                                        <Bar dataKey="score" name="الدرجة" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                                                        <Bar dataKey="score" name={t("dash.teacher.topics.score")} fill="#f59e0b" radius={[6, 6, 0, 0]} />
                                                     </BarChart>
                                                 </ResponsiveContainer>
                                             </div>
@@ -2650,7 +2720,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                         <Card className="border-primary/20">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm">دقة كل سؤال</CardTitle>
+                                                <CardTitle className="text-sm">{t("dash.teacher.topics.questionAccuracy")}</CardTitle>
                                             </CardHeader>
                                             <CardContent>
                                                 <div className="h-64" dir="ltr">
@@ -2660,7 +2730,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                             <XAxis dataKey="shortLabel" />
                                                             <YAxis domain={[0, 100]} />
                                                             <RechartsTooltip />
-                                                            <Bar dataKey="accuracy" name="الدقة" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                                                            <Bar dataKey="accuracy" name={t("dash.teacher.topics.accuracy")} fill="#6366f1" radius={[6, 6, 0, 0]} />
                                                         </BarChart>
                                                     </ResponsiveContainer>
                                                 </div>
@@ -2669,7 +2739,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                         <Card className="border-violet-200">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm">أبطأ الأسئلة زمنًا</CardTitle>
+                                                <CardTitle className="text-sm">{t("dash.teacher.topics.slowestQuestions")}</CardTitle>
                                             </CardHeader>
                                             <CardContent>
                                                 <div className="h-64" dir="ltr">
@@ -2679,7 +2749,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                             <XAxis dataKey="shortLabel" />
                                                             <YAxis allowDecimals={false} />
                                                             <RechartsTooltip />
-                                                            <Bar dataKey="avgTime" name="متوسط الزمن بالثواني" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+                                                            <Bar dataKey="avgTime" name={t("dash.teacher.topics.avgTimeSeconds")} fill="#8b5cf6" radius={[6, 6, 0, 0]} />
                                                         </BarChart>
                                                     </ResponsiveContainer>
                                                 </div>
@@ -2691,16 +2761,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                 {singleChallengeCollectedReport.questionAnalytics.length > 0 && (
                                     <Card className="border-primary/20">
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">تحليل الأسئلة في التحدي الفردي</CardTitle>
+                                            <CardTitle className="text-sm">{t("dash.teacher.topics.singleQuestionAnalysis")}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="rounded-xl border overflow-hidden">
                                                 <div className="grid grid-cols-12 bg-muted/50 px-3 py-2 text-xs font-bold text-muted-foreground">
-                                                    <div className="col-span-4">السؤال</div>
-                                                    <div className="col-span-2 text-center">المحاولات</div>
-                                                    <div className="col-span-2 text-center">الدقة</div>
-                                                    <div className="col-span-2 text-center">متوسط الزمن</div>
-                                                    <div className="col-span-2 text-center">النقاط</div>
+                                                    <div className="col-span-4">{t("dash.teacher.topics.question")}</div>
+                                                    <div className="col-span-2 text-center">{t("dash.teacher.topics.attempts")}</div>
+                                                    <div className="col-span-2 text-center">{t("dash.teacher.topics.accuracy")}</div>
+                                                    <div className="col-span-2 text-center">{t("dash.teacher.topics.avgTime")}</div>
+                                                    <div className="col-span-2 text-center">{t("dash.teacher.topics.points")}</div>
                                                 </div>
                                                 <div className="max-h-56 overflow-y-auto">
                                                     {singleChallengeCollectedReport.questionAnalytics.map((question) => (
@@ -2720,7 +2790,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                 <Card className="border-amber-200 bg-amber-50/30">
                                     <CardHeader className="pb-2">
-                                        <CardTitle className="text-sm">أفضل المحاولات</CardTitle>
+                                        <CardTitle className="text-sm">{t("dash.teacher.topics.bestAttempts")}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-2">
                                         {singleChallengeCollectedReport.topAttempts.map((attempt, index) => (
@@ -2728,7 +2798,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                 <div>
                                                     <div className="font-bold">{index + 1}. {attempt.name}</div>
                                                     <div className="text-xs text-muted-foreground">
-                                                        {attempt.correct || attempt.wrong ? `${attempt.correct} صحيح / ${attempt.wrong} خطأ` : "تفاصيل الإجابات غير متاحة"}
+                                                        {attempt.correct || attempt.wrong ? t("dash.teacher.topics.correctWrongCount", { correct: attempt.correct, wrong: attempt.wrong }) : t("dash.teacher.topics.answerDetailsUnavailable")}
                                                     </div>
                                                 </div>
                                                 <div className="text-end">
@@ -2742,13 +2812,13 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                                 <div className="rounded-2xl border bg-card">
                                     <div className="border-b bg-muted/20 px-4 py-3">
-                                        <p className="text-sm font-bold text-foreground">قائمة المشاركين التفصيلية</p>
-                                        <p className="text-[11px] text-muted-foreground">اضغط على أي مشارك لعرض تفاصيل الأسئلة التي أجابها.</p>
+                                        <p className="text-sm font-bold text-foreground">{t("dash.teacher.topics.participantList")}</p>
+                                        <p className="text-[11px] text-muted-foreground">{t("dash.teacher.topics.participantListHint")}</p>
                                     </div>
-                                    <ul dir="rtl" className="space-y-2 p-4">
+                                    <ul dir={dir} className="space-y-2 p-4">
                                         {sortedSingleResultsForDialog.map((r: any, index: number) => {
-                                            const label = getParticipantName(r);
-                                            const pct = getScorePercent(r);
+                                            const label = getParticipantName(r, guestLabel);
+                                            const pct = getChallengeResultScorePercent(r);
                                             const initial = label.replace(/\s/g, "").charAt(0) || "?";
                                             const extra = getStringField(r, ["participant_extra"]);
                                             const correct = getNumberField(r, ["correct_answers", "correctAnswers"]);
@@ -2767,7 +2837,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                       ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
                                                       : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
                                             return (
-                                                <li key={attemptKey} dir="rtl" className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20">
+                                                <li key={attemptKey} dir={dir} className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20">
                                                     <button
                                                         type="button"
                                                         className="flex w-full flex-row items-center gap-3 p-3 text-start sm:gap-4 sm:p-4"
@@ -2792,14 +2862,12 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                             : "—"}
                                                                     </span>
                                                                 </span>
-                                                                <span>{correct || wrong ? `${correct} صحيح / ${wrong} خطأ` : "بدون تفاصيل إجابات"}</span>
-                                                                <span>الوقت: {formatSeconds(timeTaken)}</span>
-                                                                {streak > 0 && <span>السلسلة: {streak}</span>}
-                                                                <span className="font-semibold text-primary">{isExpanded ? "إخفاء التفاصيل" : "عرض تفاصيل الأسئلة"}</span>
+                                                                <span>{correct || wrong ? t("dash.teacher.topics.correctWrongCount", { correct, wrong }) : t("dash.teacher.topics.noAnswerDetails")}</span>
+                                                                <span>{t("dash.teacher.topics.time")}: {formatSeconds(timeTaken)}</span>
+                                                                {streak > 0 && <span>{t("dash.teacher.topics.avgStreak")}: {streak}</span>}
+                                                                <span className="font-semibold text-primary">{isExpanded ? t("dash.teacher.topics.hideDetails") : t("dash.teacher.topics.showQuestionDetails")}</span>
                                                                 {!isRegisteredAttempt(r) && (
-                                                                    <Badge variant="outline" className="h-5 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
-                                                                        زائر
-                                                                    </Badge>
+                                                                    <Badge variant="outline" className="h-5 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">{t("dash.teacher.topics.guest")}</Badge>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -2815,10 +2883,10 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                         <div className="border-t bg-muted/20 p-3 sm:p-4">
                                                             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                                                 <div>
-                                                                    <p className="text-sm font-black text-foreground">تفاصيل إجابات {label}</p>
-                                                                    <p className="text-xs text-muted-foreground">الصحيح والخطأ لكل سؤال، مع الوقت والنقاط.</p>
+                                                                    <p className="text-sm font-black text-foreground">{t("dash.teacher.topics.answerDetailsFor", { name: label })}</p>
+                                                                    <p className="text-xs text-muted-foreground">{t("dash.teacher.topics.perQuestionDetails")}</p>
                                                                 </div>
-                                                                <Badge variant="outline">{questionRows.length} سؤال</Badge>
+                                                                <Badge variant="outline">{t("dash.teacher.topics.questionsCountBadge", { n: questionRows.length })}</Badge>
                                                             </div>
 
                                                             {questionRows.length > 0 ? (
@@ -2832,24 +2900,24 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                                                                     </p>
                                                                                     {question.userAnswer && (
                                                                                         <p className="mt-1 text-xs text-muted-foreground">
-                                                                                            إجابة الطالب: {question.userAnswer}
+                                                                                            {t("dash.teacher.topics.studentAnswer", { answer: question.userAnswer })}
                                                                                         </p>
                                                                                     )}
                                                                                 </div>
                                                                                 <Badge className={question.correct ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}>
-                                                                                    {question.correct ? "صحيح" : "خطأ"}
+                                                                                    {question.correct ? t("dash.teacher.topics.correct") : t("dash.teacher.topics.wrong")}
                                                                                 </Badge>
                                                                             </div>
                                                                             <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                                                                                <span>الوقت: {formatSeconds(question.timeTaken)}</span>
-                                                                                <span>النقاط: {question.pointsEarned}</span>
+                                                                                <span>{t("dash.teacher.topics.time")}: {formatSeconds(question.timeTaken)}</span>
+                                                                                <span>{t("dash.teacher.topics.points")}: {question.pointsEarned}</span>
                                                                             </div>
                                                                         </div>
                                                                     ))}
                                                                 </div>
                                                             ) : (
                                                                 <div className="rounded-xl border border-dashed bg-background/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                                                                    لا توجد تفاصيل أسئلة محفوظة لهذه المحاولة. تظهر هنا التفاصيل عندما تحتوي النتيجة على بيانات <span dir="ltr">question_results</span>.
+                                                                    {t("dash.teacher.topics.noQuestionDetails")}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -2865,7 +2933,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
 
                     {singleChallengeResultsTopic && !singleChallengeCollectedReport && (
                         <div className="px-6 py-14 text-center text-sm text-muted-foreground">
-                            لا توجد محاولات مسجّلة لهذا الدرس.
+                            {t("dash.teacher.topics.noAttemptsRecorded")}
                         </div>
                     )}
                 </DialogContent>
@@ -2878,21 +2946,21 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                     if (!open) setSingleResultsResetConfirmText("");
                 }}
             >
-                <AlertDialogContent dir="rtl" className="text-start sm:max-w-md">
+                <AlertDialogContent dir={dir} className="text-start sm:max-w-md">
                     <AlertDialogHeader className="items-start text-start sm:text-start">
                         <AlertDialogTitle className="w-full text-start text-destructive">
-                            إعادة ضبط نتائج التحدي الفردي؟
+                            {t("dash.teacher.topics.resetResultsTitle")}
                         </AlertDialogTitle>
                         <AlertDialogDescription className="space-y-2 text-start">
                             <span className="block">
-                                سيتم حذف جميع محاولات التحدي الفردي
-                                {singleChallengeResultsTopic ? ` لدرس «${singleChallengeResultsTopic.title}»` : ""}
-                                {" "}نهائياً، بما في ذلك الدرجات وتفاصيل الإجابات. لا يمكن التراجع عن هذا الإجراء.
+                                {t("dash.teacher.topics.resetResultsDesc")}
+                                {singleChallengeResultsTopic ? t("dash.teacher.topics.resetResultsForLesson", { title: singleChallengeResultsTopic.title }) : ""}
+                                {" "}{t("dash.teacher.topics.resetResultsDesc2")}
                             </span>
                             <span className="block font-medium text-foreground">
-                                للتأكيد، اكتب{" "}
-                                <span className="font-black text-destructive">{SINGLE_RESULTS_RESET_CONFIRM_PHRASE}</span>
-                                {" "}في الحقل أدناه:
+                                {t("dash.teacher.topics.resetConfirmLabel")}{" "}
+                                <span className="font-black text-destructive">{singleResultsResetConfirmPhrase}</span>
+                                {" "}{t("dash.teacher.topics.resetConfirmField")}
                             </span>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -2901,26 +2969,26 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             htmlFor="single-results-reset-confirm"
                             className="block w-full text-start text-xs text-muted-foreground"
                         >
-                            نص التأكيد
+                            {t("dash.teacher.topics.resetConfirmText")}
                         </Label>
                         <Input
                             id="single-results-reset-confirm"
-                            dir="rtl"
+                            dir={dir}
                             className="text-start"
                             value={singleResultsResetConfirmText}
                             onChange={(e) => setSingleResultsResetConfirmText(e.target.value)}
-                            placeholder={SINGLE_RESULTS_RESET_CONFIRM_PHRASE}
+                            placeholder={singleResultsResetConfirmPhrase}
                             autoComplete="off"
                             disabled={resetSingleResultsMutation.isPending}
                         />
                     </div>
                     <AlertDialogFooter className="gap-2 sm:flex-row sm:justify-start sm:space-x-0">
                         <AlertDialogAction
-                            dir="rtl"
+                            dir={dir}
                             className="gap-2 bg-destructive hover:bg-destructive/90"
                             disabled={
                                 resetSingleResultsMutation.isPending
-                                || singleResultsResetConfirmText.trim() !== SINGLE_RESULTS_RESET_CONFIRM_PHRASE
+                                || singleResultsResetConfirmText.trim() !== singleResultsResetConfirmPhrase
                             }
                             onClick={(e) => {
                                 e.preventDefault();
@@ -2932,31 +3000,29 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                             ) : (
                                 <Trash className="h-4 w-4 shrink-0" />
                             )}
-                            حذف كل النتائج
+                            {t("dash.teacher.topics.deleteAllResults")}
                         </AlertDialogAction>
                         <AlertDialogCancel
-                            dir="rtl"
+                            dir={dir}
                             disabled={resetSingleResultsMutation.isPending}
-                        >
-                            تراجع
-                        </AlertDialogCancel>
+                        >{t("dash.common.cancel")}</AlertDialogCancel>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
 
             <Dialog open={!!singleShareDialogTopic} onOpenChange={(open) => !open && setSingleShareDialogTopic(null)}>
-                <DialogContent dir="rtl" className="sm:max-w-xl">
+                <DialogContent dir={dir} className="sm:max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>مشاركة التحدي الفردي عبر QR</DialogTitle>
+                        <DialogTitle>{t("dash.teacher.topics.shareSingleQrTitle")}</DialogTitle>
                         <DialogDescription>
-                            اختر نوع الرابط ثم شاركه مع الطلاب عبر مسح QR أو نسخ الرابط المباشر.
+                            {t("dash.teacher.topics.shareSingleQrDesc")}
                         </DialogDescription>
                     </DialogHeader>
 
                     {singleShareDialogTopic && (
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                {SINGLE_SHARE_OPTIONS.map((option) => (
+                                {singleShareOptions.map((option) => (
                                     <Button
                                         key={option.category}
                                         type="button"
@@ -2985,20 +3051,16 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         className="gap-2"
                                         onClick={() => {
                                             navigator.clipboard.writeText(buildSingleShareLink(singleShareDialogTopic.id, singleShareCategory));
-                                            toast({ title: "تم النسخ", description: "تم نسخ رابط التحدي الفردي." });
+                                            toast({ title: t("dash.common.copied"), description: t("dash.teacher.topics.toast.linkCopied") });
                                         }}
                                     >
-                                        <Copy className="w-4 h-4" />
-                                        نسخ الرابط
-                                    </Button>
+                                        <Copy className="w-4 h-4" />{t("dash.common.copyLink")}</Button>
                                     <Button
                                         type="button"
                                         className="gap-2"
                                         onClick={() => window.open(buildSingleShareLink(singleShareDialogTopic.id, singleShareCategory), "_blank")}
                                     >
-                                        <ExternalLink className="w-4 h-4" />
-                                        فتح الرابط
-                                    </Button>
+                                        <ExternalLink className="w-4 h-4" />{t("dash.teacher.topics.openLink")}</Button>
                                     <Button
                                         type="button"
                                         variant="secondary"
@@ -3006,7 +3068,7 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                                         onClick={handleDownloadSingleQR}
                                     >
                                         <Download className="w-4 h-4" />
-                                        تنزيل QR
+                                        {t("dash.teacher.topics.downloadPdf").replace("PDF", "QR")}
                                     </Button>
                                 </div>
                             </div>

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageCircle, Inbox } from "lucide-react";
 import { buildOrgAdminApprovedMessage, openWhatsAppShare } from "@/lib/accountOnboarding";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
 
 type PendingRequest = {
     id: string;
@@ -27,27 +28,27 @@ export function PendingRequestsPanel({
     onApprove,
     onReject,
 }: PendingRequestsPanelProps) {
+    const { t, dir } = useDashboardLocale();
+
     return (
-        <Card className="border-amber-500/30 bg-amber-500/5">
+        <Card className="border-amber-500/30 bg-amber-500/5" dir={dir}>
             <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                     <Inbox className="h-4 w-4 text-amber-600" />
-                    طلبات اشتراك من الموقع
+                    {t("dash.super.pendingPanel.title")}
                     {requests.length > 0 && (
                         <Badge variant="destructive" className="text-[10px]">
                             {requests.length}
                         </Badge>
                     )}
                 </CardTitle>
-                <CardDescription>
-                    طلبات أنشأها أدمن المؤسسة من الصفحة الرئيسية — راجعها وفعّل الحساب ثم أرسل إشعار واتساب.
-                </CardDescription>
+                <CardDescription>{t("dash.super.pendingPanel.desc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
                 {isLoading ? (
                     <Skeleton className="h-24 w-full" />
                 ) : requests.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">لا توجد طلبات معلّقة.</p>
+                    <p className="text-sm text-muted-foreground py-2">{t("dash.super.pendingPanel.empty")}</p>
                 ) : (
                     requests.map((req) => (
                         <div
@@ -56,23 +57,23 @@ export function PendingRequestsPanel({
                         >
                             <div className="min-w-0">
                                 <p className="font-semibold truncate">
-                                    {req.organization?.name || "مؤسسة جديدة"}
+                                    {req.organization?.name || t("dash.super.pendingPanel.newOrg")}
                                 </p>
                                 <p className="text-xs text-muted-foreground truncate">
-                                    {req.applicant?.name || "أدمن"} · {req.applicant?.email}
+                                    {req.applicant?.name || t("dash.super.pendingPanel.adminFallback")} · {req.applicant?.email}
                                 </p>
                                 <div className="flex flex-wrap gap-1 mt-2">
                                     <Badge variant="outline" className="text-[10px]">
                                         {req.requested_package === "INSTITUTION_ADMIN_STUDENT"
-                                            ? "أدمن + طالب"
-                                            : "أدمن + معلم + طالب"}
+                                            ? t("dash.super.planDistribution.adminStudent")
+                                            : t("dash.super.planDistribution.full")}
                                     </Badge>
                                     <Badge variant="secondary" className="text-[10px]">
                                         {req.organization?.kind === "EDUCATIONAL"
-                                            ? "تعليمية"
+                                            ? t("dash.super.orgDistribution.educational")
                                             : req.organization?.kind === "ENRICHMENT"
-                                              ? "إثرائية"
-                                              : "تعليمية + إثرائية"}
+                                              ? t("dash.super.orgDistribution.enrichment")
+                                              : t("dash.super.orgDistribution.both")}
                                     </Badge>
                                 </div>
                             </div>
@@ -84,15 +85,15 @@ export function PendingRequestsPanel({
                                     onClick={async () => {
                                         await onApprove(req.id);
                                         const msg = buildOrgAdminApprovedMessage({
-                                            adminName: req.applicant?.name || "المدير",
-                                            orgName: req.organization?.name || "المؤسسة",
+                                            adminName: req.applicant?.name || t("dash.super.pendingPanel.managerFallback"),
+                                            orgName: req.organization?.name || t("dash.super.pendingPanel.orgFallback"),
                                             email: req.applicant?.email || "",
                                         });
                                         openWhatsAppShare({ message: msg });
                                     }}
                                 >
                                     <MessageCircle className="w-3.5 h-3.5" />
-                                    تأكيد وإرسال
+                                    {t("dash.super.pendingPanel.confirmSend")}
                                 </Button>
                                 <Button
                                     size="sm"
@@ -100,7 +101,7 @@ export function PendingRequestsPanel({
                                     disabled={isReviewing}
                                     onClick={() => onReject(req.id)}
                                 >
-                                    رفض
+                                    {t("dash.super.pendingPanel.reject")}
                                 </Button>
                             </div>
                         </div>

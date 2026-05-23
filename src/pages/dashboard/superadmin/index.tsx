@@ -95,7 +95,9 @@ import { SuperadminQuickActions } from "./SuperadminQuickActions";
 import { PendingRequestsBanner } from "./PendingRequestsBanner";
 import { PendingRequestsPanel } from "./PendingRequestsPanel";
 import { useSuperadminTab } from "./useSuperadminTab";
-import { SUPERADMIN_TAB_META } from "./superadminTabMeta";
+import { getSuperadminTabMeta } from "./superadminTabMeta";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import {
     buildOrgAdminLoginReminderMessage,
     copyToClipboard,
@@ -139,6 +141,9 @@ const SuperadminDashboard = () => {
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const { signOut: clerkSignOut } = useAuth();
+    const { t, dir, language } = useTranslation();
+    const locale = language === "ar" ? "ar-SA" : "en-US";
+    const tabMeta = getSuperadminTabMeta(t);
     const { data: user, isLoading } = useUser();
     const { data: organizations = [], isLoading: isLoadingOrgs } = useOrganizations({ includeInactive: true });
     const { data: orgAdmins = [], isLoading: isLoadingAdmins } = useOrgAdminUsers();
@@ -184,7 +189,7 @@ const SuperadminDashboard = () => {
     if (isLoading || !user) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
-                <p className="text-muted-foreground">جاري التحميل…</p>
+                <p className="text-muted-foreground">{t("dash.super.loadingProfile")}</p>
             </div>
         );
     }
@@ -216,8 +221,13 @@ const SuperadminDashboard = () => {
         const meta = auditActionMeta[log.action] || auditActionMeta.default;
         return {
             type: log.action,
-            message: log.details || `${log.action} على ${log.entity_type || "كيان"}`,
-            time: log.created_at ? new Date(log.created_at).toLocaleString("ar-SA") : "",
+            message:
+                log.details ||
+                t("dash.super.auditFallback", {
+                    action: log.action,
+                    entity: log.entity_type || t("dash.super.auditEntityFallback"),
+                }),
+            time: log.created_at ? new Date(log.created_at).toLocaleString(locale) : "",
             icon: meta.icon,
             color: meta.color,
             user: log.user?.name || "",
@@ -249,7 +259,10 @@ const SuperadminDashboard = () => {
             decision,
         });
         toast({
-            description: decision === "APPROVED" ? "تم تأكيد الاشتراك وتفعيل المؤسسة." : "تم رفض الطلب.",
+            description:
+                decision === "APPROVED"
+                    ? t("dash.super.toast.requestApproved")
+                    : t("dash.super.toast.requestRejected"),
         });
     };
 
@@ -257,10 +270,10 @@ const SuperadminDashboard = () => {
         if (!editingOrg) return;
         try {
             await upsertOrganization.mutateAsync(editingOrg);
-            toast({ description: "تم تحديث المؤسسة." });
+            toast({ description: t("dash.super.toast.orgUpdated") });
             setEditingOrg(null);
         } catch (error: any) {
-            toast({ variant: "destructive", description: error?.message || "فشل تحديث المؤسسة." });
+            toast({ variant: "destructive", description: error?.message || t("dash.super.toast.orgUpdateFail") });
         }
     };
 
@@ -268,15 +281,15 @@ const SuperadminDashboard = () => {
         if (!deleteOrgId) return;
         try {
             await deleteOrganization.mutateAsync(deleteOrgId);
-            toast({ description: "تم حذف المؤسسة." });
+            toast({ description: t("dash.super.toast.orgDeleted") });
             setDeleteOrgId(null);
         } catch (error: any) {
-            toast({ variant: "destructive", description: error?.message || "تعذّر حذف المؤسسة." });
+            toast({ variant: "destructive", description: error?.message || t("dash.super.toast.orgDeleteFail") });
         }
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir={dir}>
             <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
                     <div className="h-16 md:h-20 flex items-center justify-between">
@@ -291,22 +304,23 @@ const SuperadminDashboard = () => {
                                     <Crown className="w-5 h-5 text-white" />
                                 </div>
                                 <div className="hidden md:block">
-                                    <span className="font-medium text-sm">لوحة السوبر أدمن</span>
+                                    <span className="font-medium text-sm">{t("dash.super.headerTitle")}</span>
                                     <p className="text-xs text-muted-foreground">
-                                        تحكم كامل في المنصة: المستخدمون، المؤسسات، المحتوى، الإعدادات، والدعم
+                                        {t("dash.super.headerSubtitle")}
                                     </p>
                                 </div>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
+                            <LanguageSwitcher iconOnly />
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 className="relative"
                                 title={
                                     pendingAdminRequests.length > 0
-                                        ? "طلبات اشتراك معلّقة"
-                                        : "تذاكر الدعم"
+                                        ? t("dash.super.pendingTitle")
+                                        : t("dash.super.supportTitle")
                                 }
                                 onClick={() =>
                                     setActiveTab(pendingAdminRequests.length > 0 ? "admins" : "support")
@@ -314,7 +328,7 @@ const SuperadminDashboard = () => {
                             >
                                 <Bell className="w-5 h-5" />
                                 {pendingAdminRequests.length > 0 && (
-                                    <span className="absolute -top-0.5 -left-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                                    <span className={`absolute -top-0.5 ${dir === "rtl" ? "-left-0.5" : "-right-0.5"} flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground`}>
                                         {pendingAdminRequests.length > 9 ? "9+" : pendingAdminRequests.length}
                                     </span>
                                 )}
@@ -325,12 +339,12 @@ const SuperadminDashboard = () => {
                                 </div>
                                 <div className="leading-tight">
                                     <p className="text-sm font-medium">{user.name}</p>
-                                    <p className="text-xs text-muted-foreground">SUPERADMIN</p>
+                                    <p className="text-xs text-muted-foreground">{t("dash.super.roleLabel")}</p>
                                 </div>
                             </div>
                             <Button variant="outline" onClick={handleLogout} className="gap-2">
                                 <LogOut className="h-4 w-4" />
-                                تسجيل الخروج
+                                {t("dash.common.logout")}
                             </Button>
                         </div>
                     </div>
@@ -387,22 +401,21 @@ const SuperadminDashboard = () => {
                                             <div className="relative p-6 md:p-8 bg-gradient-to-r from-violet-600 via-indigo-600 to-violet-700">
                                                 <div className="relative z-10 space-y-3 max-w-3xl">
                                                     <h1 className="text-2xl md:text-3xl font-bold text-white">
-                                                        مركز تحكم مالك المنصة
+                                                        {t("dash.super.overview.title")}
                                                     </h1>
                                                     <p className="text-white/85 text-sm md:text-base leading-relaxed">
-                                                        من هنا تدير المؤسسات والباقات، المستخدمين على مستوى المنصة، صلاحيات أدمن
-                                                        المؤسسات، إعدادات المنصة، وتذاكر الدعم. استخدم الاختصارات أدناه أو القائمة الجانبية.
+                                                        {t("dash.super.overview.desc")}
                                                     </p>
                                                     <div className="pt-1">
                                                         <Button asChild size="sm" variant="outline" className="gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20">
                                                             <Link to="/grades" target="_blank" rel="noreferrer">
                                                                 <ExternalLink className="w-4 h-4" />
-                                                                عرض الموقع العام
+                                                                {t("dash.super.overview.viewSite")}
                                                             </Link>
                                                         </Button>
                                                     </div>
                                                 </div>
-                                                <div className="absolute left-0 top-0 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
+                                                <div className={`absolute ${dir === "rtl" ? "left-0" : "right-0"} top-0 w-48 h-48 bg-white/10 rounded-full blur-3xl`} />
                                             </div>
                                         </Card>
 
@@ -413,17 +426,17 @@ const SuperadminDashboard = () => {
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                                             {[
-                                                { label: "إجمالي المؤسسات", value: dashboardStats.orgs, icon: Building2, tone: "text-blue-600 bg-blue-100" },
-                                                { label: "المؤسسات النشطة", value: dashboardStats.activeOrgs, icon: CheckCircle, tone: "text-emerald-600 bg-emerald-100" },
-                                                { label: "أدمن المؤسسات", value: dashboardStats.admins, icon: UserCheck, tone: "text-violet-600 bg-violet-100" },
-                                                { label: "مستخدمو المؤسسات", value: dashboardStats.usersInTenants, icon: Users, tone: "text-orange-600 bg-orange-100" },
+                                                { label: t("dash.super.kpi.totalOrgs"), value: dashboardStats.orgs, icon: Building2, tone: "text-blue-600 bg-blue-100" },
+                                                { label: t("dash.super.kpi.activeOrgs"), value: dashboardStats.activeOrgs, icon: CheckCircle, tone: "text-emerald-600 bg-emerald-100" },
+                                                { label: t("dash.super.kpi.admins"), value: dashboardStats.admins, icon: UserCheck, tone: "text-violet-600 bg-violet-100" },
+                                                { label: t("dash.super.kpi.usersInTenants"), value: dashboardStats.usersInTenants, icon: Users, tone: "text-orange-600 bg-orange-100" },
                                             ].map((kpi) => (
                                                 <Card key={kpi.label}>
                                                     <CardContent className="p-4 flex items-center justify-between">
                                                         <div>
                                                             <p className="text-sm text-muted-foreground">{kpi.label}</p>
                                                             <p className="text-2xl font-bold">
-                                                                {isDataLoading ? <Skeleton className="h-8 w-14" /> : kpi.value.toLocaleString()}
+                                                                {isDataLoading ? <Skeleton className="h-8 w-14" /> : kpi.value.toLocaleString(locale)}
                                                             </p>
                                                         </div>
                                                         <div className={`p-3 rounded-full ${kpi.tone}`}>
@@ -436,17 +449,17 @@ const SuperadminDashboard = () => {
 
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                             {[
-                                                { label: "صفوف", value: platformStats?.totalGrades ?? 0, icon: School },
-                                                { label: "مواد", value: platformStats?.totalSubjects ?? 0, icon: BookOpen },
-                                                { label: "دروس", value: platformStats?.totalTopics ?? 0, icon: Target },
-                                                { label: "تحديات", value: platformStats?.totalChallenges ?? 0, icon: Gamepad2 },
+                                                { label: t("dash.super.kpi.grades"), value: platformStats?.totalGrades ?? 0, icon: School },
+                                                { label: t("dash.super.kpi.subjects"), value: platformStats?.totalSubjects ?? 0, icon: BookOpen },
+                                                { label: t("dash.super.kpi.lessons"), value: platformStats?.totalTopics ?? 0, icon: Target },
+                                                { label: t("dash.super.kpi.challenges"), value: platformStats?.totalChallenges ?? 0, icon: Gamepad2 },
                                             ].map((kpi) => (
                                                 <Card key={kpi.label} className="p-4 border-dashed">
                                                     <div className="flex items-center justify-between gap-2">
                                                         <div>
                                                             <p className="text-xs text-muted-foreground mb-1">{kpi.label}</p>
                                                             {isLoadingPlatformStats ? <Skeleton className="h-7 w-12" /> : (
-                                                                <p className="text-xl font-bold">{Number(kpi.value).toLocaleString()}</p>
+                                                                <p className="text-xl font-bold">{Number(kpi.value).toLocaleString(locale)}</p>
                                                             )}
                                                         </div>
                                                         <kpi.icon className="w-8 h-8 text-primary/40" />
@@ -457,9 +470,9 @@ const SuperadminDashboard = () => {
 
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                             {[
-                                                { label: "طلاب (المنصة)", value: platformStats?.totalStudents ?? 0, icon: GraduationCap },
-                                                { label: "معلمون", value: platformStats?.totalTeachers ?? 0, icon: UserCheck },
-                                                { label: "مستخدمون", value: platformStats?.totalUsers ?? 0, icon: BarChart3 },
+                                                { label: t("dash.super.kpi.platformStudents"), value: platformStats?.totalStudents ?? 0, icon: GraduationCap },
+                                                { label: t("dash.super.kpi.teachers"), value: platformStats?.totalTeachers ?? 0, icon: UserCheck },
+                                                { label: t("dash.super.kpi.users"), value: platformStats?.totalUsers ?? 0, icon: BarChart3 },
                                             ].map((kpi) => (
                                                 <Card key={kpi.label} className="p-4">
                                                     <div className="flex items-center justify-between gap-2">
@@ -468,7 +481,7 @@ const SuperadminDashboard = () => {
                                                             {isLoadingPlatformStats ? (
                                                                 <Skeleton className="h-7 w-12" />
                                                             ) : (
-                                                                <p className="text-xl font-bold">{Number(kpi.value).toLocaleString()}</p>
+                                                                <p className="text-xl font-bold">{Number(kpi.value).toLocaleString(locale)}</p>
                                                             )}
                                                         </div>
                                                         <kpi.icon className="w-8 h-8 text-muted-foreground/50" />
@@ -482,18 +495,18 @@ const SuperadminDashboard = () => {
                                                 <CardHeader>
                                                     <CardTitle className="text-base flex items-center gap-2">
                                                         <Library className="h-4 w-4" />
-                                                        توزيع نوع المؤسسات
+                                                        {t("dash.super.orgDistribution.title")}
                                                     </CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-4">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-sm">تعليمية</span>
+                                                        <span className="text-sm">{t("dash.super.orgDistribution.educational")}</span>
                                                         <span className="text-sm font-semibold">{educationalOrgs.length}</span>
                                                     </div>
                                                     <Progress value={organizations.length ? (educationalOrgs.length / organizations.length) * 100 : 0} />
 
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-sm">اثرائية</span>
+                                                        <span className="text-sm">{t("dash.super.orgDistribution.enrichment")}</span>
                                                         <span className="text-sm font-semibold">{enrichmentOrgs.length}</span>
                                                     </div>
                                                     <Progress value={organizations.length ? (enrichmentOrgs.length / organizations.length) * 100 : 0} />
@@ -504,20 +517,20 @@ const SuperadminDashboard = () => {
                                                 <CardHeader>
                                                     <CardTitle className="text-base flex items-center gap-2">
                                                         <Layers className="h-4 w-4" />
-                                                        توزيع الباقات
+                                                        {t("dash.super.planDistribution.title")}
                                                     </CardTitle>
                                                 </CardHeader>
                                                 <CardContent className="space-y-4">
                                                     <div className="rounded-lg border p-3 flex items-center justify-between">
-                                                        <span className="text-sm">أدمن + طالب</span>
+                                                        <span className="text-sm">{t("dash.super.planDistribution.adminStudent")}</span>
                                                         <Badge variant="secondary">{planAdminStudent.length}</Badge>
                                                     </div>
                                                     <div className="rounded-lg border p-3 flex items-center justify-between">
-                                                        <span className="text-sm">أدمن + معلم + طالب</span>
+                                                        <span className="text-sm">{t("dash.super.planDistribution.full")}</span>
                                                         <Badge>{planFull.length}</Badge>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground">
-                                                        يمكن تعديل باقة أي مؤسسة من تبويب «المؤسسات».
+                                                        {t("dash.super.planDistribution.note")}
                                                     </p>
                                                 </CardContent>
                                             </Card>
@@ -527,14 +540,14 @@ const SuperadminDashboard = () => {
                                             <CardHeader>
                                                 <CardTitle className="text-base flex items-center gap-2">
                                                     <FileText className="h-4 w-4" />
-                                                    آخر نشاط على المنصة
+                                                    {t("dash.super.activity.title")}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
                                                 {isLoadingAudit ? (
                                                     Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)
                                                 ) : recentActivities.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground text-center py-6">لا يوجد سجل نشاط حديث.</p>
+                                                    <p className="text-sm text-muted-foreground text-center py-6">{t("dash.super.activity.empty")}</p>
                                                 ) : (
                                                     recentActivities.slice(0, 8).map((act, idx) => {
                                                         const Icon = act.icon;
@@ -567,7 +580,7 @@ const SuperadminDashboard = () => {
                                 {activeTab === "support" && <AdminSupportTab />}
 
                                 {activeTab === "settings" && (
-                                    <div dir="rtl" className="text-right">
+                                    <div dir={dir} className={dir === "rtl" ? "text-right" : "text-left"}>
                                         <SettingsTab />
                                     </div>
                                 )}
@@ -575,20 +588,20 @@ const SuperadminDashboard = () => {
                                 {activeTab === "orgs" && (
                                     <>
                                         <SuperadminTabHeader
-                                            title={SUPERADMIN_TAB_META.orgs.title}
-                                            description={SUPERADMIN_TAB_META.orgs.description}
+                                            title={tabMeta.orgs.title}
+                                            description={tabMeta.orgs.description}
                                         />
                                     <Card>
                                         <CardContent className="space-y-3 pt-6">
                                             <Input
                                                 value={orgSearch}
                                                 onChange={(e) => setOrgSearch(e.target.value)}
-                                                placeholder="بحث بالاسم أو slug..."
+                                                placeholder={t("dash.super.orgs.search")}
                                             />
                                             {isLoadingOrgs ? (
                                                 <Skeleton className="h-44 w-full" />
                                             ) : filteredOrganizations.length === 0 ? (
-                                                <p className="text-sm text-muted-foreground py-8 text-center">لا توجد مؤسسات بعد.</p>
+                                                <p className="text-sm text-muted-foreground py-8 text-center">{t("dash.super.orgs.empty")}</p>
                                             ) : (
                                                 filteredOrganizations.map((org: any) => (
                                                     <div key={org.id} className="rounded-xl border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -599,10 +612,10 @@ const SuperadminDashboard = () => {
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <Badge variant={org.kind === "ENRICHMENT" ? "secondary" : "default"}>
                                                                 {org.kind === "EDUCATIONAL"
-                                                                    ? "تعليمية"
+                                                                    ? t("dash.super.orgDistribution.educational")
                                                                     : org.kind === "ENRICHMENT"
-                                                                        ? "اثرائية"
-                                                                        : "تعليمية اثرائية"}
+                                                                        ? t("dash.super.orgDistribution.enrichment")
+                                                                        : t("dash.super.orgDistribution.both")}
                                                             </Badge>
                                                             <Select
                                                                 value={org.subscription_package}
@@ -619,9 +632,9 @@ const SuperadminDashboard = () => {
                                                                             image_url: org.image_url ?? null,
                                                                             description: org.description ?? null,
                                                                         });
-                                                                        toast({ description: "تم تحديث الباقة." });
+                                                                        toast({ description: t("dash.super.toast.packageUpdated") });
                                                                     } catch (error: any) {
-                                                                        toast({ variant: "destructive", description: error?.message || "تعذّر تحديث الباقة." });
+                                                                        toast({ variant: "destructive", description: error?.message || t("dash.super.toast.packageFail") });
                                                                     }
                                                                 }}
                                                             >
@@ -629,12 +642,12 @@ const SuperadminDashboard = () => {
                                                                     <SelectValue />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
-                                                                    <SelectItem value="INSTITUTION_ADMIN_STUDENT">أدمن + طالب</SelectItem>
-                                                                    <SelectItem value="INSTITUTION_FULL">أدمن + معلم + طالب</SelectItem>
+                                                                    <SelectItem value="INSTITUTION_ADMIN_STUDENT">{t("dash.super.planDistribution.adminStudent")}</SelectItem>
+                                                                    <SelectItem value="INSTITUTION_FULL">{t("dash.super.planDistribution.full")}</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                             <Badge variant={org.is_active === false ? "destructive" : "default"}>
-                                                                {org.is_active === false ? "غير نشطة" : "نشطة"}
+                                                                {org.is_active === false ? t("dash.super.org.inactive") : t("dash.super.org.active")}
                                                             </Badge>
                                                             <Button
                                                                 size="sm"
@@ -671,13 +684,13 @@ const SuperadminDashboard = () => {
                                                                             image_url: org.image_url ?? null,
                                                                             description: org.description ?? null,
                                                                         });
-                                                                        toast({ description: org.is_active === false ? "تم تفعيل المؤسسة." : "تم تعطيل المؤسسة." });
+                                                                        toast({ description: org.is_active === false ? t("dash.super.toast.statusActivated") : t("dash.super.toast.statusDeactivated") });
                                                                     } catch (error: any) {
-                                                                        toast({ variant: "destructive", description: error?.message || "فشل تحديث الحالة." });
+                                                                        toast({ variant: "destructive", description: error?.message || t("dash.super.toast.statusFail") });
                                                                     }
                                                                 }}
                                                             >
-                                                                {org.is_active === false ? "تفعيل" : "تعطيل"}
+                                                                {org.is_active === false ? t("dash.super.org.activate") : t("dash.super.org.deactivate")}
                                                             </Button>
                                                             <Button size="sm" variant="destructive" onClick={() => setDeleteOrgId(org.id)}>
                                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -694,8 +707,8 @@ const SuperadminDashboard = () => {
                                 {activeTab === "admins" && (
                                     <>
                                         <SuperadminTabHeader
-                                            title={SUPERADMIN_TAB_META.admins.title}
-                                            description={SUPERADMIN_TAB_META.admins.description}
+                                            title={tabMeta.admins.title}
+                                            description={tabMeta.admins.description}
                                         />
                                     <Card>
                                         <CardContent className="space-y-3 pt-6">
@@ -709,17 +722,17 @@ const SuperadminDashboard = () => {
                                             <Input
                                                 value={adminSearch}
                                                 onChange={(e) => setAdminSearch(e.target.value)}
-                                                placeholder="بحث باسم الأدمن أو البريد أو المؤسسة..."
+                                                placeholder={t("dash.super.admins.search")}
                                             />
                                             {isLoadingAdmins ? (
                                                 <Skeleton className="h-44 w-full" />
                                             ) : filteredOrgAdmins.length === 0 ? (
-                                                <p className="text-sm text-muted-foreground py-8 text-center">لا يوجد أدمن مؤسسات بعد.</p>
+                                                <p className="text-sm text-muted-foreground py-8 text-center">{t("dash.super.admins.empty")}</p>
                                             ) : (
                                                 filteredOrgAdmins.map((a: any) => {
                                                     const org = Array.isArray(a.organizations) ? a.organizations[0] : a.organizations;
                                                     const phone = parseWhatsAppFromDetails(a.details);
-                                                    const orgName = org?.name ?? "المؤسسة";
+                                                    const orgName = org?.name ?? t("dash.super.admins.orgFallback");
                                                     return (
                                                         <div key={a.id} className="rounded-xl border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                                             <div>
@@ -735,17 +748,17 @@ const SuperadminDashboard = () => {
                                                                                 id: a.id,
                                                                                 organization_id: orgId === "__NONE__" ? null : orgId,
                                                                             });
-                                                                            toast({ description: "تم تحديث مؤسسة الأدمن." });
+                                                                            toast({ description: t("dash.super.toast.adminOrgUpdated") });
                                                                         } catch (error: any) {
-                                                                            toast({ variant: "destructive", description: error?.message || "تعذّر تحديث المؤسسة." });
+                                                                            toast({ variant: "destructive", description: error?.message || t("dash.super.toast.adminOrgFail") });
                                                                         }
                                                                     }}
                                                                 >
                                                                     <SelectTrigger className="h-8 w-[190px]">
-                                                                        <SelectValue placeholder="اختيار مؤسسة" />
+                                                                        <SelectValue placeholder={t("dash.super.admins.chooseOrg")} />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        <SelectItem value="__NONE__">بدون مؤسسة</SelectItem>
+                                                                        <SelectItem value="__NONE__">{t("dash.super.admins.noOrg")}</SelectItem>
                                                                         {organizations.map((o: any) => (
                                                                             <SelectItem key={o.id} value={o.id}>
                                                                                 {o.name}
@@ -753,16 +766,16 @@ const SuperadminDashboard = () => {
                                                                         ))}
                                                                     </SelectContent>
                                                                 </Select>
-                                                                <Badge variant="outline">{org?.name ?? "غير مربوط بمؤسسة"}</Badge>
+                                                                <Badge variant="outline">{org?.name ?? t("dash.super.admins.notLinkedBadge")}</Badge>
                                                                 <Button
                                                                     type="button"
                                                                     size="sm"
                                                                     variant="outline"
-                                                                    title="نسخ البريد"
+                                                                    title={t("dash.super.admins.copyEmail")}
                                                                     onClick={async () => {
                                                                         const ok = await copyToClipboard(a.email);
                                                                         toast({
-                                                                            description: ok ? "تم نسخ البريد." : "تعذّر النسخ.",
+                                                                            description: ok ? t("dash.super.toast.emailCopied") : t("dash.super.toast.copyFail"),
                                                                             variant: ok ? "default" : "destructive",
                                                                         });
                                                                     }}
@@ -774,7 +787,7 @@ const SuperadminDashboard = () => {
                                                                     size="sm"
                                                                     variant="outline"
                                                                     className="text-[#25D366]"
-                                                                    title="تذكير واتساب"
+                                                                    title={t("dash.super.admins.whatsappReminder")}
                                                                     onClick={() => {
                                                                         const msg = buildOrgAdminLoginReminderMessage({
                                                                             adminName: a.name,
@@ -795,13 +808,13 @@ const SuperadminDashboard = () => {
                                                                                 id: a.id,
                                                                                 is_active: a.is_active === false,
                                                                             });
-                                                                            toast({ description: a.is_active === false ? "تم تفعيل الأدمن." : "تم تعطيل الأدمن." });
+                                                                            toast({ description: a.is_active === false ? t("dash.super.toast.adminActivated") : t("dash.super.toast.adminDeactivated") });
                                                                         } catch (error: any) {
-                                                                            toast({ variant: "destructive", description: error?.message || "فشل تحديث حالة الأدمن." });
+                                                                            toast({ variant: "destructive", description: error?.message || t("dash.super.toast.adminStatusFail") });
                                                                         }
                                                                     }}
                                                                 >
-                                                                    {a.is_active === false ? "تفعيل" : "تعطيل"}
+                                                                    {a.is_active === false ? t("dash.super.org.activate") : t("dash.super.org.deactivate")}
                                                                 </Button>
                                                                 <Button
                                                                     size="sm"
@@ -823,8 +836,8 @@ const SuperadminDashboard = () => {
                                 {activeTab === "plans" && (
                                     <>
                                         <SuperadminTabHeader
-                                            title={SUPERADMIN_TAB_META.plans.title}
-                                            description={SUPERADMIN_TAB_META.plans.description}
+                                            title={tabMeta.plans.title}
+                                            description={tabMeta.plans.description}
                                         />
                                         <SuperadminPlansTab />
                                     </>
@@ -839,21 +852,21 @@ const SuperadminDashboard = () => {
             </div>
 
             <Dialog open={!!editingOrg} onOpenChange={(open) => !open && setEditingOrg(null)}>
-                <DialogContent dir="rtl">
+                <DialogContent dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>تعديل المؤسسة</DialogTitle>
+                        <DialogTitle>{t("dash.super.orgs.editTitle")}</DialogTitle>
                     </DialogHeader>
                     {editingOrg && (
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label>الاسم</Label>
+                                <Label>{t("dash.super.orgs.fieldName")}</Label>
                                 <Input
                                     value={editingOrg.name}
                                     onChange={(e) => setEditingOrg({ ...editingOrg, name: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>slug</Label>
+                                <Label>{t("dash.super.org.slugLabel")}</Label>
                                 <Input
                                     value={editingOrg.slug}
                                     dir="ltr"
@@ -864,9 +877,9 @@ const SuperadminDashboard = () => {
                                 <Select value={editingOrg.kind} onValueChange={(v: OrgKind) => setEditingOrg({ ...editingOrg, kind: v })}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="BOTH">تعليمية اثرائية</SelectItem>
-                                        <SelectItem value="EDUCATIONAL">تعليمية</SelectItem>
-                                        <SelectItem value="ENRICHMENT">اثرائية</SelectItem>
+                                        <SelectItem value="BOTH">{t("dash.super.orgDistribution.both")}</SelectItem>
+                                        <SelectItem value="EDUCATIONAL">{t("dash.super.orgDistribution.educational")}</SelectItem>
+                                        <SelectItem value="ENRICHMENT">{t("dash.super.orgDistribution.enrichment")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <Select
@@ -875,8 +888,8 @@ const SuperadminDashboard = () => {
                                 >
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="INSTITUTION_ADMIN_STUDENT">أدمن + طالب</SelectItem>
-                                        <SelectItem value="INSTITUTION_FULL">أدمن + معلم + طالب</SelectItem>
+                                        <SelectItem value="INSTITUTION_ADMIN_STUDENT">{t("dash.super.planDistribution.adminStudent")}</SelectItem>
+                                        <SelectItem value="INSTITUTION_FULL">{t("dash.super.planDistribution.full")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -887,8 +900,8 @@ const SuperadminDashboard = () => {
                                 >
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="SCHOOL">مدرسة</SelectItem>
-                                        <SelectItem value="ORG">مؤسسة</SelectItem>
+                                        <SelectItem value="SCHOOL">{t("dash.super.orgs.entitySchool")}</SelectItem>
+                                        <SelectItem value="ORG">{t("dash.super.orgs.entityOrg")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -898,63 +911,63 @@ const SuperadminDashboard = () => {
                                 previewRounded="full"
                             />
                             <div className="space-y-2">
-                                <Label>الوصف</Label>
+                                <Label>{t("dash.super.orgs.fieldDesc")}</Label>
                                 <Input
                                     value={editingOrg.description ?? ""}
                                     onChange={(e) => setEditingOrg({ ...editingOrg, description: e.target.value })}
-                                    placeholder="نبذة قصيرة تظهر في صفحة الجهة"
+                                    placeholder={t("dash.super.orgs.descPlaceholder")}
                                 />
                             </div>
                         </div>
                     )}
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingOrg(null)}>إلغاء</Button>
-                        <Button onClick={handleSaveEditOrganization} disabled={busy}>حفظ</Button>
+                        <Button variant="outline" onClick={() => setEditingOrg(null)}>{t("common.cancel")}</Button>
+                        <Button onClick={handleSaveEditOrganization} disabled={busy}>{t("common.save")}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <AlertDialog open={!!deleteOrgId} onOpenChange={(open) => !open && setDeleteOrgId(null)}>
-                <AlertDialogContent dir="rtl">
+                <AlertDialogContent dir={dir}>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>حذف المؤسسة؟</AlertDialogTitle>
+                        <AlertDialogTitle>{t("dash.super.orgs.deleteTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            سيؤدي هذا إلى حذف المؤسسة من المنصة. لا يمكن التراجع عن العملية.
+                            {t("dash.super.orgs.deleteDesc")}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                        <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteOrganization} className="bg-destructive hover:bg-destructive/90">
-                            حذف المؤسسة
+                            {t("dash.super.orgs.deleteConfirm")}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
 
             <AlertDialog open={!!deleteAdminId} onOpenChange={(open) => !open && setDeleteAdminId(null)}>
-                <AlertDialogContent dir="rtl">
+                <AlertDialogContent dir={dir}>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>حذف حساب الأدمن؟</AlertDialogTitle>
+                        <AlertDialogTitle>{t("dash.super.admins.deleteTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            سيُحذف حساب مدير المؤسسة نهائيًا.
+                            {t("dash.super.admins.deleteDesc")}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                        <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={async () => {
                                 if (!deleteAdminId) return;
                                 try {
                                     await deleteOrgAdmin.mutateAsync(deleteAdminId);
-                                    toast({ description: "تم حذف حساب الأدمن." });
+                                    toast({ description: t("dash.super.toast.adminDeleted") });
                                     setDeleteAdminId(null);
                                 } catch (error: any) {
-                                    toast({ variant: "destructive", description: error?.message || "تعذّر حذف الأدمن." });
+                                    toast({ variant: "destructive", description: error?.message || t("dash.super.toast.adminDeleteFail") });
                                 }
                             }}
                             className="bg-destructive hover:bg-destructive/90"
                         >
-                            حذف الحساب
+                            {t("dash.super.admins.deleteConfirm")}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

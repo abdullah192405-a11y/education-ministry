@@ -5,10 +5,13 @@ import { School, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useGrades, useOrganizations } from "@/hooks/useDatabase";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const OrganizationsSection = () => {
   const { data: organizations = [], isLoading: isLoadingOrgs } = useOrganizations();
   const { data: grades = [], isLoading: isLoadingGrades } = useGrades();
+  const { t } = useTranslation();
+  const localeId = t("common.locale");
 
   const cards = (organizations as any[]).map((org: any) => {
     const orgGrades = (grades as any[]).filter((g: any) => g.organization_id === org.id);
@@ -50,12 +53,12 @@ const OrganizationsSection = () => {
                 <div className="space-y-1">
                   <h3 className="font-bold text-sm line-clamp-2 min-h-[2.5rem]">{org.name}</h3>
                   <Badge variant="secondary" className="text-[10px]">
-                    {org.entityType === "SCHOOL" ? "مدرسة" : "مؤسسة"}
+                    {org.entityType === "SCHOOL" ? t("common.school") : t("common.institution")}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-center gap-3 text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1"><School className="w-3 h-3" />{org.gradesCount}</span>
-                  <span className="flex items-center gap-1"><Users className="w-3 h-3" />{org.students.toLocaleString("ar-SA")}</span>
+                  <span className="flex items-center gap-1"><Users className="w-3 h-3" />{org.students.toLocaleString(localeId)}</span>
                 </div>
             </div>
           </Link>
@@ -96,23 +99,23 @@ const OrganizationsSection = () => {
           >
             <div>
               <h2 className="text-3xl md:text-5xl font-black mb-4">
-                <span className="text-primary">المدارس</span>
+                <span className="text-primary">{t("orgsSection.schoolsTitle")}</span>
               </h2>
               <p className="text-muted-foreground text-lg max-w-xl">
-                اختر مدرسة واستكشف المحتوى المرتبط بها
+                {t("orgsSection.schoolsDescription")}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-sm">{schools.length} جهة</Badge>
+              <Badge variant="outline" className="text-sm">{schools.length} {t("orgsSection.schoolsCount")}</Badge>
               <Button variant="outline" asChild>
-                <Link to="/schools">عرض المدارس</Link>
+                <Link to="/schools">{t("orgsSection.viewSchools")}</Link>
               </Button>
             </div>
           </motion.div>
           {schools.length ? (
             renderCards(schools)
           ) : (
-            <p className="text-center text-muted-foreground py-10">لا توجد مدارس منشورة حالياً.</p>
+            <p className="text-center text-muted-foreground py-10">{t("orgsSection.schoolsEmpty")}</p>
           )}
         </div>
       </section>
@@ -128,23 +131,23 @@ const OrganizationsSection = () => {
           >
             <div>
               <h2 className="text-3xl md:text-5xl font-black mb-4">
-                <span className="text-primary">المؤسسات</span>
+                <span className="text-primary">{t("orgsSection.orgsTitle")}</span>
               </h2>
               <p className="text-muted-foreground text-lg max-w-xl">
-                اختر مؤسسة واستكشف المحتوى المرتبط بها
+                {t("orgsSection.orgsDescription")}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-sm">{orgs.length} جهة</Badge>
+              <Badge variant="outline" className="text-sm">{orgs.length} {t("orgsSection.schoolsCount")}</Badge>
               <Button variant="outline" asChild>
-                <Link to="/organizations">عرض المؤسسات</Link>
+                <Link to="/organizations">{t("orgsSection.viewOrgs")}</Link>
               </Button>
             </div>
           </motion.div>
           {orgs.length ? (
             renderCards(orgs)
           ) : (
-            <p className="text-center text-muted-foreground py-10">لا توجد مؤسسات منشورة حالياً.</p>
+            <p className="text-center text-muted-foreground py-10">{t("orgsSection.orgsEmpty")}</p>
           )}
         </div>
       </section>

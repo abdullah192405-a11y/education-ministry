@@ -8,13 +8,15 @@ import {
     User, Lock, Eye, EyeOff, LogIn, Sparkles,
     Shield, GraduationCap, BookOpen, ChevronLeft,
     Mail, CheckCircle, AlertCircle, UserPlus, ArrowLeft, ArrowRight,
-    KeyRound
+    KeyRound, ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useGrades, useOrganizations } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignUp, useAuth } from "@clerk/clerk-react";
 import md5 from "js-md5";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -31,10 +33,14 @@ type UserRole = "STUDENT" | "TEACHER";
 const Register = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { t, dir } = useTranslation();
     const [role, setRole] = useState<UserRole | null>(null);
     const { data: organizations = [], isLoading: isLoadingOrganizations } = useOrganizations({ includeInactive: true });
     const { signUp, isLoaded: isClerkLoaded, setActive } = useSignUp();
     const { signOut, isSignedIn } = useAuth();
+    const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
+    const ChangeRoleIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
+    const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
 
     // Form state
     const [step, setStep] = useState<1 | 2 | 3>(1); // Step 1: Role, Step 2: Details, Step 3: Verify Code
@@ -45,8 +51,6 @@ const Register = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
     const [selectedGradeId, setSelectedGradeId] = useState("");
-    const [selectedTeacherId, setSelectedTeacherId] = useState("");
-    const [teacherOptions, setTeacherOptions] = useState<Array<{ id: string; name: string; email: string }>>([]);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -55,64 +59,12 @@ const Register = () => {
     const [successMessage, setSuccessMessage] = useState("");
     const { data: grades = [] } = useGrades({
         organizationId: selectedOrganizationId || null,
-        enabled: !!selectedOrganizationId,
+        enabled: !!selectedOrganizationId && role === "STUDENT",
     });
 
     useEffect(() => {
         setSelectedGradeId("");
-        setSelectedTeacherId("");
-        setTeacherOptions([]);
     }, [selectedOrganizationId]);
-
-    useEffect(() => {
-        const run = async () => {
-            if (role !== "STUDENT" || !selectedOrganizationId || !selectedGradeId) {
-                setTeacherOptions([]);
-                setSelectedTeacherId("");
-                return;
-            }
-            const { data: users, error: uErr } = await supabase
-                .from("users")
-                .select("id, name, email")
-                .eq("role", "TEACHER")
-                .eq("organization_id", selectedOrganizationId)
-                .eq("is_active", true);
-            if (uErr) {
-                setTeacherOptions([]);
-                setSelectedTeacherId("");
-                return;
-            }
-            const teacherUserIds = (users || []).map((u: any) => u.id);
-            if (!teacherUserIds.length) {
-                setTeacherOptions([]);
-                setSelectedTeacherId("");
-                return;
-            }
-            const { data: teacherProfiles, error: tpErr } = await supabase
-                .from("teacher_profiles")
-                .select("user_id, grade_id")
-                .in("user_id", teacherUserIds);
-            if (tpErr) {
-                setTeacherOptions([]);
-                setSelectedTeacherId("");
-                return;
-            }
-            const profileByUserId = new Map<string, any>();
-            (teacherProfiles || []).forEach((tp: any) => profileByUserId.set(tp.user_id, tp));
-            const opts = (users || [])
-                .filter((u: any) => {
-                    const tp = profileByUserId.get(u.id);
-                    // Strict: show only teachers assigned to the selected class/grade.
-                    return !!tp && tp.grade_id === selectedGradeId;
-                })
-                .map((u: any) => ({ id: u.id, name: u.name, email: u.email }));
-            setTeacherOptions(opts);
-            if (!opts.some((t) => t.id === selectedTeacherId)) {
-                setSelectedTeacherId("");
-            }
-        };
-        run();
-    }, [role, selectedOrganizationId, selectedGradeId]);
 
     const handleRoleSelect = (selectedRole: UserRole) => {
         setRole(selectedRole);
@@ -138,7 +90,7 @@ const Register = () => {
             });
         } catch (err: any) {
             console.error("[Register] Google sign-up error:", err);
-            setError("حدث خطأ أثناء التسجيل بحساب Google");
+            setError(t("register.errCreate"));
             setIsGoogleLoading(false);
         }
     };
@@ -157,7 +109,10 @@ const Register = () => {
                 is_active: false,
                 password_hash: String(md5(password)).toLowerCase(),
                 organization_id: selectedOrganizationId || null,
-                details: role === "STUDENT" ? "بانتظار موافقة المعلم" : "بانتظار موافقة أدمن المؤسسة",
+                details:
+                    role === "STUDENT"
+                        ? t("register.studentPendingShort")
+                        : t("register.adminPendingShort"),
                 updated_at: now,
                 individual_tier: null,
             })
@@ -194,7 +149,7 @@ const Register = () => {
         } else if (role === "TEACHER") {
             await supabase.from("teacher_profiles").insert({
                 user_id: newUser.id,
-                grade_id: selectedGradeId || null,
+                grade_id: null,
                 total_students: 0,
                 total_topics: 0,
                 total_challenges: 0,
@@ -212,7 +167,7 @@ const Register = () => {
             applicant_user_id: applicantUserId,
             applicant_role: role,
             organization_id: selectedOrganizationId || null,
-            grade_id: selectedGradeId || null,
+            grade_id: role === "STUDENT" ? selectedGradeId || null : null,
             status: "PENDING",
             created_at: now,
             updated_at: now,
@@ -221,7 +176,7 @@ const Register = () => {
             requestRow.approver_role = "ADMIN";
         } else {
             requestRow.approver_role = "TEACHER";
-            requestRow.teacher_user_id = selectedTeacherId || null;
+            requestRow.teacher_user_id = null;
         }
         const { error } = await supabase
             .from("registration_requests")
@@ -253,8 +208,8 @@ const Register = () => {
 
         setSuccessMessage(
             role === "TEACHER"
-                ? "تم إرسال طلبك إلى أدمن المؤسسة. سيتم تفعيل الحساب بعد الموافقة."
-                : "تم إرسال طلبك إلى معلم الصف المختار. سيتم تفعيل الحساب بعد الموافقة."
+                ? t("register.teacherPending")
+                : t("register.studentPending")
         );
         setRegisterSuccess(true);
         setTimeout(() => navigate("/login"), 2800);
@@ -266,36 +221,32 @@ const Register = () => {
 
         // Validation
         if (!name.trim()) {
-            setError("يرجى إدخال الاسم");
+            setError(t("register.errEnterName"));
             return;
         }
         if (!email.trim()) {
-            setError("يرجى إدخال البريد الإلكتروني");
+            setError(t("register.errEnterEmail"));
             return;
         }
         if (!selectedOrganizationId) {
-            setError("يرجى اختيار المدرسة أو المؤسسة");
+            setError(t("register.errSelectOrg"));
             return;
         }
-        if (!selectedGradeId) {
-            setError(role === "TEACHER" ? "يرجى اختيار الصف الذي تدرّسه" : "يرجى اختيار الصف الدراسي");
-            return;
-        }
-        if (role === "STUDENT" && !selectedTeacherId) {
-            setError("يرجى اختيار المعلم المسؤول عن صفك");
+        if (role === "STUDENT" && !selectedGradeId) {
+            setError(t("register.errSelectStudentGrade"));
             return;
         }
         if (password.length < 6) {
-            setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+            setError(t("register.errPasswordShort"));
             return;
         }
         if (password !== confirmPassword) {
-            setError("كلمة المرور وتأكيدها غير متطابقتين");
+            setError(t("register.errPasswordsNoMatch"));
             return;
         }
 
         if (!isClerkLoaded || !signUp) {
-            setError("جارٍ تحميل النظام، يرجى الانتظار...");
+            setError(t("register.errLoadingSystem"));
             return;
         }
 
@@ -334,7 +285,7 @@ const Register = () => {
                 setStep(3); // Show verification code input
                 setIsLoading(false);
             } else {
-                setError("حدث خطأ غير متوقع أثناء إنشاء الحساب");
+                setError(t("register.errGeneric"));
                 setIsLoading(false);
             }
 
@@ -345,16 +296,16 @@ const Register = () => {
             if (clerkErrors && clerkErrors.length > 0) {
                 const firstError = clerkErrors[0];
                 if (firstError.code === "form_identifier_exists") {
-                    setError("هذا البريد الإلكتروني مسجل بالفعل");
+                    setError(t("register.errEmailExists"));
                 } else if (firstError.code === "form_password_pwned") {
-                    setError("كلمة المرور هذه غير آمنة، يرجى اختيار كلمة مرور أقوى");
+                    setError(t("register.errPasswordPwned"));
                 } else if (firstError.code === "form_password_too_short") {
-                    setError("كلمة المرور قصيرة جداً");
+                    setError(t("register.errPasswordTooShort"));
                 } else {
-                    setError(firstError.longMessage || firstError.message || "حدث خطأ أثناء إنشاء الحساب");
+                    setError(firstError.longMessage || firstError.message || t("register.errCreate"));
                 }
             } else {
-                setError(err.message || "حدث خطأ غير متوقع");
+                setError(err.message || t("register.errUnexpected"));
             }
             setIsLoading(false);
         }
@@ -365,7 +316,7 @@ const Register = () => {
         setError("");
 
         if (!verificationCode.trim()) {
-            setError("يرجى إدخال رمز التحقق");
+            setError(t("register.errEnterCode"));
             return;
         }
 
@@ -383,7 +334,7 @@ const Register = () => {
             if (result.status === "complete") {
                 await finishRegistration(result.createdSessionId);
             } else {
-                setError("لم يتم التحقق بنجاح، يرجى المحاولة مرة أخرى");
+                setError(t("register.errVerifyFailed"));
                 setIsLoading(false);
             }
 
@@ -391,28 +342,31 @@ const Register = () => {
             console.error("[Register] Verification error:", err);
             const clerkErrors = err?.errors;
             if (clerkErrors && clerkErrors.length > 0) {
-                setError(clerkErrors[0].longMessage || "رمز التحقق غير صحيح");
+                setError(clerkErrors[0].longMessage || t("register.errInvalidCode"));
             } else {
-                setError("حدث خطأ أثناء التحقق");
+                setError(t("register.errVerify"));
             }
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir={dir}>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between h-16">
                         <Link to="/" className="flex items-center gap-3">
-                            <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                            <span className="text-xl font-bold">Lab4</span>
+                            <img src="/logo.png" alt={t("common.brand")} className="w-10 h-10 rounded-xl object-contain bg-background" />
+                            <span className="text-xl font-bold">{t("common.brand")}</span>
                         </Link>
-                        <Link to="/login" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                            <ChevronLeft className="w-4 h-4" />
-                            العودة لتسجيل الدخول
-                        </Link>
+                        <div className="flex items-center gap-2">
+                            <LanguageSwitcher />
+                            <Link to="/login" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                                <ChevronBack className="w-4 h-4" />
+                                {t("forgot.backToLogin")}
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -429,10 +383,10 @@ const Register = () => {
                             <UserPlus className="w-10 h-10 text-white" />
                         </div>
                         <h1 className="text-3xl md:text-4xl font-bold mb-2">
-                            إنشاء حساب جديد
+                            {t("register.title")}
                         </h1>
                         <p className="text-muted-foreground">
-                            {step === 1 ? "اختر نوع الحساب" : step === 2 ? "أكمل بياناتك" : "أدخل رمز التحقق"}
+                            {step === 1 ? t("register.step1Desc") : step === 2 ? t("register.step2Desc") : t("register.step3Desc")}
                         </p>
                     </motion.div>
 
@@ -449,10 +403,10 @@ const Register = () => {
                                         <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
                                             <CheckCircle className="w-10 h-10 text-success" />
                                         </div>
-                                        <h3 className="text-xl font-bold mb-2">تم إنشاء الحساب بنجاح! 🎉</h3>
-                                        <p className="text-muted-foreground mb-2">{successMessage || "تم استلام طلب التسجيل."}</p>
+                                        <h3 className="text-xl font-bold mb-2">{t("register.successTitle")}</h3>
+                                        <p className="text-muted-foreground mb-2">{successMessage || t("register.successFallback")}</p>
                                         <p className="text-sm text-muted-foreground">
-                                            جارٍ التحويل إلى تسجيل الدخول...
+                                            {t("register.redirecting")}
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -469,12 +423,12 @@ const Register = () => {
                                     <CardHeader>
                                         <CardTitle className="flex items-center gap-2 text-lg">
                                             <User className="w-5 h-5 text-primary" />
-                                            اختر نوع الحساب
+                                            {t("register.selectRole")}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <p className="text-sm text-muted-foreground">
-                                            اختر الدور الذي يناسبك للبدء
+                                            {t("register.selectRoleDesc")}
                                         </p>
 
                                         {/* Google Sign-Up Button */}
@@ -488,12 +442,12 @@ const Register = () => {
                                             {isGoogleLoading ? (
                                                 <>
                                                     <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                                                    جارٍ التسجيل...
+                                                    {t("register.signingUp")}
                                                 </>
                                             ) : (
                                                 <>
                                                     <GoogleIcon />
-                                                    التسجيل بحساب Google
+                                                    {t("register.googleSignup")}
                                                 </>
                                             )}
                                         </Button>
@@ -505,7 +459,7 @@ const Register = () => {
                                             </div>
                                             <div className="relative flex justify-center text-xs uppercase">
                                                 <span className="bg-card px-2 text-muted-foreground">
-                                                    أو اختر نوع الحساب
+                                                    {t("register.orSelectRole")}
                                                 </span>
                                             </div>
                                         </div>
@@ -513,7 +467,7 @@ const Register = () => {
                                         {/* Student Role */}
                                         <button
                                             onClick={() => handleRoleSelect("STUDENT")}
-                                            className="w-full p-5 rounded-xl border-2 hover:border-emerald-500/50 transition-all text-right group hover:shadow-lg"
+                                            className={`w-full p-5 rounded-xl border-2 hover:border-emerald-500/50 transition-all ${dir === "rtl" ? "text-right" : "text-left"} group hover:shadow-lg`}
                                         >
                                             <div className="flex items-center gap-4">
                                                 <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0">
@@ -521,23 +475,23 @@ const Register = () => {
                                                 </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-bold text-lg">طالب</span>
+                                                        <span className="font-bold text-lg">{t("register.studentRoleTitle")}</span>
                                                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600">
                                                             STUDENT
                                                         </span>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        تتبع تقدمك، شارك في التحديات، واجمع الأوسمة
+                                                        {t("register.studentRoleDesc")}
                                                     </p>
                                                 </div>
-                                                <ArrowLeft className="w-5 h-5 text-muted-foreground group-hover:text-emerald-500 transition-colors" />
+                                                <ArrowForward className="w-5 h-5 text-muted-foreground group-hover:text-emerald-500 transition-colors" />
                                             </div>
                                         </button>
 
                                         {/* Teacher Role */}
                                         <button
                                             onClick={() => handleRoleSelect("TEACHER")}
-                                            className="w-full p-5 rounded-xl border-2 hover:border-blue-500/50 transition-all text-right group hover:shadow-lg"
+                                            className={`w-full p-5 rounded-xl border-2 hover:border-blue-500/50 transition-all ${dir === "rtl" ? "text-right" : "text-left"} group hover:shadow-lg`}
                                         >
                                             <div className="flex items-center gap-4">
                                                 <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
@@ -545,16 +499,16 @@ const Register = () => {
                                                 </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-bold text-lg">معلم</span>
+                                                        <span className="font-bold text-lg">{t("register.teacherRoleTitle")}</span>
                                                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-600">
                                                             TEACHER
                                                         </span>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        أنشئ الدروس والتحديات، وتابع مستوى طلابك
+                                                        {t("register.teacherRoleDesc")}
                                                     </p>
                                                 </div>
-                                                <ArrowLeft className="w-5 h-5 text-muted-foreground group-hover:text-blue-500 transition-colors" />
+                                                <ArrowForward className="w-5 h-5 text-muted-foreground group-hover:text-blue-500 transition-colors" />
                                             </div>
                                         </button>
 
@@ -576,9 +530,9 @@ const Register = () => {
                                         {/* Login Link */}
                                         <div className="text-center pt-4 border-t">
                                             <span className="text-sm text-muted-foreground">
-                                                لديك حساب بالفعل؟{" "}
+                                                {t("register.haveAccount")}{" "}
                                                 <Link to="/login" className="text-primary hover:underline font-medium">
-                                                    تسجيل الدخول
+                                                    {t("common.login")}
                                                 </Link>
                                             </span>
                                         </div>
@@ -598,24 +552,24 @@ const Register = () => {
                                     <CardHeader>
                                         <CardTitle className="flex items-center gap-2 text-lg">
                                             <KeyRound className="w-5 h-5 text-primary" />
-                                            تحقق من بريدك الإلكتروني
+                                            {t("register.verifyEmailTitle")}
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent>
                                         <form onSubmit={handleVerifyCode} className="space-y-4">
                                             <p className="text-sm text-muted-foreground">
-                                                تم إرسال رمز التحقق إلى <strong className="text-foreground">{email}</strong>
+                                                {t("register.codeSentTo")} <strong className="text-foreground">{email}</strong>
                                             </p>
 
                                             {/* Verification Code */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">رمز التحقق</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("register.codeLabel")}</label>
                                                 <div className="relative">
-                                                    <KeyRound className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <KeyRound className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type="text"
-                                                        placeholder="أدخل رمز التحقق"
-                                                        className="pr-10 text-center text-lg tracking-widest"
+                                                        placeholder={t("register.codePlaceholder")}
+                                                        className={`${dir === "rtl" ? "pr-10" : "pl-10"} text-center text-lg tracking-widest`}
                                                         dir="ltr"
                                                         value={verificationCode}
                                                         onChange={(e) => setVerificationCode(e.target.value)}
@@ -649,12 +603,12 @@ const Register = () => {
                                                 {isLoading ? (
                                                     <>
                                                         <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                        جارٍ التحقق...
+                                                        {t("register.verifying")}
                                                     </>
                                                 ) : (
                                                     <>
                                                         <CheckCircle className="w-5 h-5" />
-                                                        تأكيد الرمز
+                                                        {t("register.confirmCode")}
                                                     </>
                                                 )}
                                             </Button>
@@ -664,7 +618,7 @@ const Register = () => {
                                                 onClick={() => { setStep(2); setError(""); }}
                                                 className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
                                             >
-                                                العودة للخطوة السابقة
+                                                {t("register.backToPrev")}
                                             </button>
                                         </form>
                                     </CardContent>
@@ -688,7 +642,7 @@ const Register = () => {
                                                 ) : (
                                                     <BookOpen className="w-5 h-5 text-blue-500" />
                                                 )}
-                                                تسجيل {role === "STUDENT" ? "طالب" : "معلم"} جديد
+                                                {role === "STUDENT" ? t("register.studentNewSignup") : t("register.teacherNewSignup")}
                                             </CardTitle>
                                             <Button
                                                 variant="ghost"
@@ -696,8 +650,8 @@ const Register = () => {
                                                 onClick={() => setStep(1)}
                                                 className="gap-1 text-muted-foreground"
                                             >
-                                                <ArrowRight className="w-4 h-4" />
-                                                تغيير الدور
+                                                <ChangeRoleIcon className="w-4 h-4" />
+                                                {t("register.changeRole")}
                                             </Button>
                                         </div>
                                     </CardHeader>
@@ -705,13 +659,13 @@ const Register = () => {
                                         <form onSubmit={handleRegister} className="space-y-4">
                                             {/* Name */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">الاسم الكامل</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("register.fullName")}</label>
                                                 <div className="relative">
-                                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <User className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type="text"
-                                                        placeholder="أدخل اسمك الكامل"
-                                                        className="pr-10"
+                                                        placeholder={t("register.fullNamePlaceholder")}
+                                                        className={dir === "rtl" ? "pr-10" : "pl-10"}
                                                         value={name}
                                                         onChange={(e) => setName(e.target.value)}
                                                         required
@@ -721,13 +675,13 @@ const Register = () => {
 
                                             {/* Email */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">البريد الإلكتروني</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("common.email")}</label>
                                                 <div className="relative">
-                                                    <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <Mail className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type="email"
-                                                        placeholder="example@email.com"
-                                                        className="pr-10"
+                                                        placeholder={t("register.emailPlaceholder")}
+                                                        className={dir === "rtl" ? "pr-10" : "pl-10"}
                                                         dir="ltr"
                                                         value={email}
                                                         onChange={(e) => setEmail(e.target.value)}
@@ -737,7 +691,7 @@ const Register = () => {
                                             </div>
 
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">المدرسة / المؤسسة</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("register.schoolOrOrg")}</label>
                                                 <select
                                                     value={selectedOrganizationId}
                                                     onChange={(e) => setSelectedOrganizationId(e.target.value)}
@@ -746,75 +700,54 @@ const Register = () => {
                                                     disabled={isLoadingOrganizations}
                                                 >
                                                     <option value="">
-                                                        {isLoadingOrganizations ? "جاري تحميل المؤسسات..." : "اختر المدرسة أو المؤسسة..."}
+                                                        {isLoadingOrganizations ? t("register.loadingOrgs") : t("register.selectOrg")}
                                                     </option>
                                                     {(organizations || []).map((org: any) => (
                                                         <option key={org.id} value={org.id}>
-                                                            {org.name}{org.is_active === false ? " (غير مفعّلة بعد)" : ""}
+                                                            {org.name}{org.is_active === false ? ` ${t("register.orgInactive")}` : ""}
                                                         </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            <div>
-                                                <label className="text-sm font-medium mb-2 block">
-                                                    {role === "TEACHER" ? "الصف الذي تدرّسه" : "الصف الدراسي"}
-                                                </label>
-                                                <select
-                                                    value={selectedGradeId}
-                                                    onChange={(e) => setSelectedGradeId(e.target.value)}
-                                                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                    required
-                                                    disabled={!selectedOrganizationId}
-                                                >
-                                                    <option value="">
-                                                        {!selectedOrganizationId
-                                                            ? "اختر المؤسسة أولاً"
-                                                            : grades.length
-                                                                ? "اختر الصف..."
-                                                                : "لا توجد صفوف لهذه المؤسسة"}
-                                                    </option>
-                                                    {grades.map((g: any) => (
-                                                        <option key={g.id} value={g.id}>{g.name}</option>
                                                     ))}
                                                 </select>
                                             </div>
 
                                             {role === "STUDENT" && (
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">المعلم المسؤول عن الصف</label>
+                                                    <label className="text-sm font-medium mb-2 block">
+                                                        {t("register.studyGrade")}
+                                                    </label>
                                                     <select
-                                                        value={selectedTeacherId}
-                                                        onChange={(e) => setSelectedTeacherId(e.target.value)}
+                                                        value={selectedGradeId}
+                                                        onChange={(e) => setSelectedGradeId(e.target.value)}
                                                         className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                                         required
-                                                        disabled={!selectedOrganizationId || !selectedGradeId}
+                                                        disabled={!selectedOrganizationId}
                                                     >
                                                         <option value="">
-                                                            {!selectedOrganizationId || !selectedGradeId
-                                                                ? "اختر المؤسسة والصف أولاً"
-                                                                : teacherOptions.length
-                                                                    ? "اختر المعلم..."
-                                                                    : "لا يوجد معلم معتمد لهذا الصف"}
+                                                            {!selectedOrganizationId
+                                                                ? t("register.selectOrgFirst")
+                                                                : grades.length
+                                                                    ? t("register.selectGrade")
+                                                                    : t("register.noGradesForOrg")}
                                                         </option>
-                                                        {teacherOptions.map((t) => (
-                                                            <option key={t.id} value={t.id}>
-                                                                {t.name} ({t.email})
-                                                            </option>
+                                                        {grades.map((g: any) => (
+                                                            <option key={g.id} value={g.id}>{g.name}</option>
                                                         ))}
                                                     </select>
+                                                    <p className="text-xs text-muted-foreground mt-1.5">
+                                                        {t("register.studentGradeHint")}
+                                                    </p>
                                                 </div>
                                             )}
 
                                             {/* Password */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">كلمة المرور</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("common.password")}</label>
                                                 <div className="relative">
-                                                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type={showPassword ? "text" : "password"}
-                                                        placeholder="6 أحرف على الأقل"
-                                                        className="pr-10 pl-10"
+                                                        placeholder={t("register.passwordMin6Placeholder")}
+                                                        className={dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"}
                                                         value={password}
                                                         onChange={(e) => setPassword(e.target.value)}
                                                         required
@@ -823,7 +756,7 @@ const Register = () => {
                                                     <button
                                                         type="button"
                                                         onClick={() => setShowPassword(!showPassword)}
-                                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                                        className={`absolute ${dir === "rtl" ? "left-3" : "right-3"} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors`}
                                                     >
                                                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                                     </button>
@@ -832,13 +765,13 @@ const Register = () => {
 
                                             {/* Confirm Password */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">تأكيد كلمة المرور</label>
+                                                <label className="text-sm font-medium mb-2 block">{t("common.confirmPassword")}</label>
                                                 <div className="relative">
-                                                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                    <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type={showPassword ? "text" : "password"}
-                                                        placeholder="أعد كتابة كلمة المرور"
-                                                        className="pr-10"
+                                                        placeholder={t("register.confirmPasswordPlaceholder")}
+                                                        className={dir === "rtl" ? "pr-10" : "pl-10"}
                                                         value={confirmPassword}
                                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                                         required
@@ -874,12 +807,12 @@ const Register = () => {
                                                 {isLoading ? (
                                                     <>
                                                         <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                        جارٍ إنشاء الحساب...
+                                                        {t("register.creatingAccount")}
                                                     </>
                                                 ) : (
                                                     <>
                                                         <UserPlus className="w-5 h-5" />
-                                                        إنشاء الحساب
+                                                        {t("register.createAccount")}
                                                     </>
                                                 )}
                                             </Button>
@@ -887,9 +820,9 @@ const Register = () => {
                                             {/* Login Link */}
                                             <div className="text-center pt-4 border-t">
                                                 <span className="text-sm text-muted-foreground">
-                                                    لديك حساب بالفعل؟{" "}
+                                                    {t("register.haveAccount")}{" "}
                                                     <Link to="/login" className="text-primary hover:underline font-medium">
-                                                        تسجيل الدخول
+                                                        {t("common.login")}
                                                     </Link>
                                                 </span>
                                             </div>
@@ -905,7 +838,7 @@ const Register = () => {
             {/* Footer */}
             <footer className="py-6 border-t text-center text-sm text-muted-foreground">
                 <div className="container mx-auto px-4">
-                    جميع الحقوق محفوظة © 2024 Lab4
+                    {t("login.footerCopy")}
                 </div>
             </footer>
         </div>

@@ -35,14 +35,13 @@ import { supabase } from "@/lib/supabase";
 import { useOrganizations } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TFunction } from "@/contexts/LanguageContext";
 import {
-    buildOrgAdminWelcomeMessage,
-    copyToClipboard,
     generateTemporaryPassword,
-    getEntityTypeLabel,
-    getPackageLabel,
     normalizeWhatsAppPhone,
     isValidEmail,
+    getAppLoginUrl,
     type EntityType,
     type OrgPackage,
 } from "@/lib/accountOnboarding";
@@ -78,30 +77,54 @@ function randomOrgSlug(): string {
     }
 }
 
-const WIZARD_STEPS = [
-    { id: 1, label: "المؤسسة" },
-    { id: 2, label: "حساب الأدمن" },
-    { id: 3, label: "إرسال البيانات" },
-];
+function entityLabel(t: TFunction, entityType: EntityType): string {
+    return entityType === "SCHOOL" ? t("dash.super.orgs.entitySchool") : t("dash.super.orgs.entityOrg");
+}
+
+function packageLabel(t: TFunction, pkg: OrgPackage): string {
+    return pkg === "INSTITUTION_ADMIN_STUDENT"
+        ? t("dash.super.create.packageAdminStudentTitle")
+        : t("dash.super.create.packageFullTitle");
+}
+
+function buildWelcomeMessage(creds: CreatedCredentials, t: TFunction): string {
+    const entity = entityLabel(t, creds.entityType);
+    return [
+        t("dash.super.create.welcome.greeting", { name: creds.adminName }),
+        "",
+        t("dash.super.create.welcome.activated", { entity, orgName: creds.orgName }),
+        t("dash.super.create.welcome.package", { package: creds.packageLabel }),
+        "",
+        t("dash.super.create.welcome.credentialsHeader"),
+        t("dash.super.create.welcome.email", { email: creds.email }),
+        t("dash.super.create.welcome.password", { password: creds.password }),
+        "",
+        `${t("dash.super.create.welcome.loginUrl")}\n${getAppLoginUrl()}`,
+        "",
+        t("dash.super.create.welcome.changePassword"),
+    ].join("\n");
+}
 
 function PackageCards({
     value,
     onChange,
+    t,
 }: {
     value: OrgPackage;
     onChange: (v: OrgPackage) => void;
+    t: TFunction;
 }) {
-    const options: { id: OrgPackage; title: string; desc: string; icon: typeof Users }[] = [
+    const options: { id: OrgPackage; titleKey: "dash.super.create.packageAdminStudentTitle" | "dash.super.create.packageFullTitle"; descKey: "dash.super.create.packageAdminStudentDesc" | "dash.super.create.packageFullDesc"; icon: typeof Users }[] = [
         {
             id: "INSTITUTION_ADMIN_STUDENT",
-            title: "أدمن + طالب",
-            desc: "مناسبة لمدرسة بدون حسابات معلمين",
+            titleKey: "dash.super.create.packageAdminStudentTitle",
+            descKey: "dash.super.create.packageAdminStudentDesc",
             icon: GraduationCap,
         },
         {
             id: "INSTITUTION_FULL",
-            title: "أدمن + معلم + طالب",
-            desc: "فريق تعليمي كامل على المنصة",
+            titleKey: "dash.super.create.packageFullTitle",
+            descKey: "dash.super.create.packageFullDesc",
             icon: Users,
         },
     ];
@@ -129,8 +152,8 @@ function PackageCards({
                                 )}
                             />
                             <div>
-                                <p className="font-medium text-sm">{o.title}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">{o.desc}</p>
+                                <p className="font-medium text-sm">{t(o.titleKey)}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{t(o.descKey)}</p>
                             </div>
                         </div>
                     </button>
@@ -142,6 +165,7 @@ function PackageCards({
 
 const CreateOrgAdminSection = () => {
     const { toast } = useToast();
+    const { t, dir, isRtl } = useDashboardLocale();
     const queryClient = useQueryClient();
     const { data: organizations = [], isLoading: loadingOrgs } = useOrganizations({
         includeInactive: true,
@@ -149,6 +173,15 @@ const CreateOrgAdminSection = () => {
     const [step, setStep] = useState<WizardStep>(1);
     const [orgMode, setOrgMode] = useState<"existing" | "new">(
         organizations.length === 0 ? "new" : "existing",
+    );
+
+    const wizardSteps = useMemo(
+        () => [
+            { id: 1, label: t("dash.super.create.step.org") },
+            { id: 2, label: t("dash.super.create.step.admin") },
+            { id: 3, label: t("dash.super.create.step.delivery") },
+        ],
+        [t],
     );
 
     const [existingOrgId, setExistingOrgId] = useState<string>("");
@@ -189,24 +222,24 @@ const CreateOrgAdminSection = () => {
         if (orgMode === "existing") {
             const row = organizations.find((o: { id: string }) => o.id === existingOrgId);
             return {
-                name: row?.name ?? "المؤسسة",
+                name: row?.name ?? t("dash.super.create.orgFallback"),
                 package: (row?.subscription_package as OrgPackage) ?? newOrgPackage,
                 entityType: (row?.entity_type as EntityType) ?? "SCHOOL",
             };
         }
         return {
-            name: newOrgName.trim() || "مؤسسة جديدة",
+            name: newOrgName.trim() || t("dash.super.create.newOrgFallback"),
             package: newOrgPackage,
             entityType: newOrgEntityType,
         };
-    }, [orgMode, organizations, existingOrgId, newOrgName, newOrgPackage, newOrgEntityType]);
+    }, [orgMode, organizations, existingOrgId, newOrgName, newOrgPackage, newOrgEntityType, t]);
 
     const suggestedSlug = useMemo(() => {
         const fromSlug = slugifyAscii(newOrgSlug.trim());
         if (fromSlug) return fromSlug;
         const fromName = slugifyAscii(newOrgName);
-        return fromName || "(يُولَّد تلقائيًا)";
-    }, [newOrgSlug, newOrgName]);
+        return fromName || t("dash.super.create.slugAuto");
+    }, [newOrgSlug, newOrgName, t]);
 
     function handleGeneratePassword() {
         const p = generateTemporaryPassword(10);
@@ -228,11 +261,11 @@ const CreateOrgAdminSection = () => {
     }> {
         if (orgMode === "existing") {
             const id = existingOrgId || (organizations[0] as { id?: string })?.id;
-            if (!id) throw new Error("لم يتم اختيار مؤسسة.");
+            if (!id) throw new Error(t("dash.super.create.errNoOrgSelected"));
             const row = organizations.find((o: { id: string }) => o.id === id);
             return {
                 id,
-                name: row?.name ?? "المؤسسة",
+                name: row?.name ?? t("dash.super.create.orgFallback"),
                 package: (row?.subscription_package as OrgPackage) ?? "INSTITUTION_FULL",
                 entityType: (row?.entity_type as EntityType) ?? "SCHOOL",
                 isNew: false,
@@ -240,7 +273,7 @@ const CreateOrgAdminSection = () => {
         }
 
         const name = newOrgName.trim();
-        if (!name) throw new Error("أدخل اسم المؤسسة.");
+        if (!name) throw new Error(t("dash.super.create.errOrgNameRequired"));
 
         let slug =
             slugifyAscii(newOrgSlug.trim()) || slugifyAscii(newOrgName) || randomOrgSlug();
@@ -282,7 +315,7 @@ const CreateOrgAdminSection = () => {
                         starts_at: now,
                         next_billing_at: nextBilling.toISOString(),
                         auto_renew: true,
-                        notes: "تفعيل من لوحة السوبر أدمن",
+                        notes: t("dash.super.create.subscriptionNote"),
                         updated_at: now,
                     },
                     { onConflict: "organization_id" },
@@ -310,19 +343,19 @@ const CreateOrgAdminSection = () => {
             throw error;
         }
 
-        throw lastError ?? new Error("فشل إنشاء المؤسسة.");
+        throw lastError ?? new Error(t("dash.super.create.errOrgCreateFailed"));
     }
 
     function validateStep1(): boolean {
         if (orgMode === "existing") {
             if (activeOrganizations.length === 0) {
-                toast({ variant: "destructive", description: "لا توجد مؤسسات. أنشئ مؤسسة جديدة." });
+                toast({ variant: "destructive", description: t("dash.super.create.toastNoOrgs") });
                 return false;
             }
             return true;
         }
         if (!newOrgName.trim()) {
-            toast({ variant: "destructive", description: "أدخل اسم المؤسسة أو المدرسة." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastOrgNameRequired") });
             return false;
         }
         return true;
@@ -332,23 +365,23 @@ const CreateOrgAdminSection = () => {
         const name = adminName.trim();
         const email = adminEmail.trim().toLowerCase();
         if (!name || !email) {
-            toast({ variant: "destructive", description: "الاسم والبريد مطلوبان." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastNameEmailRequired") });
             return false;
         }
         if (password.length < 6) {
-            toast({ variant: "destructive", description: "كلمة المرور ٦ أحرف على الأقل." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastPasswordMin") });
             return false;
         }
         if (password !== password2) {
-            toast({ variant: "destructive", description: "تأكيد كلمة المرور غير متطابق." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastPasswordMismatch") });
             return false;
         }
         if (!isValidEmail(email)) {
-            toast({ variant: "destructive", description: "أدخل بريدًا إلكترونيًا صالحًا." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastInvalidEmail") });
             return false;
         }
         if (adminPhone.trim() && !normalizeWhatsAppPhone(adminPhone)) {
-            toast({ variant: "destructive", description: "صيغة رقم الواتساب غير صحيحة." });
+            toast({ variant: "destructive", description: t("dash.super.create.toastInvalidWhatsApp") });
             return false;
         }
         return true;
@@ -366,7 +399,10 @@ const CreateOrgAdminSection = () => {
             const org = await resolveOrganizationId();
             const now = new Date().toISOString();
             const detailsParts = [
-                `مدير ${getEntityTypeLabel(org.entityType)}: ${org.name}`,
+                t("dash.super.create.detailsManager", {
+                    entity: entityLabel(t, org.entityType),
+                    orgName: org.name,
+                }),
                 phoneNormalized ? `واتساب: ${phoneNormalized}` : null,
             ].filter(Boolean);
 
@@ -396,12 +432,12 @@ const CreateOrgAdminSection = () => {
                 ) {
                     toast({
                         variant: "destructive",
-                        description: "البريد مسجل مسبقًا. استخدم بريدًا آخرًا.",
+                        description: t("dash.super.create.toastEmailExists"),
                     });
                 } else {
                     toast({
                         variant: "destructive",
-                        description: userErr.message || "تعذّر إنشاء الحساب.",
+                        description: userErr.message || t("dash.super.create.toastCreateFailed"),
                     });
                 }
                 return;
@@ -418,7 +454,7 @@ const CreateOrgAdminSection = () => {
                 password,
                 orgName: org.name,
                 entityType: org.entityType,
-                packageLabel: getPackageLabel(org.package),
+                packageLabel: packageLabel(t, org.package),
                 phone: phoneNormalized,
             };
             setCreated(creds);
@@ -427,8 +463,11 @@ const CreateOrgAdminSection = () => {
             toast({
                 description:
                     createdUser?.id != null
-                        ? `تم إنشاء ${getEntityTypeLabel(org.entityType)} «${org.name}» وحساب الأدمن.`
-                        : "تم الإنشاء.",
+                        ? t("dash.super.create.toastSuccess", {
+                              entity: entityLabel(t, org.entityType),
+                              orgName: org.name,
+                          })
+                        : t("dash.super.create.toastSuccessGeneric"),
             });
 
             if (org.isNew) {
@@ -436,7 +475,7 @@ const CreateOrgAdminSection = () => {
                 setExistingOrgId(org.id);
             }
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "حدث خطأ غير متوقع.";
+            const msg = err instanceof Error ? err.message : t("dash.super.create.toastUnexpected");
             toast({ variant: "destructive", description: msg });
         } finally {
             setSubmitting(false);
@@ -457,16 +496,7 @@ const CreateOrgAdminSection = () => {
         setNewOrgImageUrl("");
     }
 
-    function buildWelcomeMessage(creds: CreatedCredentials) {
-        return buildOrgAdminWelcomeMessage({
-            adminName: creds.adminName,
-            orgName: creds.orgName,
-            entityType: creds.entityType,
-            email: creds.email,
-            password: creds.password,
-            packageLabel: creds.packageLabel,
-        });
-    }
+    const newEntityLabel = entityLabel(t, newOrgEntityType);
 
     return (
         <div className="space-y-6">
@@ -474,32 +504,30 @@ const CreateOrgAdminSection = () => {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                         <UserPlus className="h-5 w-5" />
-                        إنشاء مؤسسة / مدرسة + حساب أدمن
+                        {t("dash.super.create.title")}
                     </CardTitle>
-                    <CardDescription>
-                        مسار تشغيلي: إنشاء الكيان (أو ربطه بموجود) → إنشاء أدمن بكلمة مرور → إرسال بيانات الدخول عبر واتساب أو نسخها.
-                    </CardDescription>
+                    <CardDescription>{t("dash.super.create.subtitle")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <OnboardingStepIndicator steps={WIZARD_STEPS} current={step} className="mb-2" />
+                    <OnboardingStepIndicator steps={wizardSteps} current={step} dir={dir} className="mb-2" />
 
                     {step === 1 && (
                         <div className="space-y-4">
-                            <Label>المؤسسة / المدرسة</Label>
+                            <Label>{t("dash.super.create.orgSectionLabel")}</Label>
                             <RadioGroup
-                                dir="rtl"
+                                dir={dir}
                                 value={orgMode}
                                 onValueChange={(v) => setOrgMode(v as "existing" | "new")}
                                 className="flex flex-col gap-2"
                             >
                                 <label className="flex items-center gap-2 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
                                     <RadioGroupItem value="existing" id="org-existing" />
-                                    <span className="flex-1 text-sm font-medium">ربط بمؤسسة موجودة</span>
+                                    <span className="flex-1 text-sm font-medium">{t("dash.super.create.linkExisting")}</span>
                                 </label>
                                 <label className="flex items-center gap-2 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
                                     <RadioGroupItem value="new" id="org-new" />
                                     <span className="flex-1 text-sm font-medium">
-                                        إنشاء {getEntityTypeLabel(newOrgEntityType)} جديدة وتفعيل الاشتراك
+                                        {t("dash.super.create.createNew", { entity: newEntityLabel })}
                                     </span>
                                 </label>
                             </RadioGroup>
@@ -509,16 +537,16 @@ const CreateOrgAdminSection = () => {
                                     <Skeleton className="h-10 w-full" />
                                 ) : activeOrganizations.length === 0 ? (
                                     <p className="text-sm text-muted-foreground">
-                                        لا توجد مؤسسات نشطة. اختر «إنشاء مؤسسة جديدة».
+                                        {t("dash.super.create.noActiveOrgs")}
                                     </p>
                                 ) : (
                                     <Select
                                         value={existingOrgId || (activeOrganizations[0] as { id: string }).id}
                                         onValueChange={setExistingOrgId}
-                                        dir="rtl"
+                                        dir={dir}
                                     >
                                         <SelectTrigger>
-                                            <SelectValue placeholder="المؤسسة" />
+                                            <SelectValue placeholder={t("dash.super.create.orgPlaceholder")} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {activeOrganizations.map((o: { id: string; name: string }) => (
@@ -532,24 +560,24 @@ const CreateOrgAdminSection = () => {
                             ) : (
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="space-y-2 sm:col-span-2">
-                                        <Label>نوع الكيان</Label>
+                                        <Label>{t("dash.super.create.entityTypeLabel")}</Label>
                                         <Select
                                             value={newOrgEntityType}
                                             onValueChange={(v) => setNewOrgEntityType(v as EntityType)}
-                                            dir="rtl"
+                                            dir={dir}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="SCHOOL">مدرسة</SelectItem>
-                                                <SelectItem value="ORG">مؤسسة</SelectItem>
+                                                <SelectItem value="SCHOOL">{t("dash.super.orgs.entitySchool")}</SelectItem>
+                                                <SelectItem value="ORG">{t("dash.super.orgs.entityOrg")}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2 sm:col-span-2">
                                         <Label htmlFor="super-org-name">
-                                            اسم {getEntityTypeLabel(newOrgEntityType)}
+                                            {t("dash.super.create.nameLabel", { entity: newEntityLabel })}
                                         </Label>
                                         <Input
                                             id="super-org-name"
@@ -557,41 +585,42 @@ const CreateOrgAdminSection = () => {
                                             onChange={(e) => setNewOrgName(e.target.value)}
                                             placeholder={
                                                 newOrgEntityType === "SCHOOL"
-                                                    ? "مدرسة ..."
-                                                    : "مركز / مؤسسة ..."
+                                                    ? t("dash.super.create.placeholderSchool")
+                                                    : t("dash.super.create.placeholderOrg")
                                             }
-                                            dir="rtl"
+                                            dir={dir}
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="super-org-slug">المعرف (slug) — اختياري</Label>
+                                        <Label htmlFor="super-org-slug">{t("dash.super.create.slugLabel")}</Label>
                                         <Input
                                             id="super-org-slug"
                                             value={newOrgSlug}
                                             onChange={(e) => setNewOrgSlug(e.target.value)}
-                                            placeholder="my-school"
+                                            placeholder={t("dash.super.create.slugPlaceholder")}
                                             dir="ltr"
                                             className="text-left font-mono text-sm"
                                         />
                                     </div>
-                                    <PackageCards value={newOrgPackage} onChange={setNewOrgPackage} />
+                                    <PackageCards value={newOrgPackage} onChange={setNewOrgPackage} t={t} />
                                     <p className="text-[11px] text-muted-foreground sm:col-span-2" dir="ltr">
-                                        المعرف المتوقع: <span className="font-mono">{suggestedSlug}</span>
+                                        {t("dash.super.create.slugPreview")}{" "}
+                                        <span className="font-mono">{suggestedSlug}</span>
                                     </p>
                                     <div className="space-y-2">
-                                        <Label>نوع المحتوى</Label>
+                                        <Label>{t("dash.super.create.contentKindLabel")}</Label>
                                         <Select
                                             value={newOrgKind}
                                             onValueChange={(v) => setNewOrgKind(v as OrgKind)}
-                                            dir="rtl"
+                                            dir={dir}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="BOTH">تعليمية + إثرائية</SelectItem>
-                                                <SelectItem value="EDUCATIONAL">تعليمية</SelectItem>
-                                                <SelectItem value="ENRICHMENT">إثرائية</SelectItem>
+                                                <SelectItem value="BOTH">{t("dash.super.create.kindBoth")}</SelectItem>
+                                                <SelectItem value="EDUCATIONAL">{t("dash.super.create.kindEducational")}</SelectItem>
+                                                <SelectItem value="ENRICHMENT">{t("dash.super.create.kindEnrichment")}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -600,15 +629,15 @@ const CreateOrgAdminSection = () => {
                                         onChange={setNewOrgImageUrl}
                                     />
                                     <div className="space-y-2 sm:col-span-2">
-                                        <Label>وصف</Label>
+                                        <Label>{t("dash.super.create.descriptionLabel")}</Label>
                                         <Input
                                             value={newOrgDescription}
                                             onChange={(e) => setNewOrgDescription(e.target.value)}
-                                            dir="rtl"
+                                            dir={dir}
                                         />
                                     </div>
                                     <p className="text-xs text-muted-foreground sm:col-span-2">
-                                        عند الإنشاء تُفعَّل المؤسسة تلقائيًا مع اشتراك شهري نشط (يمكن تعديله لاحقًا من تبويب الباقات).
+                                        {t("dash.super.create.autoActivateNote")}
                                     </p>
                                 </div>
                             )}
@@ -621,8 +650,12 @@ const CreateOrgAdminSection = () => {
                                         if (validateStep1()) setStep(2);
                                     }}
                                 >
-                                    التالي
-                                    <ChevronLeft className="w-4 h-4" />
+                                    {t("dash.super.create.next")}
+                                    {isRtl ? (
+                                        <ChevronLeft className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronRight className="w-4 h-4" />
+                                    )}
                                 </Button>
                             </div>
                         </div>
@@ -637,25 +670,25 @@ const CreateOrgAdminSection = () => {
                             }}
                         >
                             <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                                <span className="text-muted-foreground">الكيان: </span>
+                                <span className="text-muted-foreground">{t("dash.super.create.entityPreview")} </span>
                                 <span className="font-medium">{resolvedOrgPreview.name}</span>
-                                <Badge variant="outline" className="mr-2 text-[10px]">
-                                    {getPackageLabel(resolvedOrgPreview.package)}
+                                <Badge variant="outline" className="ms-2 text-[10px]">
+                                    {packageLabel(t, resolvedOrgPreview.package)}
                                 </Badge>
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="super-admin-name">اسم مدير المؤسسة</Label>
+                                    <Label htmlFor="super-admin-name">{t("dash.super.create.adminNameLabel")}</Label>
                                     <Input
                                         id="super-admin-name"
                                         value={adminName}
                                         onChange={(e) => setAdminName(e.target.value)}
-                                        dir="rtl"
+                                        dir={dir}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="super-admin-email">البريد</Label>
+                                    <Label htmlFor="super-admin-email">{t("dash.super.create.emailLabel")}</Label>
                                     <Input
                                         id="super-admin-email"
                                         type="email"
@@ -668,25 +701,23 @@ const CreateOrgAdminSection = () => {
                                 <div className="space-y-2 sm:col-span-2">
                                     <Label htmlFor="super-admin-phone" className="flex items-center gap-1">
                                         <Phone className="w-3.5 h-3.5" />
-                                        جوال واتساب (لإرسال بيانات الدخول)
+                                        {t("dash.super.create.whatsappLabel")}
                                     </Label>
                                     <Input
                                         id="super-admin-phone"
                                         type="tel"
                                         dir="ltr"
                                         className="text-left font-mono"
-                                        placeholder="05xxxxxxxx أو 9665xxxxxxxx"
+                                        placeholder={t("dash.super.create.phonePlaceholder")}
                                         value={adminPhone}
                                         onChange={(e) => setAdminPhone(e.target.value)}
                                     />
                                     {adminPhone.trim() && !normalizeWhatsAppPhone(adminPhone) && (
-                                        <p className="text-xs text-amber-600">
-                                            تحقق من صيغة الرقم (سعودي: 05… أو 9665…).
-                                        </p>
+                                        <p className="text-xs text-amber-600">{t("dash.super.create.phoneInvalid")}</p>
                                     )}
                                 </div>
                                 <div className="space-y-2 sm:col-span-2">
-                                    <Label htmlFor="super-admin-pass">كلمة المرور</Label>
+                                    <Label htmlFor="super-admin-pass">{t("dash.super.create.passwordLabel")}</Label>
                                     <div className="flex gap-2">
                                         <Input
                                             id="super-admin-pass"
@@ -701,7 +732,7 @@ const CreateOrgAdminSection = () => {
                                             type="button"
                                             variant="outline"
                                             size="icon"
-                                            title={showPassword ? "إخفاء" : "إظهار"}
+                                            title={showPassword ? t("dash.super.create.hidePassword") : t("dash.super.create.showPassword")}
                                             onClick={() => setShowPassword((v) => !v)}
                                         >
                                             {showPassword ? (
@@ -714,7 +745,7 @@ const CreateOrgAdminSection = () => {
                                             type="button"
                                             variant="outline"
                                             size="icon"
-                                            title="توليد كلمة مرور"
+                                            title={t("dash.super.create.generatePassword")}
                                             onClick={handleGeneratePassword}
                                         >
                                             <RefreshCw className="w-4 h-4" />
@@ -722,7 +753,7 @@ const CreateOrgAdminSection = () => {
                                     </div>
                                 </div>
                                 <div className="space-y-2 sm:col-span-2">
-                                    <Label htmlFor="super-admin-pass2">تأكيد كلمة المرور</Label>
+                                    <Label htmlFor="super-admin-pass2">{t("dash.super.create.passwordConfirmLabel")}</Label>
                                     <Input
                                         id="super-admin-pass2"
                                         type={showPassword ? "text" : "password"}
@@ -736,19 +767,23 @@ const CreateOrgAdminSection = () => {
 
                             <div className="flex flex-wrap justify-between gap-2 pt-2">
                                 <Button type="button" variant="outline" className="gap-2" onClick={() => setStep(1)}>
-                                    <ChevronRight className="w-4 h-4" />
-                                    السابق
+                                    {isRtl ? (
+                                        <ChevronRight className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronLeft className="w-4 h-4" />
+                                    )}
+                                    {t("dash.super.create.prev")}
                                 </Button>
                                 <Button type="submit" disabled={submitting} className="gap-2">
                                     {submitting ? (
                                         <>
                                             <Loader2 className="h-4 w-4 animate-spin" />
-                                            جاري الإنشاء…
+                                            {t("dash.super.create.submitting")}
                                         </>
                                     ) : (
                                         <>
                                             <Building2 className="h-4 w-4" />
-                                            إنشاء الحساب
+                                            {t("dash.super.create.submit")}
                                         </>
                                     )}
                                 </Button>
@@ -759,7 +794,7 @@ const CreateOrgAdminSection = () => {
                     {step === 3 && created && (
                         <CredentialsDeliveryPanel
                             creds={created}
-                            message={buildWelcomeMessage(created)}
+                            message={buildWelcomeMessage(created, t)}
                             onReset={resetWizard}
                             toast={toast}
                         />

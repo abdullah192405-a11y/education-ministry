@@ -33,26 +33,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
 import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
-
-const getLevelLabel = (level: string) => {
-    switch (level) {
-        case "PRIMARY": return "ابتدائي";
-        case "MIDDLE": return "متوسط";
-        case "SECONDARY": return "ثانوي";
-        default: return level;
-    }
-};
-
-/** Stored in DB (`class_type`); labels are for UI */
-const CLASS_TYPE_OPTIONS = [
-    { value: "تعليمي" as const, label: "تعليمي" },
-    { value: "اثرائي" as const, label: "إثرائي" },
-];
-
-const getClassTypeLabel = (classType: unknown) => {
-    const v = normalizeGradeClassType(classType);
-    return CLASS_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
-};
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 const isGradeHidden = (grade: { is_hidden?: boolean | null; isHidden?: boolean | null }) =>
     Boolean(grade.is_hidden ?? grade.isHidden);
@@ -63,7 +45,27 @@ type GradesTabProps = {
 
 const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
     const { toast } = useToast();
+    const { t, dir, isRtl } = useDashboardLocale();
     const { data: user } = useUser();
+
+    const getLevelLabel = (level: string) => {
+        switch (level) {
+            case "PRIMARY": return t("dash.admin.grades.levelPrimary");
+            case "MIDDLE": return t("dash.admin.grades.levelMiddle");
+            case "SECONDARY": return t("dash.admin.grades.levelSecondary");
+            default: return level;
+        }
+    };
+
+    const classTypeOptions = [
+        { value: "تعليمي" as const, label: t("dash.admin.grades.classTeaching") },
+        { value: "اثرائي" as const, label: t("dash.admin.grades.classEnrichment") },
+    ];
+
+    const getClassTypeLabel = (classType: unknown) => {
+        const v = normalizeGradeClassType(classType);
+        return classTypeOptions.find((o) => o.value === v)?.label ?? v;
+    };
     const coverFileInputRef = useRef<HTMLInputElement>(null);
     const [isUploadingCover, setIsUploadingCover] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -155,18 +157,18 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                     id: editingGrade.id,
                     updates: payload,
                 });
-                toast({ title: "تم التحديث", description: "تم تحديث بيانات الصف بنجاح." });
+                toast({ title: t("dash.admin.grades.toast.updated"), description: t("dash.admin.grades.toast.updatedDesc") });
             } else {
                 await createGradeMutation.mutateAsync(payload);
-                toast({ title: "تم الإضافة", description: "تم إضافة الصف الجديد بنجاح." });
+                toast({ title: t("dash.admin.grades.toast.added"), description: t("dash.admin.grades.toast.addedDesc") });
             }
             setIsDialogOpen(false);
         } catch (error: any) {
             console.error("[GradesTab] Error:", error);
-            const errorMsg = error?.message || "حدث خطأ أثناء حفظ البيانات.";
-            toast({ 
-                variant: "destructive", 
-                title: "خطأ", 
+            const errorMsg = error?.message || t("dash.admin.grades.toast.saveErr");
+            toast({
+                variant: "destructive",
+                title: t("dash.common.error"),
                 description: errorMsg
             });
         }
@@ -177,15 +179,15 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
         e.target.value = "";
         if (!file) return;
         if (!user?.id) {
-            toast({ title: "تعذر الرفع", description: "يجب تسجيل الدخول لرفع الصور.", variant: "destructive" });
+            toast({ title: t("dash.admin.grades.toast.uploadErrTitle"), description: t("dash.admin.grades.toast.uploadLogin"), variant: "destructive" });
             return;
         }
         if (!file.type.startsWith("image/")) {
-            toast({ title: "نوع غير مدعوم", description: "يرجى اختيار ملف صورة (PNG، JPEG، WebP، GIF).", variant: "destructive" });
+            toast({ title: t("dash.admin.grades.toast.uploadUnsupported"), description: t("dash.admin.grades.toast.uploadType"), variant: "destructive" });
             return;
         }
         if (file.size > 5 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت.", variant: "destructive" });
+            toast({ title: t("dash.admin.grades.toast.uploadLarge"), description: t("dash.admin.grades.toast.uploadSize"), variant: "destructive" });
             return;
         }
         setIsUploadingCover(true);
@@ -197,23 +199,23 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
             if (error) throw error;
             const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
             setFormData((prev) => ({ ...prev, cover_image: data.publicUrl }));
-            toast({ title: "تم الرفع", description: "تم تعيين صورة الغلاف من الملف المرفوع." });
+            toast({ title: t("dash.admin.grades.toast.coverUploaded"), description: t("dash.admin.grades.toast.coverSet") });
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "حدث خطأ أثناء الرفع.";
+            const msg = err instanceof Error ? err.message : t("dash.admin.grades.toast.saveErr");
             console.error("[GradesTab] cover upload:", err);
-            toast({ title: "خطأ في الرفع", description: msg, variant: "destructive" });
+            toast({ title: t("dash.admin.grades.toast.uploadErrTitle"), description: msg, variant: "destructive" });
         } finally {
             setIsUploadingCover(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (window.confirm("هل أنت متأكد من حذف هذا الصف؟ سيؤدي هذا لحذف جميع المواد والمواضيع المرتبطة به.")) {
+        if (window.confirm(t("dash.admin.grades.toast.deleteConfirm"))) {
             try {
                 await deleteGradeMutation.mutateAsync(id);
-                toast({ title: "تم الحذف", description: "تم حذف الصف بنجاح." });
+                toast({ title: t("dash.admin.grades.toast.deleted"), description: t("dash.admin.grades.toast.deletedDesc") });
             } catch (error) {
-                toast({ variant: "destructive", title: "خطأ", description: "تعذر حذف الصف." });
+                toast({ variant: "destructive", title: t("dash.common.error"), description: t("dash.admin.grades.toast.deleteErr") });
             }
         }
     };
@@ -245,7 +247,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                             </Badge>
                             {isGradeHidden(grade) ? (
                                 <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                    مخفي
+                                    {t("dash.admin.grades.hiddenBadge")}
                                 </Badge>
                             ) : null}
                         </div>
@@ -258,12 +260,12 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                     <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-center">
                         <BookOpen className="w-5 h-5 text-blue-500 mx-auto mb-1" />
                         <p className="text-lg font-bold">{grade.subjects?.length || 0}</p>
-                        <p className="text-xs text-muted-foreground">مواد دراسية</p>
+                        <p className="text-xs text-muted-foreground">{t("dash.admin.grades.subjectsCount")}</p>
                     </div>
                     <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-center">
                         <GraduationCap className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
                         <p className="text-lg font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">طالب مسجل</p>
+                        <p className="text-xs text-muted-foreground">{t("dash.admin.grades.studentsCount")}</p>
                     </div>
                 </div>
 
@@ -274,7 +276,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                 <div className="flex items-center gap-2">
                     <Button className="flex-1" variant="outline" asChild>
                         <Link to={`/grade/${grade.slug}`}>
-                            عرض التفاصيل
+                            {t("dash.common.viewDetails")}
                         </Link>
                     </Button>
                     <DropdownMenu>
@@ -289,14 +291,14 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                 className="gap-2"
                             >
                                 <Edit className="w-4 h-4" />
-                                تعديل
+                                {t("dash.common.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onClick={() => handleDelete(grade.id)}
                                 className="gap-2 text-destructive"
                             >
                                 <Trash className="w-4 h-4" />
-                                حذف
+                                {t("dash.common.delete")}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -310,10 +312,10 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
             {/* Header Actions */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="relative w-full md:w-96">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground", isRtl ? "right-3" : "left-3")} />
                     <Input
-                        placeholder="بحث عن صف دراسي..."
-                        className="pr-9"
+                        placeholder={t("dash.admin.grades.searchPlaceholder")}
+                        className={isRtl ? "pr-9" : "pl-9"}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -321,14 +323,14 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                 <div className="flex gap-2 w-full md:w-auto">
                     <Button variant="outline" className="gap-2">
                         <Filter className="w-4 h-4" />
-                        تصفية
+                        {t("dash.admin.grades.filter")}
                     </Button>
                     <Button
                         onClick={() => handleOpenDialog()}
                         className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600"
                     >
                         <Plus className="w-4 h-4" />
-                        إضافة صف جديد
+                        {t("dash.admin.grades.addNew")}
                     </Button>
                 </div>
             </div>
@@ -343,7 +345,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
             ) : filteredGrades.length === 0 ? (
                 <div className="text-center py-12 rounded-xl border border-dashed bg-muted/20">
                     <GraduationCap className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                    <p className="text-muted-foreground text-lg">لم يتم العثور على صفوف دراسية</p>
+                    <p className="text-muted-foreground text-lg">{t("dash.admin.grades.empty")}</p>
                 </div>
             ) : (
                 <div className="space-y-12">
@@ -354,16 +356,16 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                     <School className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold tracking-tight">الصفوف التعليمية</h2>
+                                    <h2 className="text-lg font-semibold tracking-tight">{t("dash.admin.grades.sectionTeaching")}</h2>
                                     <p className="text-sm text-muted-foreground">
-                                        الصفوف المعروضة للجمهور من نوع «تعليمي» ({teachingGrades.length})
+                                        {t("dash.admin.grades.sectionTeachingDesc", { n: String(teachingGrades.length) })}
                                     </p>
                                 </div>
                             </div>
                         </div>
                         {teachingGrades.length === 0 ? (
                             <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
-                                لا توجد صفوف تعليمية ضمن نتائج البحث.
+                                {t("dash.admin.grades.sectionTeachingEmpty")}
                             </p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -379,16 +381,16 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                     <Sparkles className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold tracking-tight">القنوات الاثرائية</h2>
+                                    <h2 className="text-lg font-semibold tracking-tight">{t("dash.admin.grades.sectionEnrichment")}</h2>
                                     <p className="text-sm text-muted-foreground">
-                                        الصفوف المعروضة للجمهور من نوع «إثرائي» ({enrichmentGrades.length})
+                                        {t("dash.admin.grades.sectionEnrichmentDesc", { n: String(enrichmentGrades.length) })}
                                     </p>
                                 </div>
                             </div>
                         </div>
                         {enrichmentGrades.length === 0 ? (
                             <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
-                                لا توجد قنوات اثرائية ضمن نتائج البحث.
+                                {t("dash.admin.grades.sectionEnrichmentEmpty")}
                             </p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -404,16 +406,16 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                     <EyeOff className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold tracking-tight">المحتوى المخفي عن الجمهور</h2>
+                                    <h2 className="text-lg font-semibold tracking-tight">{t("dash.admin.grades.sectionHidden")}</h2>
                                     <p className="text-sm text-muted-foreground">
-                                        الصفوف التي لن تظهر في القوائم العامة ({hiddenGrades.length})
+                                        {t("dash.admin.grades.sectionHiddenDesc", { n: String(hiddenGrades.length) })}
                                     </p>
                                 </div>
                             </div>
                         </div>
                         {hiddenGrades.length === 0 ? (
                             <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center">
-                                لا يوجد محتوى مخفي ضمن نتائج البحث.
+                                {t("dash.admin.grades.sectionHiddenEmpty")}
                             </p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -426,39 +428,39 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-lg font-cairo" dir="rtl">
+                <DialogContent className="max-w-lg font-cairo" dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>{editingGrade ? "تعديل الصف الدراسي" : "إضافة صف دراسي جديد"}</DialogTitle>
+                        <DialogTitle>{editingGrade ? t("dash.admin.grades.dialogEdit") : t("dash.admin.grades.dialogAdd")}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
                         <div className="space-y-2">
-                            <Label htmlFor="name">اسم الصف</Label>
+                            <Label htmlFor="name">{t("dash.admin.grades.fieldName")}</Label>
                             <Input
                                 id="name"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value, slug: e.target.value.toLowerCase().replace(/ /g, '-') })}
-                                placeholder="مثلاً: الصف الأول الابتدائي"
+                                placeholder={t("dash.admin.grades.namePlaceholder")}
                             />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-2">
-                                <Label htmlFor="level">المرحلة الدراسية</Label>
+                                <Label htmlFor="level">{t("dash.admin.grades.fieldLevel")}</Label>
                                 <Select
                                     value={formData.level}
                                     onValueChange={(value) => setFormData({ ...formData, level: value })}
                                 >
                                     <SelectTrigger id="level">
-                                        <SelectValue placeholder="اختر المرحلة" />
+                                        <SelectValue placeholder={t("dash.admin.grades.levelPlaceholder")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="PRIMARY">ابتدائي</SelectItem>
-                                        <SelectItem value="MIDDLE">متوسط</SelectItem>
-                                        <SelectItem value="SECONDARY">ثانوي</SelectItem>
+                                        <SelectItem value="PRIMARY">{t("dash.admin.grades.levelPrimary")}</SelectItem>
+                                        <SelectItem value="MIDDLE">{t("dash.admin.grades.levelMiddle")}</SelectItem>
+                                        <SelectItem value="SECONDARY">{t("dash.admin.grades.levelSecondary")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="class_type">نوع الصف</Label>
+                                <Label htmlFor="class_type">{t("dash.admin.grades.fieldClassType")}</Label>
                                 <Select
                                     value={formData.class_type}
                                     onValueChange={(value) =>
@@ -466,10 +468,10 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                     }
                                 >
                                     <SelectTrigger id="class_type">
-                                        <SelectValue placeholder="اختر نوع الصف" />
+                                        <SelectValue placeholder={t("dash.admin.grades.classTypePlaceholder")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {CLASS_TYPE_OPTIONS.map((opt) => (
+                                        {classTypeOptions.map((opt) => (
                                             <SelectItem key={opt.value} value={opt.value}>
                                                 {opt.label}
                                             </SelectItem>
@@ -479,19 +481,19 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="description">الوصف</Label>
+                            <Label htmlFor="description">{t("dash.admin.grades.fieldDesc")}</Label>
                             <Textarea
                                 id="description"
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="وصف مختصر للصف"
+                                placeholder={t("dash.admin.grades.descPlaceholder")}
                                 rows={3}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="cover_image">صورة الغلاف</Label>
+                            <Label htmlFor="cover_image">{t("dash.admin.grades.coverLabel")}</Label>
                             <p className="text-sm text-muted-foreground">
-                                ارفع صورة من جهازك أو الصق رابطًا يبدأ بـ <span dir="ltr">https://</span>
+                                {t("dash.admin.grades.coverHint")} <span dir="ltr">https://</span>
                             </p>
                             <input
                                 ref={coverFileInputRef}
@@ -510,7 +512,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                     onClick={() => coverFileInputRef.current?.click()}
                                 >
                                     <Upload className="w-4 h-4" />
-                                    {isUploadingCover ? "جاري الرفع..." : "رفع صورة"}
+                                    {isUploadingCover ? t("dash.admin.grades.uploadingCover") : t("dash.admin.grades.uploadCover")}
                                 </Button>
                                 <Input
                                     id="cover_image"
@@ -537,10 +539,10 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                         <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                             <div className="space-y-0.5">
                                 <Label htmlFor="is_hidden" className="text-base">
-                                    إخفاء الصف
+                                    {t("dash.admin.grades.hideGrade")}
                                 </Label>
                                 <p className="text-sm text-muted-foreground">
-                                    لن يظهر هذا الصف للطلاب والمعلمين
+                                    {t("dash.admin.grades.hideGradeDesc")}
                                 </p>
                             </div>
                             <Switch
@@ -551,7 +553,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>{t("dash.common.cancel")}</Button>
                         <Button
                             onClick={handleSave}
                             disabled={
@@ -560,7 +562,7 @@ const GradesTab = ({ externalCreateSignal }: GradesTabProps) => {
                                 isUploadingCover
                             }
                         >
-                            {createGradeMutation.isPending || updateGradeMutation.isPending ? "جاري الحفظ..." : "حفظ الصف"}
+                            {createGradeMutation.isPending || updateGradeMutation.isPending ? t("dash.common.saving") : t("dash.admin.grades.saveGrade")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

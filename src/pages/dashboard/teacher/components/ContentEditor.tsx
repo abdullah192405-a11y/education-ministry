@@ -1,6 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TFunction } from "@/contexts/LanguageContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,7 +29,7 @@ import {
     Plus, Edit, Trash2, Save, X, Upload, Video, Image, FileText,
     ChevronDown, ChevronUp, GripVertical, CheckCircle, XCircle,
     Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
-    Headphones, Link2, Sparkles,
+    Headphones, Link2, Sparkles, Radio,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
 import {
@@ -36,9 +39,36 @@ import {
     type StudentChallengePresetValue,
 } from "@/lib/topicChallengePreset";
 import QuestionGameEditor from "./QuestionGameEditor";
+import TopicLiveSessionFormFields from "./TopicLiveSessionFormFields";
+import TopicLiveSessionsManager from "./TopicLiveSessionsManager";
+import {
+    createDefaultLiveSessionDraft,
+    liveSessionDraftToPayload,
+    validateLiveSessionDraft,
+    type LiveSessionDraftValidationKey,
+    type PendingLiveSessionDraft,
+} from "@/lib/topicLiveSession";
+import {
+    DEFAULT_WHEEL_SPIN_SOUND_URL,
+    WHEEL_SPIN_SOUND_PRESETS,
+    resolveWheelSpinSoundUrl,
+} from "@/lib/wheelSpinSounds";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
-import { useUser } from "@/hooks/useDatabase";
+import {
+    useCreateTeacherUploadedSound,
+    useCreateTopicLiveSession,
+    useTeacherUploadedSounds,
+    useUpdateTopicLiveSession,
+    useUser,
+} from "@/hooks/useDatabase";
+import {
+    mergeSoundOptionLists,
+    optionFromTopicUrl,
+    teacherSoundsToOptions,
+    type SoundOption,
+    type TeacherSoundCategory,
+} from "@/lib/teacherUploadedSounds";
 import { getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
 import {
     generateImagePromptFromAnalyzedResources,
@@ -47,8 +77,6 @@ import {
     type ImagePromptLanguageMode,
 } from "@/lib/educationalImageGeneration";
 
-type SoundOption = { label: string; url: string };
-
 function normalizeExternalUrl(raw: string): string {
     const t = raw.trim();
     if (!t) return "";
@@ -56,81 +84,172 @@ function normalizeExternalUrl(raw: string): string {
     return `https://${t}`;
 }
 
+export type TopicEditorSavePayload = Partial<EducationalContent> & {
+    challengeItems?: ChallengeQuestion[];
+    pendingLiveSessions?: PendingLiveSessionDraft[];
+    /** When false on edit, existing topic_media rows are left unchanged. */
+    mediaDirty?: boolean;
+};
+
+type EditorMediaType = ContentMedia["type"] | "live";
+type EditorNewMedia = Omit<ContentMedia, "type"> & { type: EditorMediaType };
+
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
-    onSave: (content: Partial<EducationalContent> & { challengeItems?: ChallengeQuestion[] }) => void | Promise<void>;
+    onSave: (content: TopicEditorSavePayload) => void | Promise<void>;
     onCancel: () => void;
+    teacherProfileId?: string;
+    lessonPagePath?: string;
 }
 
-const mediaTypes = [
-    { type: "video" as const, label: "فيديو", icon: Video },
-    { type: "image" as const, label: "صورة", icon: Image },
-    { type: "text" as const, label: "نص", icon: FileText },
-    { type: "pdf" as const, label: "PDF", icon: FileType },
-    { type: "audio" as const, label: "صوت", icon: Headphones },
-    { type: "link" as const, label: "رابط", icon: Link2 },
+const getMediaTypes = (t: TFunction) => [
+    { type: "video" as const, label: t("dash.teacher.topics.editor.mediaType.video"), icon: Video },
+    { type: "image" as const, label: t("dash.teacher.topics.editor.mediaType.image"), icon: Image },
+    { type: "text" as const, label: t("dash.teacher.topics.editor.mediaType.text"), icon: FileText },
+    { type: "pdf" as const, label: t("dash.teacher.topics.editor.mediaType.pdf"), icon: FileType },
+    { type: "audio" as const, label: t("dash.teacher.topics.editor.mediaType.audio"), icon: Headphones },
+    { type: "link" as const, label: t("dash.teacher.topics.editor.mediaType.link"), icon: Link2 },
+    { type: "live" as const, label: t("dash.teacher.topics.editor.mediaType.live"), icon: Radio },
 ];
 
-const targetAudienceOptions = [
-    { value: "all", label: "للجميع" },
-    { value: "children", label: "للأطفال" },
-    { value: "adults", label: "للكبار" },
+const getTargetAudienceOptions = (t: TFunction) => [
+    { value: "all", label: t("dash.teacher.topics.editor.audienceAll") },
+    { value: "children", label: t("dash.teacher.topics.editor.audienceChildren") },
+    { value: "adults", label: t("dash.teacher.topics.editor.audienceAdults") },
 ];
 
-const CORRECT_SOUND_PRESETS: SoundOption[] = [
-    { label: "نجاح 1", url: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
-    { label: "نجاح 2", url: "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" },
-    { label: "نجاح 3", url: "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" },
-    { label: "نجاح 4", url: "https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3" },
-    { label: "نجاح 5", url: "https://assets.mixkit.co/active_storage/sfx/218/218-preview.mp3" },
-    { label: "نجاح 6", url: "https://assets.mixkit.co/active_storage/sfx/1114/1114-preview.mp3" },
-    { label: "نجاح 7", url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
+const getCorrectSoundPresets = (t: TFunction): SoundOption[] => [
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 1 }), url: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 2 }), url: "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 3 }), url: "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 4 }), url: "https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 5 }), url: "https://assets.mixkit.co/active_storage/sfx/218/218-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 6 }), url: "https://assets.mixkit.co/active_storage/sfx/1114/1114-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.successN", { n: 7 }), url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
 ];
 
-const WRONG_SOUND_PRESETS: SoundOption[] = [
-    { label: "خطأ 1", url: "https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3" },
-    { label: "خطأ 2", url: "https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3" },
-    { label: "خطأ 3", url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
-    { label: "خطأ 4", url: "https://assets.mixkit.co/active_storage/sfx/1118/1118-preview.mp3" },
-    { label: "خطأ 5", url: "https://assets.mixkit.co/active_storage/sfx/1018/1018-preview.mp3" },
-    { label: "خطأ 6", url: "https://assets.mixkit.co/active_storage/sfx/2876/2876-preview.mp3" },
-    { label: "خطأ 7", url: "https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3" },
+const getWrongSoundPresets = (t: TFunction): SoundOption[] => [
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 1 }), url: "https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 2 }), url: "https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 3 }), url: "https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 4 }), url: "https://assets.mixkit.co/active_storage/sfx/1118/1118-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 5 }), url: "https://assets.mixkit.co/active_storage/sfx/1018/1018-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 6 }), url: "https://assets.mixkit.co/active_storage/sfx/2876/2876-preview.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.wrongN", { n: 7 }), url: "https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3" },
 ];
 
-const BACKGROUND_SOUND_PRESETS: SoundOption[] = [
-    { label: "خلفية 1", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
-    { label: "خلفية 2", url: "https://assets.mixkit.co/music/preview/mixkit-games-worldbeat-466.mp3" },
-    { label: "خلفية 3", url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
-    { label: "خلفية 4", url: "https://assets.mixkit.co/music/preview/mixkit-arcade-retro-game-over-213.mp3" },
-    { label: "خلفية 5", url: "https://assets.mixkit.co/music/preview/mixkit-game-level-music-689.mp3" },
-    { label: "خلفية 6", url: "https://assets.mixkit.co/music/preview/mixkit-valley-sunset-127.mp3" },
-    { label: "خلفية 7", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
+const getWheelSoundPresets = (t: TFunction): SoundOption[] =>
+    WHEEL_SPIN_SOUND_PRESETS.map((preset) => ({
+        label: t(preset.labelKey as Parameters<TFunction>[0]),
+        url: preset.url,
+    }));
+
+const getBackgroundSoundPresets = (t: TFunction): SoundOption[] => [
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 1 }), url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 2 }), url: "https://assets.mixkit.co/music/preview/mixkit-games-worldbeat-466.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 3 }), url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 4 }), url: "https://assets.mixkit.co/music/preview/mixkit-arcade-retro-game-over-213.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 5 }), url: "https://assets.mixkit.co/music/preview/mixkit-game-level-music-689.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 6 }), url: "https://assets.mixkit.co/music/preview/mixkit-valley-sunset-127.mp3" },
+    { label: t("dash.teacher.topics.editor.sound.bgN", { n: 7 }), url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
 ];
+
+const PRESET_LABEL_KEYS: Record<string, string> = {
+    free: "dash.teacher.topics.editor.preset.free",
+    "single:activities": "dash.teacher.topics.editor.preset.singleActivities",
+    "single:games": "dash.teacher.topics.editor.preset.singleGames",
+    "single:mixed": "dash.teacher.topics.editor.preset.singleMixed",
+    "group:activities": "dash.teacher.topics.editor.preset.groupActivities",
+    "group:games": "dash.teacher.topics.editor.preset.groupGames",
+    "group:mixed": "dash.teacher.topics.editor.preset.groupMixed",
+};
 
 const isYouTubeUrl = (url?: string): boolean => Boolean(url && getYouTubeId(url));
 
-const getMediaTypeArabicLabel = (type: ContentMedia["type"]): string => {
-    if (type === "video") return "فيديو";
-    if (type === "image") return "صورة";
-    if (type === "text") return "نص";
-    if (type === "pdf") return "PDF";
-    if (type === "audio") return "صوت";
-    return "رابط";
+const getMediaTypeLabel = (type: EditorMediaType, t: TFunction): string => {
+    if (type === "video") return t("dash.teacher.topics.editor.mediaType.video");
+    if (type === "image") return t("dash.teacher.topics.editor.mediaType.image");
+    if (type === "text") return t("dash.teacher.topics.editor.mediaType.text");
+    if (type === "pdf") return t("dash.teacher.topics.editor.mediaType.pdf");
+    if (type === "audio") return t("dash.teacher.topics.editor.mediaType.audio");
+    if (type === "link") return t("dash.teacher.topics.editor.mediaType.link");
+    return t("dash.teacher.topics.editor.mediaType.live");
 };
 
-const getMediaOptionLabel = (media: ContentMedia, index: number): string => {
+const getMediaOptionLabel = (media: ContentMedia, index: number, t: TFunction): string => {
     const raw =
         media.caption?.trim() ||
         media.fileName?.trim() ||
         (media.type === "text" ? media.content?.trim() : media.url?.trim()) ||
-        `${getMediaTypeArabicLabel(media.type)} ${index + 1}`;
+        t("dash.teacher.topics.editor.mediaTypeN", { type: getMediaTypeLabel(media.type, t), n: index + 1 });
     const short = raw.length > 48 ? `${raw.slice(0, 48)}…` : raw;
-    return `${getMediaTypeArabicLabel(media.type)} — ${short}`;
+    return t("dash.teacher.topics.editor.mediaLabel", { type: getMediaTypeLabel(media.type, t), short });
 };
 
-const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
+const liveDraftValidationToast = (key: LiveSessionDraftValidationKey, t: TFunction) => {
+    if (key === "missingUrl") {
+        return {
+            title: t("dash.teacher.live.toast.missingData"),
+            description: t("dash.teacher.topics.editor.liveMissingUrl"),
+        };
+    }
+    if (key === "invalidMeet") {
+        return {
+            title: t("dash.teacher.live.toast.invalidUrl"),
+            description: t("dash.teacher.live.toast.invalidMeet"),
+        };
+    }
+    if (key === "invalidZoom") {
+        return {
+            title: t("dash.teacher.live.toast.invalidUrl"),
+            description: t("dash.teacher.live.toast.invalidZoom"),
+        };
+    }
+    if (key === "invalidHttps") {
+        return {
+            title: t("dash.teacher.live.toast.invalidUrl"),
+            description: t("dash.teacher.live.toast.invalidHttps"),
+        };
+    }
+    return {
+        title: t("dash.teacher.live.toast.invalidTime"),
+        description: t("dash.teacher.live.toast.invalidTimeDesc"),
+    };
+};
+
+const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPagePath }: ContentEditorProps) => {
+    const { t, dir } = useDashboardLocale();
     const { data: user } = useUser();
+    const { data: teacherUploadedSounds = [] } = useTeacherUploadedSounds(teacherProfileId);
+    const createTeacherSoundMutation = useCreateTeacherUploadedSound();
+    const mediaTypes = useMemo(() => getMediaTypes(t), [t]);
+    const targetAudienceOptions = useMemo(() => getTargetAudienceOptions(t), [t]);
+    const correctSoundPresets = useMemo(() => getCorrectSoundPresets(t), [t]);
+    const wrongSoundPresets = useMemo(() => getWrongSoundPresets(t), [t]);
+    const backgroundSoundPresets = useMemo(() => getBackgroundSoundPresets(t), [t]);
+    const wheelSoundPresets = useMemo(() => getWheelSoundPresets(t), [t]);
+    const getTypeLabel = (type: string) => {
+        const keys: Record<string, string> = {
+            multiple_choice: "dash.teacher.topics.editor.type.multipleChoice",
+            true_false: "dash.teacher.topics.editor.type.trueFalse",
+            qa: "dash.teacher.topics.editor.type.qa",
+            know_dont_know: "dash.teacher.topics.editor.type.knowDontKnow",
+            order_questions: "dash.teacher.topics.editor.type.order",
+            matching: "dash.teacher.topics.editor.type.matching",
+            shooting: "dash.teacher.topics.editor.type.shooting",
+            wheel_spin: "dash.teacher.topics.editor.type.wheel",
+            puzzle: "dash.teacher.topics.editor.type.puzzle",
+        };
+        const key = keys[type];
+        return key ? t(key as any) : type;
+    };
     const [activeTab, setActiveTab] = useState<"info" | "media" | "questions">("info");
+    const [pendingLiveSessions, setPendingLiveSessions] = useState<PendingLiveSessionDraft[]>([]);
+    const [newLiveDraft, setNewLiveDraft] = useState<PendingLiveSessionDraft>(createDefaultLiveSessionDraft);
+    const [editingLivePendingIndex, setEditingLivePendingIndex] = useState<number | null>(null);
+    const [editingExistingLiveId, setEditingExistingLiveId] = useState<string | null>(null);
+    const createLiveSessionMutation = useCreateTopicLiveSession();
+    const updateLiveSessionMutation = useUpdateTopicLiveSession();
     const { toast } = useToast();
     const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
@@ -142,11 +261,11 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
     const handleImageUpload = async (file: File, onComplete: (url: string) => void, setIsUploading: (val: boolean) => void) => {
         if (!file || !user) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
         }
         if (file.size > 5 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت", variant: "destructive" });
+            toast({ title: t("dash.teacher.topics.editor.toast.fileTooLarge5mb"), description: t("dash.teacher.topics.qe.toast.imageTooLarge"), variant: "destructive" });
             return;
         }
         setIsUploading(true);
@@ -158,12 +277,12 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             if (error) throw error;
             const { data } = supabase.storage.from('teacher-content').getPublicUrl(filePath);
             onComplete(data.publicUrl);
-            toast({ title: "تم الرفع", description: "تم رفع الصورة بنجاح" });
+            toast({ title: t("dash.teacher.topics.qe.toast.uploaded"), description: t("dash.teacher.topics.editor.toast.imageUploaded") });
         } catch (error: any) {
             console.error("Upload error:", error);
             toast({
-                title: "خطأ في الرفع",
-                description: error.message || "حدث خطأ أثناء الرفع. الرجاء التأكد من وجود bucket باسم teacher-content في Supabase.",
+                title: t("dash.teacher.topics.editor.toast.uploadErr"),
+                description: error.message || t("dash.teacher.topics.editor.toast.uploadErr"),
                 variant: "destructive"
             });
         } finally {
@@ -180,6 +299,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [correctSoundUrl, setCorrectSoundUrl] = useState(content?.correctSoundUrl || "");
     const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
     const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
+    const [wheelSpinSoundUrl, setWheelSpinSoundUrl] = useState(
+        resolveWheelSpinSoundUrl(content?.wheelSpinSoundUrl)
+    );
     const [discussionsEnabled, setDiscussionsEnabled] = useState(content?.discussionsEnabled ?? true);
     const [collectSingleChallengeParticipantData, setCollectSingleChallengeParticipantData] = useState(
         content?.collectSingleChallengeParticipantData ?? false
@@ -192,19 +314,69 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             })
         )
     );
-    const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>(
-        content?.correctSoundUrl ? [{ label: "مخصص محفوظ", url: content.correctSoundUrl }] : []
-    );
-    const [customWrongSoundOptions, setCustomWrongSoundOptions] = useState<SoundOption[]>(
-        content?.wrongSoundUrl ? [{ label: "مخصص محفوظ", url: content.wrongSoundUrl }] : []
-    );
-    const [customBackgroundSoundOptions, setCustomBackgroundSoundOptions] = useState<SoundOption[]>(
-        content?.answeringBackgroundSoundUrl ? [{ label: "مخصص محفوظ", url: content.answeringBackgroundSoundUrl }] : []
-    );
+    const [customCorrectSoundOptions, setCustomCorrectSoundOptions] = useState<SoundOption[]>([]);
+    const [customWrongSoundOptions, setCustomWrongSoundOptions] = useState<SoundOption[]>([]);
+    const [customBackgroundSoundOptions, setCustomBackgroundSoundOptions] = useState<SoundOption[]>([]);
 
+    const teacherSoundsByCategory = useMemo(() => {
+        const correct = teacherUploadedSounds.filter((r) => r.sound_category === "correct");
+        const wrong = teacherUploadedSounds.filter((r) => r.sound_category === "wrong");
+        const background = teacherUploadedSounds.filter((r) => r.sound_category === "background");
+        return { correct, wrong, background };
+    }, [teacherUploadedSounds]);
+
+    useEffect(() => {
+        const savedLabel = t("dash.teacher.topics.editor.customSaved");
+        setCustomCorrectSoundOptions(
+            mergeSoundOptionLists(
+                teacherSoundsToOptions(teacherSoundsByCategory.correct, savedLabel),
+                optionFromTopicUrl(content?.correctSoundUrl, savedLabel)
+            )
+        );
+        setCustomWrongSoundOptions(
+            mergeSoundOptionLists(
+                teacherSoundsToOptions(teacherSoundsByCategory.wrong, savedLabel),
+                optionFromTopicUrl(content?.wrongSoundUrl, savedLabel)
+            )
+        );
+        setCustomBackgroundSoundOptions(
+            mergeSoundOptionLists(
+                teacherSoundsToOptions(teacherSoundsByCategory.background, savedLabel),
+                optionFromTopicUrl(content?.answeringBackgroundSoundUrl, savedLabel)
+            )
+        );
+    }, [
+        teacherSoundsByCategory,
+        content?.id,
+        content?.correctSoundUrl,
+        content?.wrongSoundUrl,
+        content?.answeringBackgroundSoundUrl,
+        t,
+    ]);
     // Media
+    const initialMediaSnapshotRef = useRef(JSON.stringify(content?.media || []));
     const [mediaList, setMediaList] = useState<ContentMedia[]>(content?.media || []);
+    const [mediaDirty, setMediaDirty] = useState(false);
     const [editingMediaIndex, setEditingMediaIndex] = useState<number | null>(null);
+
+    useEffect(() => {
+        const snapshot = content?.media || [];
+        initialMediaSnapshotRef.current = JSON.stringify(snapshot);
+        setMediaList(snapshot);
+        setMediaDirty(false);
+        setPendingLiveSessions([]);
+        setEditingLivePendingIndex(null);
+        setEditingExistingLiveId(null);
+        setNewLiveDraft(createDefaultLiveSessionDraft());
+        setCorrectSoundUrl(content?.correctSoundUrl || "");
+        setWrongSoundUrl(content?.wrongSoundUrl || "");
+        setAnsweringBackgroundSoundUrl(content?.answeringBackgroundSoundUrl || "");
+        setWheelSpinSoundUrl(resolveWheelSpinSoundUrl(content?.wheelSpinSoundUrl));
+    }, [content?.id]);
+
+    useEffect(() => {
+        setMediaDirty(JSON.stringify(mediaList) !== initialMediaSnapshotRef.current);
+    }, [mediaList]);
     const [isProcessingPdf, setIsProcessingPdf] = useState(false);
 
     // Challenge Items (Questions & Games)
@@ -214,7 +386,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     const [showQuestionEditor, setShowQuestionEditor] = useState(false);
 
     // New media form
-    const [newMedia, setNewMedia] = useState<ContentMedia>({ type: "video", url: "", caption: "" });
+    const [newMedia, setNewMedia] = useState<EditorNewMedia>({ type: "video", url: "", caption: "" });
     const [showAddMedia, setShowAddMedia] = useState(false);
     const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
     const [isRenderingAiImage, setIsRenderingAiImage] = useState(false);
@@ -240,7 +412,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
     const audioMediaOptions = mediaList.filter((m) => m.type === "audio" && m.url?.trim());
     const uploadedAudioOptions: SoundOption[] = audioMediaOptions.map((media, idx) => ({
-        label: `مرفوع: ${media.caption || media.fileName || `ملف صوتي ${idx + 1}`}`,
+        label: t("dash.teacher.topics.editor.uploadedAudio", { name: media.caption || media.fileName || t("dash.teacher.topics.editor.audioFileN", { n: idx + 1 }) }),
         url: media.url as string,
     }));
 
@@ -263,7 +435,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
     const playPreview = (url?: string) => {
         if (!url || url === "__default__") {
-            toast({ title: "تنبيه", description: "اختر صوتاً أولاً لمعاينته." });
+            toast({ title: t("dash.common.alert"), description: t("dash.teacher.topics.editor.toast.pickSoundFirst") });
             return;
         }
         try {
@@ -274,50 +446,63 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             void audio.play();
         } catch (error) {
             console.error("Preview play error:", error);
-            toast({ title: "خطأ", description: "تعذر تشغيل المعاينة", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.editor.toast.previewErr"), variant: "destructive" });
         }
     };
 
     const uploadSoundOption = async (
-        type: "correct" | "wrong" | "background",
+        type: TeacherSoundCategory,
         file: File
     ) => {
         if (!file || !user) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
+            return;
+        }
+        if (!teacherProfileId) {
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
         }
         if (file.size > 25 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الملف الصوتي 25 ميجابايت", variant: "destructive" });
+            toast({ title: t("dash.teacher.topics.editor.toast.fileTooLarge5mb"), description: t("dash.teacher.topics.editor.toast.fileTooLarge25mb"), variant: "destructive" });
             return;
         }
 
         setIsUploadingMedia(true);
         try {
             const fileExt = file.name.split(".").pop() || "mp3";
-            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-            const filePath = `${user.id}/content/${fileName}`;
+            const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+            const filePath = `${user.id}/sounds/${type}/${fileName}`;
             const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
             if (error) throw error;
             const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
-            const option: SoundOption = { label: `مرفوع مباشر: ${file.name}`, url: data.publicUrl };
+            const label = t("dash.teacher.topics.editor.directUpload", { name: file.name });
+            const option: SoundOption = { label, url: data.publicUrl };
+
+            await createTeacherSoundMutation.mutateAsync({
+                teacherId: teacherProfileId,
+                soundCategory: type,
+                url: data.publicUrl,
+                label: file.name,
+                storagePath: filePath,
+            });
 
             if (type === "correct") {
-                setCustomCorrectSoundOptions((prev) => [...prev, option]);
+                setCustomCorrectSoundOptions((prev) => mergeSoundOptionLists(prev, [option]));
                 setCorrectSoundUrl(option.url);
             } else if (type === "wrong") {
-                setCustomWrongSoundOptions((prev) => [...prev, option]);
+                setCustomWrongSoundOptions((prev) => mergeSoundOptionLists(prev, [option]));
                 setWrongSoundUrl(option.url);
             } else {
-                setCustomBackgroundSoundOptions((prev) => [...prev, option]);
+                setCustomBackgroundSoundOptions((prev) => mergeSoundOptionLists(prev, [option]));
                 setAnsweringBackgroundSoundUrl(option.url);
             }
 
-            toast({ title: "تم الرفع", description: "تم رفع الصوت وإضافته إلى القائمة" });
+            toast({ title: t("dash.teacher.topics.qe.toast.uploaded"), description: t("dash.teacher.topics.editor.toast.audioAddedList") });
         } catch (error: any) {
             console.error("Custom sound upload error:", error);
             toast({
-                title: "خطأ في الرفع",
-                description: error.message || "حدث خطأ أثناء رفع الملف الصوتي.",
+                title: t("dash.teacher.topics.editor.toast.uploadErr"),
+                description: error.message || t("dash.teacher.topics.editor.toast.audioUploadErr"),
                 variant: "destructive",
             });
         } finally {
@@ -329,7 +514,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     // Handle PDF file upload - stores in Supabase Storage and optionally base64 for AI analysis
     const handlePdfUpload = async (file: File) => {
         if (!file || !user) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
         }
 
@@ -370,14 +555,14 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             });
 
             toast({
-                title: "تم رفع الملف بنجاح! ✓",
-                description: `تم حفظ الملف في الخادم وسيتم استخدامه في الدرس`,
+                title: t("dash.teacher.topics.editor.toast.fileUploaded"),
+                description: t("dash.teacher.topics.editor.toast.fileSavedServer"),
             });
         } catch (error: any) {
             console.error("Error processing PDF:", error);
             toast({
-                title: "خطأ في رفع الملف",
-                description: error.message || "حدث خطأ أثناء رفع ملف PDF. الرجاء التأكد من وجود bucket باسم teacher-content.",
+                title: t("dash.teacher.topics.editor.toast.fileUploadErrTitle"),
+                description: error.message || t("dash.teacher.topics.editor.toast.pdfUploadErr"),
                 variant: "destructive",
             });
         } finally {
@@ -387,11 +572,11 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
     const handleAudioUpload = async (file: File) => {
         if (!file || !user) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
         }
         if (file.size > 25 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الملف الصوتي 25 ميجابايت", variant: "destructive" });
+            toast({ title: t("dash.teacher.topics.editor.toast.fileTooLarge5mb"), description: t("dash.teacher.topics.editor.toast.fileTooLarge25mb"), variant: "destructive" });
             return;
         }
         setIsUploadingMedia(true);
@@ -407,12 +592,12 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 url: data.publicUrl,
                 fileName: file.name,
             }));
-            toast({ title: "تم الرفع", description: "تم رفع الملف الصوتي بنجاح" });
+            toast({ title: t("dash.teacher.topics.qe.toast.uploaded"), description: t("dash.teacher.topics.editor.toast.audioUploaded") });
         } catch (error: any) {
             console.error("Audio upload error:", error);
             toast({
-                title: "خطأ في الرفع",
-                description: error.message || "حدث خطأ أثناء رفع الملف الصوتي.",
+                title: t("dash.teacher.topics.editor.toast.uploadErr"),
+                description: error.message || t("dash.teacher.topics.editor.toast.audioUploadErr"),
                 variant: "destructive",
             });
         } finally {
@@ -424,20 +609,20 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         if (!apiKey) {
             toast({
-                title: "مفتاح API غير مهيأ",
-                description: "أضف VITE_GEMINI_API_KEY في ملف .env",
+                title: t("dash.teacher.topics.editor.toast.apiKeyMissing"),
+                description: t("dash.teacher.topics.editor.toast.addGeminiKey"),
                 variant: "destructive",
             });
             return;
         }
         if (!user) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
         }
         if (aiImageSourceSelections.length === 0) {
             toast({
-                title: "اختر المورد أولاً",
-                description: "حدد موردًا واحدًا على الأقل لتحليل المحتوى وصياغة وصف الصورة.",
+                title: t("dash.teacher.topics.editor.toast.pickResourceFirst"),
+                description: t("dash.teacher.topics.editor.toast.pickOneResource"),
                 variant: "destructive",
             });
             return;
@@ -451,8 +636,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 );
             if (selectedResources.length === 0) {
                 toast({
-                    title: "الموارد المختارة غير متاحة",
-                    description: "أعد تحديد الموارد ثم حاول مرة أخرى.",
+                    title: t("dash.teacher.topics.editor.toast.resourcesUnavailable"),
+                    description: t("dash.teacher.topics.editor.toast.reselectResources"),
                     variant: "destructive",
                 });
                 return;
@@ -481,8 +666,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         } catch (error: unknown) {
             console.error("AI image prompt:", error);
             toast({
-                title: "فشل تحليل الموارد",
-                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                title: t("dash.teacher.topics.editor.toast.analyzeFailed"),
+                description: error instanceof Error ? error.message : t("dash.teacher.topics.editor.toast.unexpected"),
                 variant: "destructive",
             });
         } finally {
@@ -495,8 +680,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         const trimmed = editableImagePrompt.trim();
         if (!trimmed) {
             toast({
-                title: "وصف فارغ",
-                description: "أدخل أو احتفظ بوصف الصورة قبل التوليد.",
+                title: t("dash.teacher.topics.editor.toast.emptyPrompt"),
+                description: t("dash.teacher.topics.editor.toast.enterPrompt"),
                 variant: "destructive",
             });
             return;
@@ -527,7 +712,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         imageBase64: base64,
                         caption: prev.caption?.trim()
                             ? prev.caption
-                            : "صورة توضيحية مُولَّدة من تحليل موارد الدرس",
+                            : t("dash.teacher.topics.editor.aiCaptionDefault"),
                     }));
                 },
                 () => {}
@@ -537,8 +722,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         } catch (error: unknown) {
             console.error("AI image generation:", error);
             toast({
-                title: "فشل توليد الصورة",
-                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                title: t("dash.teacher.topics.editor.toast.generateFailed"),
+                description: error instanceof Error ? error.message : t("dash.teacher.topics.editor.toast.unexpected"),
                 variant: "destructive",
             });
         } finally {
@@ -559,6 +744,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 correctSoundUrl: correctSoundUrl || null,
                 wrongSoundUrl: wrongSoundUrl || null,
                 answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
+                wheelSpinSoundUrl: resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
                 discussionsEnabled,
                 collectSingleChallengeParticipantData,
                 studentChallengePreset,
@@ -566,7 +752,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                 quiz: [], // Legacy - keeping for compatibility
                 views: content?.views || 0,
                 createdAt: content?.createdAt || new Date().toISOString().split('T')[0],
-                challengeItems // New comprehensive items
+                challengeItems,
+                pendingLiveSessions,
+                mediaDirty,
             });
         } finally {
             setIsSaving(false);
@@ -574,13 +762,80 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     };
 
     // Media handlers
-    const saveMedia = () => {
+    const saveMedia = async () => {
+        if (newMedia.type === "live") {
+            const liveValidation = validateLiveSessionDraft(newLiveDraft);
+            if (liveValidation) {
+                const err = liveDraftValidationToast(liveValidation, t);
+                toast({ title: err.title, description: err.description, variant: "destructive" });
+                return;
+            }
+
+            const defaultTitle = title.trim()
+                ? t("dash.teacher.live.sessionTitle", { title: title.trim() })
+                : null;
+            const livePayload = liveSessionDraftToPayload(newLiveDraft, defaultTitle);
+
+            if (editingExistingLiveId && content?.id && teacherProfileId) {
+                try {
+                    await updateLiveSessionMutation.mutateAsync({
+                        id: editingExistingLiveId,
+                        topicId: String(content.id),
+                        teacherId: teacherProfileId,
+                        updates: {
+                            provider: livePayload.provider,
+                            meeting_url: livePayload.meetingUrl,
+                            title: livePayload.title,
+                            starts_at: livePayload.startsAt,
+                            ends_at: livePayload.endsAt,
+                            notes: livePayload.notes,
+                            is_active: true,
+                        },
+                    });
+                    toast({ title: t("dash.teacher.topics.editor.liveUpdated"), description: t("dash.teacher.topics.editor.liveUpdatedDesc") });
+                } catch {
+                    toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.editor.liveUpdateFailed"), variant: "destructive" });
+                    return;
+                }
+            } else if (content?.id && teacherProfileId && editingLivePendingIndex === null) {
+                try {
+                    await createLiveSessionMutation.mutateAsync({
+                        topicId: String(content.id),
+                        teacherId: teacherProfileId,
+                        provider: livePayload.provider,
+                        meetingUrl: livePayload.meetingUrl,
+                        title: livePayload.title,
+                        startsAt: livePayload.startsAt,
+                        endsAt: livePayload.endsAt,
+                        notes: livePayload.notes,
+                    });
+                    toast({ title: t("dash.teacher.live.toast.published"), description: t("dash.teacher.live.toast.publishedDesc") });
+                } catch {
+                    toast({ title: t("dash.common.error"), description: t("dash.teacher.live.toast.createFailedDesc"), variant: "destructive" });
+                    return;
+                }
+            } else if (editingLivePendingIndex !== null) {
+                const next = [...pendingLiveSessions];
+                next[editingLivePendingIndex] = { ...newLiveDraft };
+                setPendingLiveSessions(next);
+                setEditingLivePendingIndex(null);
+            } else {
+                setPendingLiveSessions([...pendingLiveSessions, { ...newLiveDraft }]);
+            }
+
+            setEditingExistingLiveId(null);
+            setNewMedia({ type: "video", url: "", caption: "" });
+            setNewLiveDraft(createDefaultLiveSessionDraft());
+            setShowAddMedia(false);
+            return;
+        }
+
         const normalizedLinkUrl =
             newMedia.type === "link" ? normalizeExternalUrl(newMedia.url || "") : "";
-        const payload =
+        const payload: ContentMedia =
             newMedia.type === "link"
-                ? { ...newMedia, url: normalizedLinkUrl }
-                : newMedia;
+                ? { ...newMedia, type: newMedia.type, url: normalizedLinkUrl }
+                : { ...newMedia, type: newMedia.type as ContentMedia["type"] };
 
         const isValid =
             payload.type === "text"
@@ -607,6 +862,18 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
         }
     };
 
+    const deleteLivePending = (index: number) => {
+        setPendingLiveSessions(pendingLiveSessions.filter((_, i) => i !== index));
+    };
+
+    const editLivePending = (index: number) => {
+        setEditingLivePendingIndex(index);
+        setEditingMediaIndex(null);
+        setNewLiveDraft({ ...pendingLiveSessions[index] });
+        setNewMedia({ type: "live", url: "", caption: "" });
+        setShowAddMedia(true);
+    };
+
     const deleteMedia = (index: number) => {
         setMediaList(mediaList.filter((_, i) => i !== index));
     };
@@ -630,16 +897,16 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" dir={dir}>
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">
-                    {content ? "تعديل المحتوى" : "إضافة محتوى جديد"}
+                    {content ? t("dash.teacher.topics.editor.editContent") : t("dash.teacher.topics.editor.addContent")}
                 </h2>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={onCancel} disabled={isSaving}>
                         <X className="w-4 h-4 ml-2" />
-                        إلغاء
+                        {t("dash.common.cancel")}
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving}>
                         {isSaving ? (
@@ -647,7 +914,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         ) : (
                             <Save className="w-4 h-4 ml-2" />
                         )}
-                        {isSaving ? "جاري الحفظ..." : "حفظ"}
+                        {isSaving ? t("dash.common.saving") : t("dash.common.save")}
                     </Button>
                 </div>
             </div>
@@ -655,9 +922,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             {/* Tabs */}
             <div className="flex gap-2 border-b pb-2">
                 {[
-                    { id: "info", label: "المعلومات الأساسية", icon: FileText },
-                    { id: "media", label: `الوسائط (${mediaList.length})`, icon: Video },
-                    { id: "questions", label: `الأسئلة والألعاب (${challengeItems.length})`, icon: Gamepad2 },
+                    { id: "info", label: t("dash.teacher.topics.editor.tabInfo"), icon: FileText },
+                    { id: "media", label: t("dash.teacher.topics.editor.tabMedia", { n: mediaList.length + pendingLiveSessions.length }), icon: Video },
+                    { id: "questions", label: t("dash.teacher.topics.editor.tabQuestions", { n: challengeItems.length }), icon: Gamepad2 },
                 ].map(tab => (
                     <Button
                         key={tab.id}
@@ -678,15 +945,15 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                     <CardContent className="pt-6 space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-sm font-medium mb-2 block">عنوان المحتوى *</label>
+                                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.editor.contentTitle")}</label>
                                 <Input
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="أدخل عنوان المحتوى"
+                                    placeholder={t("dash.teacher.topics.editor.contentTitlePlaceholder")}
                                 />
                             </div>
                             <div>
-                                <label className="text-sm font-medium mb-2 block">الفئة المستهدفة</label>
+                                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.editor.targetAudience")}</label>
                                 <select
                                     value={targetAudience}
                                     onChange={(e) => setTargetAudience(e.target.value as typeof targetAudience)}
@@ -700,23 +967,23 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         </div>
 
                         <div>
-                            <label className="text-sm font-medium mb-2 block">الوصف *</label>
+                            <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.editor.description")}</label>
                             <Textarea
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
-                                placeholder="وصف مختصر للمحتوى"
+                                placeholder={t("dash.teacher.topics.editor.descriptionPlaceholder")}
                                 rows={3}
                             />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-sm font-medium mb-2 block">الصورة المصغرة</label>
+                                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.editor.thumbnail")}</label>
                                 <div className="flex gap-2">
                                     <Input
                                         value={thumbnail}
                                         onChange={(e) => setThumbnail(e.target.value)}
-                                        placeholder="رابط الصورة المباشر"
+                                        placeholder={t("dash.teacher.topics.editor.thumbnailUrl")}
                                         className="flex-1"
                                     />
                                     <div className="relative">
@@ -733,7 +1000,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                         />
                                         <Button type="button" variant="outline" disabled={isUploadingThumbnail}>
                                             {isUploadingThumbnail ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                                            رفع
+                                            {t("dash.teacher.topics.editor.upload")}
                                         </Button>
                                     </div>
                                 </div>
@@ -742,34 +1009,34 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 )}
                             </div>
                             <div>
-                                <label className="text-sm font-medium mb-2 block">المدة</label>
+                                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.editor.duration")}</label>
                                 <Input
                                     value={duration}
                                     onChange={(e) => setDuration(e.target.value)}
-                                    placeholder="مثال: 10 دقائق"
+                                    placeholder={t("dash.teacher.topics.editor.durationPlaceholder")}
                                 />
                             </div>
                         </div>
 
                         <div className="rounded-lg border p-4 space-y-4">
-                            <h3 className="text-sm font-semibold">إعدادات أصوات التفاعل</h3>
+                            <h3 className="text-sm font-semibold">{t("dash.teacher.topics.editor.soundSettings")}</h3>
                             <p className="text-xs text-muted-foreground">
-                                يمكن تخصيص صوت الإجابة الصحيحة والخاطئة وصوت الخلفية أثناء الإجابة لكل درس.
+                                {t("dash.teacher.topics.editor.soundSettingsDesc")}
                             </p>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium block">صوت الإجابة الصحيحة</label>
+                                    <label className="text-sm font-medium block">{t("dash.teacher.topics.editor.correctSound")}</label>
                                     <div className="flex items-center gap-2">
                                         <select
                                             value={correctSoundUrl || "__default__"}
                                             onChange={(e) => setCorrectSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
                                             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         >
-                                            <option value="__default__">الافتراضي</option>
-                                            {getMergedSoundOptions(CORRECT_SOUND_PRESETS, customCorrectSoundOptions).map((preset) => (
+                                            <option value="__default__">{t("dash.teacher.topics.editor.defaultOption")}</option>
+                                            {getMergedSoundOptions(correctSoundPresets, customCorrectSoundOptions).map((preset) => (
                                                 <option key={`correct-preset-${preset.url}`} value={preset.url}>
-                                                    {preset.label}
+                                                    {preset.label || t("dash.teacher.topics.editor.customSaved")}
                                                 </option>
                                             ))}
                                         </select>
@@ -794,17 +1061,17 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium block">صوت الإجابة الخاطئة</label>
+                                    <label className="text-sm font-medium block">{t("dash.teacher.topics.editor.wrongSound")}</label>
                                     <div className="flex items-center gap-2">
                                         <select
                                             value={wrongSoundUrl || "__default__"}
                                             onChange={(e) => setWrongSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
                                             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         >
-                                            <option value="__default__">الافتراضي</option>
-                                            {getMergedSoundOptions(WRONG_SOUND_PRESETS, customWrongSoundOptions).map((preset) => (
+                                            <option value="__default__">{t("dash.teacher.topics.editor.defaultOption")}</option>
+                                            {getMergedSoundOptions(wrongSoundPresets, customWrongSoundOptions).map((preset) => (
                                                 <option key={`wrong-preset-${preset.url}`} value={preset.url}>
-                                                    {preset.label}
+                                                    {preset.label || t("dash.teacher.topics.editor.customSaved")}
                                                 </option>
                                             ))}
                                         </select>
@@ -829,17 +1096,17 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium block">صوت الخلفية أثناء الإجابة</label>
+                                    <label className="text-sm font-medium block">{t("dash.teacher.topics.editor.backgroundSound")}</label>
                                     <div className="flex items-center gap-2">
                                         <select
                                             value={answeringBackgroundSoundUrl || "__default__"}
                                             onChange={(e) => setAnsweringBackgroundSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
                                             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         >
-                                            <option value="__default__">الافتراضي</option>
-                                            {getMergedSoundOptions(BACKGROUND_SOUND_PRESETS, customBackgroundSoundOptions).map((preset) => (
+                                            <option value="__default__">{t("dash.teacher.topics.editor.defaultOption")}</option>
+                                            {getMergedSoundOptions(backgroundSoundPresets, customBackgroundSoundOptions).map((preset) => (
                                                 <option key={`bg-preset-${preset.url}`} value={preset.url}>
-                                                    {preset.label}
+                                                    {preset.label || t("dash.teacher.topics.editor.customSaved")}
                                                 </option>
                                             ))}
                                         </select>
@@ -862,18 +1129,42 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                         </Button>
                                     </div>
                                 </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium block">{t("dash.teacher.topics.editor.wheelSound")}</label>
+                                    <p className="text-xs text-muted-foreground">{t("dash.teacher.topics.editor.wheelSoundDesc")}</p>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={wheelSpinSoundUrl}
+                                            onChange={(e) => setWheelSpinSoundUrl(e.target.value)}
+                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        >
+                                            {wheelSoundPresets.map((preset) => (
+                                                <option key={`wheel-preset-${preset.url}`} value={preset.url}>
+                                                    {preset.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={() => playPreview(wheelSpinSoundUrl || DEFAULT_WHEEL_SPIN_SOUND_URL)}
+                                        >
+                                            <Play className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex justify-end">
                                 <Button type="button" variant="ghost" size="sm" onClick={stopPreview} className="gap-2">
-                                    <XCircle className="w-4 h-4" />
-                                    إيقاف المعاينة
-                                </Button>
+                                    <XCircle className="w-4 h-4" />{t("dash.teacher.topics.editor.stopPreview")}</Button>
                             </div>
 
                             {audioMediaOptions.length === 0 && (
                                 <p className="text-xs text-amber-600">
-                                    لا توجد ملفات صوتية مرفوعة بعد. أضف وسائط من نوع "صوت" في تبويب الوسائط لتخصيص الأصوات.
+                                    {t("dash.teacher.topics.editor.noAudioFiles")}
                                 </p>
                             )}
                         </div>
@@ -881,39 +1172,39 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         <div className="rounded-lg border p-4 space-y-3">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <h3 className="text-sm font-semibold">ساحة النقاش لهذا الدرس</h3>
+                                    <h3 className="text-sm font-semibold">{t("dash.teacher.topics.editor.discussionsTitle")}</h3>
                                     <p className="text-xs text-muted-foreground">
-                                        اسمح للطلاب بالتعليق والمناقشة داخل صفحة هذا الدرس.
+                                        {t("dash.teacher.topics.editor.discussionsDesc")}
                                     </p>
                                 </div>
                                 <Switch checked={discussionsEnabled} onCheckedChange={setDiscussionsEnabled} />
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                الوضع الافتراضي عند إنشاء درس جديد: <span className="font-semibold">مفعّل</span>
+                                {t("dash.teacher.topics.editor.defaultNewLesson")} <span className="font-semibold">{t("dash.teacher.topics.editor.enabled")}</span>
                             </p>
                         </div>
 
                         <div className="rounded-lg border p-4 space-y-3">
                             <div className="space-y-2">
-                                <Label htmlFor="student-challenge-preset">مسار التحدي للطلاب</Label>
+                                <Label htmlFor="student-challenge-preset">{t("dash.teacher.topics.editor.challengePath")}</Label>
                                 <Select
                                     value={studentChallengePreset}
                                     onValueChange={(v) => setStudentChallengePreset(v as StudentChallengePresetValue)}
                                 >
                                     <SelectTrigger id="student-challenge-preset">
-                                        <SelectValue placeholder="اختر مسار التحدي" />
+                                        <SelectValue placeholder={t("dash.teacher.topics.editor.challengePath")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {STUDENT_CHALLENGE_PRESET_OPTIONS.map((option) => (
                                             <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
+                                                {t(PRESET_LABEL_KEYS[option.value] as any)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                    عند اختيار مسار محدد، ينتقل الطالب مباشرة إلى هذا التحدي عند الضغط على «انضم للتحدي» دون عرض خيارات أخرى.
-                                    اترك «الطلاب يختارون» للسماح بالاختيار كالمعتاد.
+                                    {t("dash.teacher.topics.editor.challengePathDesc")}
+
                                 </p>
                             </div>
                         </div>
@@ -927,11 +1218,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                     className="mt-1"
                                 />
                                 <div className="space-y-1 flex-1">
-                                    <label htmlFor="collect-single-participants" className="text-sm font-semibold cursor-pointer">
-                                        جمع بيانات مشاركي التحدي الفردي
-                                    </label>
+                                    <label htmlFor="collect-single-participants" className="text-sm font-semibold cursor-pointer">{t("dash.teacher.topics.editor.collectParticipantData")}</label>
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        عند التفعيل، يُطلب من الزائر إدخال الاسم (وتفاصيل اختيارية) قبل بدء التحدي الفردي، وتُحفظ النتيجة مرتبطة بهذا الاسم في تقاريرك. إذا لم يُفعَّل، يمكن إكمال التحدي دون ذكر الهوية (كما هو الآن).
+                                        {t("dash.teacher.topics.editor.collectParticipantDataDesc")}
                                     </p>
                                 </div>
                             </div>
@@ -943,14 +1232,21 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
             {/* Media Tab */}
             {activeTab === "media" && (
                 <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <p className="text-muted-foreground">
-                            أضف الوسائط التعليمية: فيديو، صورة، نص، PDF، صوت، رابط
+                    <div className="flex justify-between items-center gap-3">
+                        <p className="text-muted-foreground text-sm">
+                            {t("dash.teacher.topics.editor.mediaDesc")}
                         </p>
-                        <Button onClick={() => setShowAddMedia(true)} className="gap-2">
-                            <Plus className="w-4 h-4" />
-                            إضافة وسيط
-                        </Button>
+                        <Button
+                            onClick={() => {
+                                setEditingMediaIndex(null);
+                                setEditingLivePendingIndex(null);
+                                setNewMedia({ type: "video", url: "", caption: "" });
+                                setNewLiveDraft(createDefaultLiveSessionDraft());
+                                setShowAddMedia(true);
+                            }}
+                            className="gap-2 shrink-0"
+                        >
+                            <Plus className="w-4 h-4" />{t("dash.teacher.topics.editor.addMedia")}</Button>
                     </div>
 
                     {/* Add Media Form */}
@@ -969,16 +1265,25 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     key={m.type}
                                                     variant={newMedia.type === m.type ? "default" : "outline"}
                                                     size="sm"
-                                                    onClick={() => setNewMedia({
-                                                        ...newMedia,
-                                                        type: m.type,
-                                                        url: "",
-                                                        content: "",
-                                                        file: undefined,
-                                                        fileName: undefined,
-                                                        pdfBase64: undefined,
-                                                        imageBase64: undefined,
-                                                    })}
+                                                    onClick={() => {
+                                                        if (m.type === "live") {
+                                                            setNewMedia({ type: "live", url: "", caption: "" });
+                                                            if (editingLivePendingIndex === null) {
+                                                                setNewLiveDraft(createDefaultLiveSessionDraft());
+                                                            }
+                                                        } else {
+                                                            setNewMedia({
+                                                                ...newMedia,
+                                                                type: m.type,
+                                                                url: "",
+                                                                content: "",
+                                                                file: undefined,
+                                                                fileName: undefined,
+                                                                pdfBase64: undefined,
+                                                                imageBase64: undefined,
+                                                            });
+                                                        }
+                                                    }}
                                                     className="gap-2"
                                                 >
                                                     <m.icon className="w-4 h-4" />
@@ -991,7 +1296,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             <Textarea
                                                 value={newMedia.content || ""}
                                                 onChange={(e) => setNewMedia({ ...newMedia, content: e.target.value })}
-                                                placeholder="أدخل النص التعليمي (يدعم Markdown)"
+                                                placeholder={t("dash.teacher.topics.editor.textContent")}
                                                 rows={6}
                                             />
                                         ) : newMedia.type === "pdf" ? (
@@ -1009,9 +1314,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 />
                                                 {isProcessingPdf && (
                                                     <div className="text-sm text-blue-600 flex items-center gap-2">
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                        جاري رفع الملف...
-                                                    </div>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />{t("dash.teacher.topics.editor.uploadingFile")}</div>
                                                 )}
                                                 {!isProcessingPdf && newMedia.fileName && (
                                                     <div className="space-y-1">
@@ -1020,7 +1323,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                             {newMedia.fileName}
                                                         </div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            ✓ سيتم تحليل الملف بالذكاء الاصطناعي عند توليد الأسئلة
+                                                            {t("dash.teacher.topics.editor.aiPdfHint")}
                                                         </div>
                                                     </div>
                                                 )}
@@ -1030,7 +1333,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 <Input
                                                     value={newMedia.url || ""}
                                                     onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                    placeholder="رابط فيديو يوتيوب (يتم التحويل تلقائياً)"
+                                                    placeholder={t("dash.teacher.topics.editor.youtubeUrl")}
                                                 />
                                                 {newMedia.url && getYouTubeId(newMedia.url) && (
                                                     <div className="relative aspect-video w-40 rounded-lg overflow-hidden border">
@@ -1053,23 +1356,23 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             </div>
 
                                         ) : newMedia.type === "image" ? (
-                                            <div className="space-y-3 text-right" dir="rtl">
+                                            <div className="space-y-3 text-start" dir={dir}>
                                                 <div className="rounded-md border border-primary/20 bg-primary/5 p-2">
                                                     <p className="text-xs text-muted-foreground">
-                                                        يمكنك إضافة الصورة بطريقتين: رفع صورة مباشرة، أو استخدام الذكاء الاصطناعي لتوليد صورة من موارد الدرس.
+                                                        {t("dash.teacher.topics.editor.aiImageIntro")}
                                                     </p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-sm font-medium">1) رفع صورة يدويًا</p>
+                                                    <p className="text-sm font-medium">{t("dash.teacher.topics.editor.aiImageStep1")}</p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        ألصق رابط الصورة أو ارفع ملف صورة من جهازك.
+                                                        {t("dash.teacher.topics.editor.aiImagePasteOrUpload")}
                                                     </p>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Input
                                                         value={newMedia.url || ""}
                                                         onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                        placeholder="رابط الصورة"
+                                                        placeholder={t("dash.teacher.topics.editor.imageUrl")}
                                                         className="flex-1 text-right"
                                                     />
                                                     <div className="relative">
@@ -1100,44 +1403,42 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                         />
                                                         <Button type="button" variant="outline" disabled={isUploadingMedia || isGeneratingAiImage || isRenderingAiImage}>
                                                             {isUploadingMedia ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                                                            رفع
+                                                            {t("dash.teacher.topics.editor.upload")}
                                                         </Button>
                                                     </div>
                                                 </div>
                                                 {newMedia.url && (
                                                     <div className="rounded-md border bg-background p-2 space-y-2">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-xs font-medium">معاينة الصورة</p>
+                                                            <p className="text-xs font-medium">{t("dash.teacher.topics.editor.imagePreview")}</p>
                                                             {newMedia.imageBase64 && (
                                                                 <span className="text-[11px] text-primary">
-                                                                    تم توليدها بالذكاء الاصطناعي
+                                                                    {t("dash.teacher.topics.editor.aiGenerated")}
                                                                 </span>
                                                             )}
                                                         </div>
                                                         <img
                                                             src={newMedia.url}
-                                                            alt="معاينة الصورة"
+                                                            alt={t("dash.teacher.topics.editor.imagePreview")}
                                                             className="w-full max-h-64 rounded-md object-contain bg-muted/30"
                                                         />
                                                     </div>
                                                 )}
                                                 <div className="relative py-1">
                                                     <div className="border-t" />
-                                                    <span className="absolute right-1/2 top-1/2 -translate-y-1/2 translate-x-1/2 bg-background px-2 text-[11px] text-muted-foreground">
-                                                        أو
-                                                    </span>
+                                                    <span className="absolute right-1/2 top-1/2 -translate-y-1/2 translate-x-1/2 bg-background px-2 text-[11px] text-muted-foreground">{t("dash.teacher.topics.editor.or")}</span>
                                                 </div>
                                                 <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
                                                     <div className="space-y-1">
-                                                        <p className="text-sm font-medium">2) توليد صورة بالذكاء الاصطناعي</p>
+                                                        <p className="text-sm font-medium">{t("dash.teacher.topics.editor.aiImageStep2")}</p>
                                                         <p className="text-xs text-muted-foreground">
-                                                            اختر إعدادات التوليد ثم حلّل الموارد لإنشاء وصف الصورة.
+                                                            {t("dash.teacher.topics.editor.aiImageSetup")}
                                                         </p>
                                                     </div>
-                                                    <p className="text-sm font-medium">خيارات الصورة (قبل التحليل)</p>
+                                                    <p className="text-sm font-medium">{t("dash.teacher.topics.editor.aiImageOptions")}</p>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
-                                                            لغة وصف التوليد (يظهر في النافذة ثم يُرسَل لتوليد الصورة)
+                                                            {t("dash.teacher.topics.editor.promptLanguage")}
                                                         </Label>
                                                         <Select
                                                             value={aiImagePromptLanguage}
@@ -1149,25 +1450,25 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
                                                         >
                                                             <SelectTrigger className="h-9 text-right flex-row-reverse">
-                                                                <SelectValue placeholder="اختر" />
+                                                                <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                             </SelectTrigger>
-                                                            <SelectContent dir="rtl" className="text-right">
+                                                            <SelectContent dir={dir} className="text-right">
                                                                 <SelectItem value="auto">
-                                                                    تلقائي — عربي إن كانت المواد عربية
+                                                                    {t("dash.teacher.topics.editor.langAuto")}
                                                                 </SelectItem>
-                                                                <SelectItem value="ar">عربي</SelectItem>
-                                                                <SelectItem value="en">English</SelectItem>
+                                                                <SelectItem value="ar">{t("dash.teacher.topics.editor.langAr")}</SelectItem>
+                                                                <SelectItem value="en">{t("dash.teacher.topics.editor.langEn")}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
-                                                            المورد المعتمد للتحليل
+                                                            {t("dash.teacher.topics.editor.aiImageSourceLabel")}
                                                         </Label>
                                                         <div className="rounded-md border bg-background p-2 space-y-2">
                                                             <div className="flex items-center justify-between gap-2">
                                                                 <p className="text-xs text-muted-foreground">
-                                                                    {aiImageSourceSelections.length} من {mediaList.length} مورد محدد
+                                                                    {t("dash.teacher.topics.editor.resourcesSelected", { selected: aiImageSourceSelections.length, total: mediaList.length })}
                                                                 </p>
                                                                 <div className="flex items-center gap-1">
                                                                     <Button
@@ -1185,9 +1486,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                                 mediaList.map((_, index) => String(index))
                                                                             )
                                                                         }
-                                                                    >
-                                                                        تحديد الكل
-                                                                    </Button>
+                                                                    >{t("dash.teacher.topics.editor.selectAll")}</Button>
                                                                     <Button
                                                                         type="button"
                                                                         variant="ghost"
@@ -1199,16 +1498,14 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                             isRenderingAiImage
                                                                         }
                                                                         onClick={() => setAiImageSourceSelections([])}
-                                                                    >
-                                                                        إلغاء الكل
-                                                                    </Button>
+                                                                    >{t("dash.teacher.topics.editor.deselectAll")}</Button>
                                                                 </div>
                                                             </div>
                                                             <p className="text-[11px] text-muted-foreground">
-                                                                اختر موردًا واحدًا أو أكثر. سيتم تحليل الموارد المحددة فقط.
+                                                                {t("dash.teacher.topics.editor.aiImageSourceHint")}
                                                             </p>
                                                             <label className="flex items-center justify-between gap-2 text-sm">
-                                                                <span>كل الموارد المتاحة</span>
+                                                                <span>{t("dash.teacher.topics.editor.allResources")}</span>
                                                                 <Checkbox
                                                                     checked={
                                                                         mediaList.length > 0 &&
@@ -1240,7 +1537,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                             className="flex items-center justify-between gap-2 text-sm"
                                                                         >
                                                                             <span className="truncate">
-                                                                                {getMediaOptionLabel(media, index)}
+                                                                                {getMediaOptionLabel(media, index, t)}
                                                                             </span>
                                                                             <Checkbox
                                                                                 checked={checked}
@@ -1260,7 +1557,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 })}
                                                                 {mediaList.length === 0 && (
                                                                     <p className="text-xs text-muted-foreground">
-                                                                        لا توجد موارد مضافة بعد.
+                                                                        {t("dash.teacher.topics.editor.noResourcesAdded")}
                                                                     </p>
                                                                 )}
                                                             </div>
@@ -1268,12 +1565,12 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     </div>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
-                                                            نطاق المحتوى من الموارد (اختياري) — أي جزء يُحلَّل لصياغة الوصف
+                                                            {t("dash.teacher.topics.editor.contentFocus")}
                                                         </Label>
                                                         <Textarea
                                                             value={aiImageContentFocus}
                                                             onChange={(e) => setAiImageContentFocus(e.target.value)}
-                                                            placeholder="مثال: الملف فيه 7 وحدات — اعتمد الوحدة الأولى فقط. الموضوع: التركيب الضوئي…"
+                                                            placeholder={t("dash.teacher.topics.editor.contentFocus")}
                                                             rows={3}
                                                             className="text-sm text-right resize-y min-h-[72px]"
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
@@ -1281,7 +1578,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     </div>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div className="space-y-1.5">
-                                                            <Label className="text-xs text-muted-foreground">الجمهور المستهدف</Label>
+                                                            <Label className="text-xs text-muted-foreground">{t("dash.teacher.topics.editor.audienceLabel")}</Label>
                                                             <Select
                                                                 value={aiImageAudience}
                                                                 onValueChange={(v) =>
@@ -1290,19 +1587,19 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
-                                                                    <SelectValue placeholder="اختر" />
+                                                                    <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir="rtl" className="text-right">
-                                                                    <SelectItem value="kids">أطفال</SelectItem>
-                                                                    <SelectItem value="teens">مراهقون / ثانوي</SelectItem>
-                                                                    <SelectItem value="adults">بالغون</SelectItem>
-                                                                    <SelectItem value="university">جامعة / دراسات عليا</SelectItem>
-                                                                    <SelectItem value="general">عام / مختلط</SelectItem>
+                                                            <SelectContent dir={dir} className="text-right">
+                                                                    <SelectItem value="kids">{t("dash.teacher.topics.editor.audience.children")}</SelectItem>
+                                                                    <SelectItem value="teens">{t("dash.teacher.topics.editor.audience.teens")}</SelectItem>
+                                                                    <SelectItem value="adults">{t("dash.teacher.topics.editor.audience.adults")}</SelectItem>
+                                                                    <SelectItem value="university">{t("dash.teacher.topics.editor.audience.university")}</SelectItem>
+                                                                    <SelectItem value="general">{t("dash.teacher.topics.editor.audience.general")}</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <Label className="text-xs text-muted-foreground">النمط البصري</Label>
+                                                            <Label className="text-xs text-muted-foreground">{t("dash.teacher.topics.editor.visualTheme")}</Label>
                                                             <Select
                                                                 value={aiImageVisualTheme}
                                                                 onValueChange={(v) =>
@@ -1313,20 +1610,20 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
-                                                                    <SelectValue placeholder="اختر" />
+                                                                    <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir="rtl" className="text-right">
-                                                                    <SelectItem value="infographic">إنفوجرافيك</SelectItem>
-                                                                    <SelectItem value="poster">ملصق / بوستر</SelectItem>
-                                                                    <SelectItem value="storybook">قصة مصورة</SelectItem>
-                                                                    <SelectItem value="diagram">مخطط / رسم توضيحي</SelectItem>
-                                                                    <SelectItem value="minimal">بسيط Minimal</SelectItem>
-                                                                    <SelectItem value="textbook">أسلوب كتاب مدرسي</SelectItem>
+                                                            <SelectContent dir={dir} className="text-right">
+                                                                    <SelectItem value="infographic">{t("dash.teacher.topics.editor.theme.infographic")}</SelectItem>
+                                                                    <SelectItem value="poster">{t("dash.teacher.topics.editor.theme.poster")}</SelectItem>
+                                                                    <SelectItem value="storybook">{t("dash.teacher.topics.editor.theme.comic")}</SelectItem>
+                                                                    <SelectItem value="diagram">{t("dash.teacher.topics.editor.theme.diagram")}</SelectItem>
+                                                                    <SelectItem value="minimal">{t("dash.teacher.topics.editor.theme.minimal")}</SelectItem>
+                                                                    <SelectItem value="textbook">{t("dash.teacher.topics.editor.theme.textbook")}</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <Label className="text-xs text-muted-foreground">النبرة</Label>
+                                                            <Label className="text-xs text-muted-foreground">{t("dash.teacher.topics.editor.tone")}</Label>
                                                             <Select
                                                                 value={aiImageTone}
                                                                 onValueChange={(v) =>
@@ -1335,19 +1632,19 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
-                                                                    <SelectValue placeholder="اختر" />
+                                                                    <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir="rtl" className="text-right">
-                                                                    <SelectItem value="playful">مرح</SelectItem>
-                                                                    <SelectItem value="friendly">ودّي</SelectItem>
-                                                                    <SelectItem value="formal">رسمي</SelectItem>
-                                                                    <SelectItem value="scientific">علمي</SelectItem>
-                                                                    <SelectItem value="neutral">محايد</SelectItem>
+                                                            <SelectContent dir={dir} className="text-right">
+                                                                    <SelectItem value="playful">{t("dash.teacher.topics.editor.tone.playful")}</SelectItem>
+                                                                    <SelectItem value="friendly">{t("dash.teacher.topics.editor.tone.friendly")}</SelectItem>
+                                                                    <SelectItem value="formal">{t("dash.teacher.topics.editor.tone.formal")}</SelectItem>
+                                                                    <SelectItem value="scientific">{t("dash.teacher.topics.editor.tone.serious")}</SelectItem>
+                                                                    <SelectItem value="neutral">{t("dash.teacher.topics.editor.tone.neutral")}</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <Label className="text-xs text-muted-foreground">الألوان / الجو</Label>
+                                                            <Label className="text-xs text-muted-foreground">{t("dash.teacher.topics.editor.colorMood")}</Label>
                                                             <Select
                                                                 value={aiImageColorMood}
                                                                 onValueChange={(v) =>
@@ -1358,26 +1655,26 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 disabled={isGeneratingAiImage || isRenderingAiImage}
                                                             >
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
-                                                                    <SelectValue placeholder="اختر" />
+                                                                    <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir="rtl" className="text-right">
-                                                                    <SelectItem value="bright">زاهية</SelectItem>
-                                                                    <SelectItem value="pastel">باستيل</SelectItem>
-                                                                    <SelectItem value="dark">داكن (نص فاتح)</SelectItem>
-                                                                    <SelectItem value="high_contrast">تباين عالٍ</SelectItem>
-                                                                    <SelectItem value="natural">طبيعي / أرضي</SelectItem>
+                                                            <SelectContent dir={dir} className="text-right">
+                                                                    <SelectItem value="bright">{t("dash.teacher.topics.editor.color.bright")}</SelectItem>
+                                                                    <SelectItem value="pastel">{t("dash.teacher.topics.editor.color.pastel")}</SelectItem>
+                                                                    <SelectItem value="dark">{t("dash.teacher.topics.editor.color.dark")}</SelectItem>
+                                                                    <SelectItem value="high_contrast">{t("dash.teacher.topics.editor.color.highContrast")}</SelectItem>
+                                                                    <SelectItem value="natural">{t("dash.teacher.topics.editor.color.natural")}</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
                                                     </div>
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs text-muted-foreground">
-                                                            ملاحظات إضافية (اختياري) — مثال: لغة معيّنة، تجنّب عناصر، شعار
+                                                            {t("dash.teacher.topics.editor.extraNotes")}
                                                         </Label>
                                                         <Textarea
                                                             value={aiImageExtraNotes}
                                                             onChange={(e) => setAiImageExtraNotes(e.target.value)}
-                                                            placeholder="مثال: استخدم مصطلحات بالعربية للعناوين الرئيسية فقط…"
+                                                            placeholder={t("dash.teacher.topics.editor.extraNotes")}
                                                             rows={2}
                                                             className="text-sm text-right resize-y min-h-[60px]"
                                                             disabled={isGeneratingAiImage || isRenderingAiImage}
@@ -1386,7 +1683,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 </div>
                                                 <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
                                                     <p className="text-xs text-muted-foreground">
-                                                        الخطوة 1: تحليل الوسائط وعرض وصف مختصر يغطي الأفكار الرئيسية. الخطوة 2: بعد التأكيد يُرسل إلى نموذج الصور.
+                                                        {t("dash.teacher.topics.editor.aiImageSteps")}
                                                     </p>
                                                     <Button
                                                         type="button"
@@ -1400,7 +1697,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                         ) : (
                                                             <Sparkles className="w-4 h-4" />
                                                         )}
-                                                        تحليل الموارد وعرض وصف الصورة
+                                                        {t("dash.teacher.topics.editor.analyzeResources")}
                                                     </Button>
                                                     {aiImageProgress && (
                                                         <p className="text-xs text-primary flex items-center gap-2">
@@ -1423,9 +1720,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 />
                                                 {isUploadingMedia && (
                                                     <div className="text-sm text-muted-foreground flex items-center gap-2">
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                        جاري رفع الملف الصوتي...
-                                                    </div>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />{t("dash.teacher.topics.editor.uploadingAudio")}</div>
                                                 )}
                                                 {!isUploadingMedia && newMedia.fileName && (
                                                     <div className="text-sm text-green-600 flex items-center gap-2">
@@ -1441,26 +1736,39 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             <Input
                                                 value={newMedia.url || ""}
                                                 onChange={(e) => setNewMedia({ ...newMedia, url: e.target.value })}
-                                                placeholder="https://example.com أو example.com"
+                                                placeholder={t("dash.teacher.topics.editor.linkUrlPlaceholder")}
                                                 dir="ltr"
                                                 className="text-left font-mono text-sm"
                                             />
+                                        ) : newMedia.type === "live" ? (
+                                            <TopicLiveSessionFormFields
+                                                draft={newLiveDraft}
+                                                onDraftChange={setNewLiveDraft}
+                                                lessonTitle={title}
+                                            />
                                         ) : null}
 
-                                        <Input
-                                            value={newMedia.caption || ""}
-                                            onChange={(e) => setNewMedia({ ...newMedia, caption: e.target.value })}
-                                            placeholder="وصف الوسيط (اختياري)"
-                                        />
+                                        {newMedia.type !== "live" && (
+                                            <Input
+                                                value={newMedia.caption || ""}
+                                                onChange={(e) => setNewMedia({ ...newMedia, caption: e.target.value })}
+                                                placeholder={t("dash.teacher.topics.editor.captionOptional")}
+                                            />
+                                        )}
 
                                         <div className="flex justify-end gap-2">
                                             <Button variant="outline" onClick={() => {
                                                 setShowAddMedia(false);
                                                 setEditingMediaIndex(null);
+                                                setEditingLivePendingIndex(null);
+                                                setEditingExistingLiveId(null);
                                                 setNewMedia({ type: "video", url: "", caption: "" });
-                                            }}>إلغاء</Button>
-                                            <Button onClick={saveMedia}>
-                                                {editingMediaIndex !== null ? "تحديث" : "إضافة"}
+                                                setNewLiveDraft(createDefaultLiveSessionDraft());
+                                            }}>{t("dash.common.cancel")}</Button>
+                                            <Button onClick={() => void saveMedia()}>
+                                                {editingMediaIndex !== null || editingLivePendingIndex !== null || editingExistingLiveId
+                                                    ? t("dash.teacher.topics.editor.updateBtn")
+                                                    : t("dash.teacher.topics.editor.addBtn")}
                                             </Button>
                                         </div>
                                     </CardContent>
@@ -1471,6 +1779,40 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
                     {/* Media List */}
                     <div className="space-y-3">
+                        {pendingLiveSessions.map((live, index) => (
+                            <Card key={`live-pending-${index}`} className="overflow-hidden border-primary/20">
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                                            <Radio className="w-5 h-5 text-red-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm">
+                                                {getMediaTypeLabel("live", t)}
+                                                <Badge variant="secondary" className="ms-2 text-[10px]">
+                                                    {t("dash.teacher.topics.editor.livePendingBadge")}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1 truncate" dir="ltr">
+                                                {live.meetingUrl}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                {live.title || (title ? t("dash.teacher.live.sessionTitle", { title }) : t("dash.teacher.live.titleOptional"))}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => editLivePending(index)}>
+                                                <Edit className="w-4 h-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteLivePending(index)}>
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+
                         {mediaList.map((media, index) => (
                             <Card key={index} className="overflow-hidden">
                                 <CardContent className="p-4">
@@ -1495,13 +1837,13 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
 
                                         <div className="flex-1">
                                             <div className="font-medium text-sm">
-                                                {media.type === "video" ? "فيديو" : media.type === "image" ? "صورة" : media.type === "pdf" ? "PDF" : media.type === "audio" ? "صوت" : media.type === "link" ? "رابط" : "نص"}
+                                                {getMediaTypeLabel(media.type, t)}
                                             </div>
                                             {media.type === "image" && media.url && (
                                                 <div className="mt-2">
                                                     <img
                                                         src={media.url}
-                                                        alt={media.caption || "صورة مرفقة"}
+                                                        alt={media.caption || t("dash.teacher.topics.editor.attachedImage")}
                                                         className="h-24 w-36 rounded-md border object-cover"
                                                         loading="lazy"
                                                     />
@@ -1511,7 +1853,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 <div className="relative mt-2 h-24 w-36 overflow-hidden rounded-md border">
                                                     <img
                                                         src={getYouTubeThumbnail(media.url) || ""}
-                                                        alt={media.caption || "معاينة فيديو"}
+                                                        alt={media.caption || t("dash.teacher.topics.editor.videoPreview")}
                                                         className="h-full w-full object-cover"
                                                     />
                                                     <div className="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -1523,13 +1865,13 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                 {media.type === "text"
                                                     ? (media.content?.substring(0, 100) || "") + "..."
                                                     : media.type === "pdf"
-                                                        ? media.fileName || "ملف PDF"
+                                                        ? media.fileName || t("dash.teacher.topics.editor.pdfFile")
                                                         : media.type === "audio"
-                                                            ? media.fileName || "ملف صوتي"
+                                                            ? media.fileName || t("dash.teacher.topics.editor.audioFile")
                                                             : media.type === "link"
                                                                 ? media.url
                                                                 : media.type === "video" && isYouTubeUrl(media.url)
-                                                                    ? "فيديو يوتيوب"
+                                                                    ? t("dash.teacher.topics.editor.youtubeVideo")
                                                                     : media.url}
                                             </div>
                                             {media.caption && <div className="text-xs text-primary mt-1">{media.caption}</div>}
@@ -1538,7 +1880,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                         <div className="flex gap-1">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                                                 setEditingMediaIndex(index);
-                                                setNewMedia(mediaList[index]);
+                                                setEditingLivePendingIndex(null);
+                                                setNewMedia(mediaList[index] as EditorNewMedia);
                                                 setShowAddMedia(true);
                                             }}>
                                                 <Edit className="w-4 h-4" />
@@ -1552,10 +1895,18 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                             </Card>
                         ))}
 
-                        {mediaList.length === 0 && (
+                        {content?.id && (
+                            <TopicLiveSessionsManager
+                                topicId={String(content.id)}
+                                teacherProfileId={teacherProfileId}
+                                lessonTitle={title}
+                            />
+                        )}
+
+                        {mediaList.length === 0 && pendingLiveSessions.length === 0 && (
                             <div className="text-center py-12 text-muted-foreground">
                                 <Video className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                                <p>لم تتم إضافة أي وسائط بعد</p>
+                                <p>{t("dash.teacher.topics.editor.noMediaYet")}</p>
                             </div>
                         )}
                     </div>
@@ -1573,20 +1924,19 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 onSave={handleSaveChallengeItems}
                                 onCancel={() => setShowQuestionEditor(false)}
                                 media={mediaList}
+                                wheelSpinSoundUrl={resolveWheelSpinSoundUrl(wheelSpinSoundUrl)}
                             />
                         ) : (
                             <>
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <h3 className="font-bold text-lg">الأسئلة والألعاب التفاعلية</h3>
+                                        <h3 className="font-bold text-lg">{t("dash.teacher.topics.editor.questionsTitle")}</h3>
                                         <p className="text-sm text-muted-foreground">
-                                            أضف أسئلة مختلفة وألعاب تفاعلية للتحديات
+                                            {t("dash.teacher.topics.editor.questionsDesc")}
                                         </p>
                                     </div>
                                     <Button onClick={() => setShowQuestionEditor(true)} className="gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        إدارة الأسئلة والألعاب
-                                    </Button>
+                                        <Plus className="w-4 h-4" />{t("dash.teacher.topics.editor.manageQuestions")}</Button>
                                 </div>
 
                                 {/* Summary Cards */}
@@ -1597,7 +1947,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                             <Card>
                                                 <CardContent className="p-4 text-center">
                                                     <div className="text-3xl font-bold text-primary">{challengeItems.length}</div>
-                                                    <div className="text-sm text-muted-foreground">إجمالي العناصر</div>
+                                                    <div className="text-sm text-muted-foreground">{t("dash.teacher.topics.editor.totalItems")}</div>
                                                 </CardContent>
                                             </Card>
                                             <Card>
@@ -1605,7 +1955,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     <div className="text-3xl font-bold text-blue-500">
                                                         {challengeItems.filter(i => ["multiple_choice", "true_false", "qa", "know_dont_know", "order_questions"].includes(i.type)).length}
                                                     </div>
-                                                    <div className="text-sm text-muted-foreground">أسئلة</div>
+                                                    <div className="text-sm text-muted-foreground">{t("dash.teacher.topics.editor.questionsCount")}</div>
                                                 </CardContent>
                                             </Card>
                                             <Card>
@@ -1613,7 +1963,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     <div className="text-3xl font-bold text-purple-500">
                                                         {challengeItems.filter(i => ["matching", "shooting", "wheel_spin", "puzzle"].includes(i.type)).length}
                                                     </div>
-                                                    <div className="text-sm text-muted-foreground">ألعاب</div>
+                                                    <div className="text-sm text-muted-foreground">{t("dash.teacher.topics.editor.gamesCount")}</div>
                                                 </CardContent>
                                             </Card>
                                             <Card>
@@ -1621,7 +1971,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                     <div className="text-3xl font-bold text-green-500">
                                                         {challengeItems.reduce((sum, i) => sum + (i.points || 0), 0)}
                                                     </div>
-                                                    <div className="text-sm text-muted-foreground">إجمالي النقاط</div>
+                                                    <div className="text-sm text-muted-foreground">{t("dash.teacher.topics.editor.totalPoints")}</div>
                                                 </CardContent>
                                             </Card>
                                         </div>
@@ -1630,10 +1980,8 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                         <Card>
                                             <CardHeader>
                                                 <CardTitle className="text-base flex items-center justify-between">
-                                                    <span>معاينة العناصر</span>
-                                                    <Button variant="ghost" size="sm" onClick={() => setShowQuestionEditor(true)}>
-                                                        تعديل الكل
-                                                    </Button>
+                                                    <span>{t("dash.teacher.topics.editor.previewItems")}</span>
+                                                    <Button variant="ghost" size="sm" onClick={() => setShowQuestionEditor(true)}>{t("dash.teacher.topics.editor.editAll")}</Button>
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
@@ -1650,10 +1998,10 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                                                 {getTypeLabel(item.type)}
                                                             </span>
                                                             <span className="flex-1 text-sm truncate">
-                                                                {item.question || "(بدون عنوان)"}
+                                                                {item.question || t("dash.teacher.topics.qe.noTitle")}
                                                             </span>
                                                             <span className="text-xs text-muted-foreground">
-                                                                {item.points} نقطة
+                                                                {t("dash.teacher.topics.qe.pointsShort", { n: item.points ?? 0 })}
                                                             </span>
                                                         </div>
                                                     ))}
@@ -1664,21 +2012,19 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                                 ) : (
                                     <Card className="p-12 text-center">
                                         <Gamepad2 className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                                        <h3 className="text-xl font-bold mb-2">لا توجد أسئلة أو ألعاب</h3>
+                                        <h3 className="text-xl font-bold mb-2">{t("dash.teacher.topics.editor.noQuestions")}</h3>
                                         <p className="text-muted-foreground mb-4">
-                                            أضف أسئلة متنوعة وألعاب تفاعلية لجعل التحدي ممتعاً
+                                            {t("dash.teacher.topics.editor.noQuestionsDesc")}
                                         </p>
                                         <div className="flex flex-wrap justify-center gap-2 mb-6 text-xs">
-                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">اختيار متعدد</span>
-                                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded">صح وخطأ</span>
-                                            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded">لعبة المطابقة</span>
-                                            <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">دوران العجلة</span>
-                                            <span className="px-2 py-1 bg-pink-100 text-pink-800 rounded">لعبة التصويب</span>
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">{t("dash.teacher.topics.editor.type.multipleChoice")}</span>
+                                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded">{t("dash.teacher.topics.editor.type.trueFalse")}</span>
+                                            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded">{t("dash.teacher.topics.qe.matching")}</span>
+                                            <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">{t("dash.teacher.topics.qe.wheelSpin")}</span>
+                                            <span className="px-2 py-1 bg-pink-100 text-pink-800 rounded">{t("dash.teacher.topics.qe.shooting")}</span>
                                         </div>
                                         <Button onClick={() => setShowQuestionEditor(true)} className="gap-2">
-                                            <Plus className="w-4 h-4" />
-                                            إضافة أسئلة وألعاب
-                                        </Button>
+                                            <Plus className="w-4 h-4" />{t("dash.teacher.topics.editor.addQuestionsGames")}</Button>
                                     </Card>
                                 )}
                             </>
@@ -1695,16 +2041,15 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                     if (!open) setEditableImagePrompt("");
                 }}
             >
-                <DialogContent className="max-h-[90vh] max-w-2xl gap-4 overflow-y-auto sm:max-w-2xl" dir="rtl">
+                <DialogContent className="max-h-[90vh] max-w-2xl gap-4 overflow-y-auto sm:max-w-2xl" dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>تأكيد وصف توليد الصورة</DialogTitle>
+                        <DialogTitle>{t("dash.teacher.topics.editor.confirmImagePromptTitle")}</DialogTitle>
                         <DialogDescription className="text-right space-y-1">
                             <span className="block">
-                                النص أدناه هو <strong>نفسه</strong> الذي يُرسل إلى نموذج توليد الصورة عند الضغط على «توليد الصورة»
-                                (يمكنك تعديله قبل الإرسال).
+                                {t("dash.teacher.topics.editor.confirmImagePromptDesc1")}
                             </span>
                             <span className="block text-muted-foreground">
-                                لفرض لغة الوصف: من «خيارات الصورة» قبل «تحليل الموارد» اختر تلقائي أو عربي أو English.
+                                {t("dash.teacher.topics.editor.confirmImagePromptDesc2")}
                             </span>
                         </DialogDescription>
                     </DialogHeader>
@@ -1714,7 +2059,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         className="min-h-[min(40vh,320px)] text-sm leading-relaxed"
                         dir="auto"
                         disabled={isRenderingAiImage}
-                        placeholder="يُولَّد بالعربية أو الإنجليزية حسب لغة الموارد — يمكنك التعديل هنا..."
+                        placeholder={t("dash.teacher.topics.editor.promptPlaceholder")}
                     />
                     <DialogFooter className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <Button
@@ -1728,7 +2073,7 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                             }}
                             disabled={isRenderingAiImage}
                         >
-                            إلغاء
+                            {t("dash.common.cancel")}
                         </Button>
                         <Button
                             type="button"
@@ -1737,11 +2082,9 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
                         >
                             {isRenderingAiImage ? (
                                 <>
-                                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                                    جاري توليد الصورة...
-                                </>
+                                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />{t("dash.teacher.topics.editor.generatingImage")}</>
                             ) : (
-                                "توليد الصورة"
+                                t("dash.teacher.topics.editor.generateImage")
                             )}
                         </Button>
                     </DialogFooter>
@@ -1751,21 +2094,6 @@ const ContentEditor = ({ content, onSave, onCancel }: ContentEditorProps) => {
     );
 };
 
-// Helper function to get type label
-const getTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-        "multiple_choice": "اختيار متعدد",
-        "true_false": "صح وخطأ",
-        "qa": "سؤال وجواب",
-        "know_dont_know": "أعرف/لا أعرف",
-        "order_questions": "ترتيب",
-        "matching": "مطابقة",
-        "shooting": "تصويب",
-        "wheel_spin": "عجلة",
-        "puzzle": "ألغاز"
-    };
-    return labels[type] || type;
-};
 
 export default ContentEditor;
 

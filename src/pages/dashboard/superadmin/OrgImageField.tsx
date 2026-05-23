@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useUser } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
@@ -22,14 +23,16 @@ type OrgImageFieldProps = {
 export function OrgImageField({
     value,
     onChange,
-    label = "صورة المؤسسة / المدرسة",
+    label,
     className,
     previewRounded = "lg",
 }: OrgImageFieldProps) {
     const { toast } = useToast();
+    const { t } = useDashboardLocale();
     const { data: user } = useUser();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const fieldLabel = label ?? t("dash.super.orgImage.label");
 
     async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
@@ -37,18 +40,18 @@ export function OrgImageField({
         if (!file) return;
 
         if (!user?.id) {
-            toast({ variant: "destructive", description: "يجب تسجيل الدخول لرفع الصور." });
+            toast({ variant: "destructive", description: t("dash.super.orgImage.loginRequired") });
             return;
         }
         if (!file.type.startsWith("image/")) {
             toast({
                 variant: "destructive",
-                description: "يرجى اختيار ملف صورة (PNG، JPEG، WebP، GIF).",
+                description: t("dash.super.orgImage.invalidType"),
             });
             return;
         }
         if (file.size > MAX_BYTES) {
-            toast({ variant: "destructive", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت." });
+            toast({ variant: "destructive", description: t("dash.super.orgImage.tooLarge") });
             return;
         }
 
@@ -61,9 +64,9 @@ export function OrgImageField({
             if (error) throw error;
             const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
             onChange(data.publicUrl);
-            toast({ description: "تم رفع الصورة بنجاح." });
+            toast({ description: t("dash.super.orgImage.success") });
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "حدث خطأ أثناء الرفع.";
+            const msg = err instanceof Error ? err.message : t("dash.super.orgImage.uploadError");
             toast({ variant: "destructive", description: msg });
         } finally {
             setIsUploading(false);
@@ -75,9 +78,9 @@ export function OrgImageField({
 
     return (
         <div className={cn("space-y-2", className)}>
-            <Label>{label}</Label>
+            <Label>{fieldLabel}</Label>
             <p className="text-xs text-muted-foreground">
-                ارفع شعارًا أو صورة غلاف من جهازك، أو الصق رابطًا يبدأ بـ{" "}
+                {t("dash.super.orgImage.hint")}{" "}
                 <span dir="ltr" className="font-mono">
                     https://
                 </span>
@@ -103,7 +106,7 @@ export function OrgImageField({
                     ) : (
                         <Upload className="w-4 h-4" />
                     )}
-                    {isUploading ? "جاري الرفع…" : "رفع صورة"}
+                    {isUploading ? t("dash.super.orgImage.uploading") : t("dash.super.orgImage.upload")}
                 </Button>
                 <Input
                     dir="ltr"
@@ -118,7 +121,7 @@ export function OrgImageField({
                         variant="ghost"
                         size="icon"
                         className="shrink-0"
-                        title="إزالة الصورة"
+                        title={t("dash.super.orgImage.remove")}
                         onClick={() => onChange("")}
                     >
                         <X className="w-4 h-4" />

@@ -7,10 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    ChevronLeft, Users, User, Gamepad2, BrainCircuit,
+    ChevronLeft, ChevronRight, Users, User, Gamepad2, BrainCircuit,
     Shuffle, Copy, Share2, Sparkles, Zap, Target,
     Trophy, Check
 } from "lucide-react";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
     useTopic,
     useGrades,
@@ -59,6 +60,8 @@ const ChallengeModeSelect = () => {
     const { data: currentUser } = useUser();
     const createSessionMutation = useCreateChallengeSession();
     const studentChallengePreset = topic ? getTopicChallengePreset(topic as Record<string, unknown>) : null;
+    const { t, dir } = useTranslation();
+    const ChevronIcon = dir === "rtl" ? ChevronRight : ChevronLeft;
 
     useEffect(() => {
         if (
@@ -89,7 +92,7 @@ const ChallengeModeSelect = () => {
             console.error("Failed to apply teacher challenge preset", error);
             presetAppliedRef.current = false;
             setPresetRedirectFailed(true);
-            alert("تعذر بدء التحدي المحدد من المعلم. يمكنك الاختيار يدوياً أدناه.");
+            alert(t("challengeMode.presetFailed"));
         }).finally(() => {
             setIsApplyingPreset(false);
         });
@@ -104,11 +107,12 @@ const ChallengeModeSelect = () => {
         navigate,
         currentUser,
         createSessionMutation,
+        t,
     ]);
 
     if (isLoading) {
         return (
-            <div className="min-h-screen font-cairo">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4 text-center py-20">
@@ -128,13 +132,13 @@ const ChallengeModeSelect = () => {
         (isApplyingPreset || !presetAppliedRef.current)
     ) {
         return (
-            <div className="min-h-screen font-cairo">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4 text-center py-20">
                         <Skeleton className="h-12 w-64 mx-auto mb-4" />
                         <Skeleton className="h-32 w-full max-w-2xl mx-auto" />
-                        <p className="text-muted-foreground mt-6">جاري تجهيز التحدي...</p>
+                        <p className="text-muted-foreground mt-6">{t("challengeMode.preparingChallenge")}</p>
                     </div>
                 </main>
                 <Footer />
@@ -144,13 +148,13 @@ const ChallengeModeSelect = () => {
 
     if (!grade || !gradeInPublicCatalog || !subject || !topic) {
         return (
-            <div className="min-h-screen font-cairo">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4 text-center py-20">
-                        <h1 className="text-3xl font-bold mb-4">المحتوى غير موجود</h1>
+                        <h1 className="text-3xl font-bold mb-4">{t("challengeMode.contentNotFound")}</h1>
                         <Button asChild>
-                            <Link to="/grades">العودة للصفوف</Link>
+                            <Link to="/grades">{t("challengeMode.backToGrades")}</Link>
                         </Button>
                     </div>
                 </main>
@@ -187,10 +191,10 @@ const ChallengeModeSelect = () => {
 
                 // Immediately navigate to the GroupChallenge lobby instead of a local step,
                 // so the host can see players joining real-time.
-                navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/group/${category}/${pin}?host=true&creator=true&name=${encodeURIComponent(currentUser?.name || 'المعلم')}`);
+                navigate(`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge/group/${category}/${pin}?host=true&creator=true&name=${encodeURIComponent(currentUser?.name || t("challengeMode.hostNameFallback"))}`);
             } catch (error: any) {
                 console.error("Failed to pre-create session", error);
-                alert("تفاصيل الخطأ: " + (error.message || JSON.stringify(error)));
+                alert(`${t("challengeMode.errorPrefix")} ${error.message || JSON.stringify(error)}`);
             } finally {
                 setIsCreating(false);
             }
@@ -218,7 +222,7 @@ const ChallengeModeSelect = () => {
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-b from-background via-background to-primary/5">
+        <div className="min-h-screen font-cairo bg-gradient-to-b from-background via-background to-primary/5" dir={dir}>
             <Header />
             <main className="pt-24 pb-16">
                 <div className="container mx-auto px-4">
@@ -232,8 +236,8 @@ const ChallengeModeSelect = () => {
                             to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`}
                             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                         >
-                            <ChevronLeft className="w-4 h-4" />
-                            <span>العودة للموضوع</span>
+                            <ChevronIcon className="w-4 h-4" />
+                            <span>{t("challengeMode.backToTopic")}</span>
                         </Link>
                     </motion.div>
 
@@ -245,7 +249,7 @@ const ChallengeModeSelect = () => {
                     >
                         <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary mb-4">
                             <Trophy className="w-5 h-5" />
-                            <span className="font-medium">انضم للتحدي</span>
+                            <span className="font-medium">{t("challengeMode.joinChallenge")}</span>
                         </div>
                         <h1 className="text-3xl md:text-4xl font-black mb-3">{topic.title}</h1>
                         <p className="text-muted-foreground max-w-xl mx-auto">{topic.description}</p>
@@ -261,7 +265,7 @@ const ChallengeModeSelect = () => {
                                 exit={{ opacity: 0, y: -20 }}
                                 className="max-w-3xl mx-auto"
                             >
-                                <h2 className="text-2xl font-bold text-center mb-8">اختر نوع التحدي</h2>
+                                <h2 className="text-2xl font-bold text-center mb-8">{t("challengeMode.chooseType")}</h2>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {/* Single Player */}
@@ -276,16 +280,16 @@ const ChallengeModeSelect = () => {
                                             <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 transition-transform">
                                                 <User className="w-10 h-10 text-white" />
                                             </div>
-                                            <h3 className="text-2xl font-bold mb-3">تحدي فردي</h3>
+                                            <h3 className="text-2xl font-bold mb-3">{t("challengeMode.singleTitle")}</h3>
                                             <p className="text-muted-foreground mb-4">
-                                                اختبر معلوماتك بنفسك واحصل على تحليل مفصّل لأدائك
+                                                {t("challengeMode.singleDesc")}
                                             </p>
                                             <div className="flex flex-wrap justify-center gap-2">
                                                 <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 text-sm">
-                                                    📊 تحليل شامل
+                                                    {t("challengeMode.singleTag1")}
                                                 </span>
                                                 <span className="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-600 text-sm">
-                                                    🏆 شارات
+                                                    {t("challengeMode.singleTag2")}
                                                 </span>
                                             </div>
                                         </Card>
@@ -303,16 +307,16 @@ const ChallengeModeSelect = () => {
                                             <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 transition-transform">
                                                 <Users className="w-10 h-10 text-white" />
                                             </div>
-                                            <h3 className="text-2xl font-bold mb-3">تحدي جماعي</h3>
+                                            <h3 className="text-2xl font-bold mb-3">{t("challengeMode.groupTitle")}</h3>
                                             <p className="text-muted-foreground mb-4">
-                                                أنشئ تحدياً وادعُ أصدقاءك للمنافسة عبر PIN أو رابط
+                                                {t("challengeMode.groupDesc")}
                                             </p>
                                             <div className="flex flex-wrap justify-center gap-2">
                                                 <span className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-600 text-sm">
-                                                    👥 حتى 50 لاعب
+                                                    {t("challengeMode.groupTag1")}
                                                 </span>
                                                 <span className="px-3 py-1 rounded-full bg-pink-500/10 text-pink-600 text-sm">
-                                                    🎯 لوحة متصدرين
+                                                    {t("challengeMode.groupTag2")}
                                                 </span>
                                             </div>
                                         </Card>
@@ -332,10 +336,10 @@ const ChallengeModeSelect = () => {
                             >
                                 <div className="flex items-center justify-between mb-8">
                                     <Button variant="ghost" onClick={() => setStep("mode")} className="gap-2">
-                                        <ChevronLeft className="w-4 h-4" />
-                                        رجوع
+                                        <ChevronIcon className="w-4 h-4" />
+                                        {t("common.back")}
                                     </Button>
-                                    <h2 className="text-2xl font-bold">اختر نوع الأنشطة</h2>
+                                    <h2 className="text-2xl font-bold">{t("challengeMode.chooseActivities")}</h2>
                                     <div className="w-20" />
                                 </div>
 
@@ -359,9 +363,9 @@ const ChallengeModeSelect = () => {
                                                     {categoryLabels.activities.description}
                                                 </p>
                                                 <div className="space-y-1 text-xs text-muted-foreground">
-                                                    <div>✦ اختيار متعدد</div>
-                                                    <div>✦ صح وخطأ</div>
-                                                    <div>✦ رتّب الإجابات</div>
+                                                    <div>{t("challengeMode.activitiesItem1")}</div>
+                                                    <div>{t("challengeMode.activitiesItem2")}</div>
+                                                    <div>{t("challengeMode.activitiesItem3")}</div>
                                                 </div>
                                             </div>
                                         </Card>
@@ -386,9 +390,9 @@ const ChallengeModeSelect = () => {
                                                     {categoryLabels.games.description}
                                                 </p>
                                                 <div className="space-y-1 text-xs text-muted-foreground">
-                                                    <div>✦ لعبة المطابقة</div>
-                                                    <div>✦ دوران العجلة</div>
-                                                    <div>✦ لعبة التصويب</div>
+                                                    <div>{t("challengeMode.gamesItem1")}</div>
+                                                    <div>{t("challengeMode.gamesItem2")}</div>
+                                                    <div>{t("challengeMode.gamesItem3")}</div>
                                                 </div>
                                             </div>
                                         </Card>
@@ -413,9 +417,9 @@ const ChallengeModeSelect = () => {
                                                     {categoryLabels.mixed.description}
                                                 </p>
                                                 <div className="space-y-1 text-xs text-muted-foreground">
-                                                    <div>✦ ألعاب + أسئلة</div>
-                                                    <div>✦ تجربة متنوعة</div>
-                                                    <div>✦ مفاجآت ممتعة</div>
+                                                    <div>{t("challengeMode.mixedItem1")}</div>
+                                                    <div>{t("challengeMode.mixedItem2")}</div>
+                                                    <div>{t("challengeMode.mixedItem3")}</div>
                                                 </div>
                                             </div>
                                         </Card>

@@ -11,6 +11,13 @@ import {
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
+import { exclusiveQuestionAttachmentFields } from "@/lib/questionAttachments";
+import {
+    buildTeacherClassAccessFromRows,
+    filterTopicsOwnedByTeacher,
+    type TeacherClassAccess,
+    type TeacherGradeAccessEntry,
+} from "@/lib/teacherClassAccess";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -21,6 +28,8 @@ export const mapChallengeQuestion = (q: any) => ({
         ? (isNaN(Number(q.correct_answer)) ? q.correct_answer : Number(q.correct_answer))
         : q.correctAnswer,
     imageUrl: q.image_url || q.imageUrl,
+    videoUrl: q.video_url || q.videoUrl,
+    audioUrl: q.audio_url || q.audioUrl,
     orderItems: q.order_items || q.orderItems || [],
     timeLimit: q.time_limit || q.timeLimit || 15,
     points: q.points || 100,
@@ -173,11 +182,16 @@ export const useSubject = (id: string, teacherId?: string, options?: OrgScopeOpt
 
             if (error) throw error;
 
+            let topics = data?.topics || [];
+            if (teacherId) {
+                topics = filterTopicsOwnedByTeacher(topics, teacherId);
+            }
+
             // Map challenge questions for each topic; decode وسائط الدرس
             return {
                 ...data,
                 topics: sortTopicsByOrder(
-                    (data?.topics || []).map((topic: any) => ({
+                    topics.map((topic: any) => ({
                         ...topic,
                         mediaItems: mapTopicMediaItems(getMediaItemsFromTopicRow(topic)),
                         challengeItems: (topic.challengeItems || []).map(mapChallengeQuestion),
@@ -670,6 +684,7 @@ export const useCreateTopicLiveSession = () => {
         },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic_live_sessions", variables.topicId] });
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions_editor", variables.topicId] });
             queryClient.invalidateQueries({ queryKey: ["teacher_live_sessions", variables.teacherId] });
         },
     });
@@ -695,8 +710,47 @@ export const useUpdateTopicLiveSession = () => {
         },
         onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic_live_sessions", variables.topicId || data.topic_id] });
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions_editor", variables.topicId || data.topic_id] });
             queryClient.invalidateQueries({ queryKey: ["teacher_live_sessions", variables.teacherId || data.teacher_id] });
         },
+    });
+};
+
+export const useDeleteTopicLiveSession = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: { id: string; topicId: string; teacherId?: string }) => {
+            const { error } = await supabase
+                .from("topic_live_sessions")
+                .delete()
+                .eq("id", payload.id);
+            if (error) throw error;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions", variables.topicId] });
+            queryClient.invalidateQueries({ queryKey: ["topic_live_sessions_editor", variables.topicId] });
+            if (variables.teacherId) {
+                queryClient.invalidateQueries({ queryKey: ["teacher_live_sessions", variables.teacherId] });
+            }
+        },
+    });
+};
+
+/** All live sessions for a topic (teacher editor — includes ended). */
+export const useTopicLiveSessionsForEditor = (topicId: string) => {
+    return useQuery({
+        queryKey: ["topic_live_sessions_editor", topicId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("topic_live_sessions")
+                .select("*")
+                .eq("topic_id", topicId)
+                .order("starts_at", { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        enabled: !!topicId,
+        refetchInterval: 30_000,
     });
 };
 
@@ -903,6 +957,148 @@ export const useTeacherProfile = (userId: string) => {
             return data;
         },
         enabled: !!userId,
+    });
+};
+
+export const useTeacherClassAccess = (teacherProfileId: string) => {
+    return useQuery({
+        queryKey: ["teacher_class_access", teacherProfileId],
+        queryFn: async (): Promise<TeacherClassAccess> => {
+            if (!teacherProfileId) return { grades: [] };
+
+            const [gradeRes, subjectRes] = await Promise.all([
+                supabase
+                    .from("teacher_grade_access")
+                    .select("grade_id")
+                    .eq("teacher_profile_id", teacherProfileId),
+                supabase
+                    .from("teacher_subject_access")
+                    .select("grade_id, subject_id")
+                    .eq("teacher_profile_id", teacherProfileId),
+            ]);
+
+            if (gradeRes.error) throw gradeRes.error;
+            if (subjectRes.error) throw subjectRes.error;
+
+            return buildTeacherClassAccessFromRows(
+                gradeRes.data ?? [],
+                subjectRes.data ?? [],
+            );
+        },
+        enabled: !!teacherProfileId,
+    });
+};
+
+export async function saveTeacherClassAccess(
+    teacherProfileId: string,
+    entries: TeacherGradeAccessEntry[],
+) {
+    const { error: delSubjectErr } = await supabase
+        .from("teacher_subject_access")
+        .delete()
+        .eq("teacher_profile_id", teacherProfileId);
+    if (delSubjectErr) throw delSubjectErr;
+
+    const { error: delGradeErr } = await supabase
+        .from("teacher_grade_access")
+        .delete()
+        .eq("teacher_profile_id", teacherProfileId);
+    if (delGradeErr) throw delGradeErr;
+
+    if (!entries.length) return;
+
+    const { error: gradeInsertErr } = await supabase.from("teacher_grade_access").insert(
+        entries.map((e) => ({
+            teacher_profile_id: teacherProfileId,
+            grade_id: e.gradeId,
+        })),
+    );
+    if (gradeInsertErr) throw gradeInsertErr;
+
+    const subjectRows = entries.flatMap((e) =>
+        e.allSubjects
+            ? []
+            : e.subjectIds.map((subjectId) => ({
+                  teacher_profile_id: teacherProfileId,
+                  grade_id: e.gradeId,
+                  subject_id: subjectId,
+              })),
+    );
+
+    if (subjectRows.length) {
+        const { error: subjectInsertErr } = await supabase
+            .from("teacher_subject_access")
+            .insert(subjectRows);
+        if (subjectInsertErr) throw subjectInsertErr;
+    }
+}
+
+/** Grant one grade with all subjects (e.g. after registration approval). */
+export async function seedTeacherClassAccessForGrade(
+    teacherProfileId: string,
+    gradeId: string,
+) {
+    if (!teacherProfileId || !gradeId) return;
+
+    const { data: existing } = await supabase
+        .from("teacher_grade_access")
+        .select("id")
+        .eq("teacher_profile_id", teacherProfileId)
+        .eq("grade_id", gradeId)
+        .maybeSingle();
+
+    if (existing) return;
+
+    const { error } = await supabase.from("teacher_grade_access").insert({
+        teacher_profile_id: teacherProfileId,
+        grade_id: gradeId,
+    });
+    if (error) throw error;
+}
+
+export const useSaveTeacherClassAccess = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            teacherProfileId: string;
+            teacherUserId?: string;
+            entries: TeacherGradeAccessEntry[];
+        }) => {
+            await saveTeacherClassAccess(payload.teacherProfileId, payload.entries);
+
+            const primaryGradeId = payload.entries[0]?.gradeId ?? null;
+            const primarySubjectId =
+                payload.entries[0] && !payload.entries[0].allSubjects
+                    ? payload.entries[0].subjectIds[0] ?? null
+                    : null;
+
+            const { data: profile } = await supabase
+                .from("teacher_profiles")
+                .select("user_id")
+                .eq("id", payload.teacherProfileId)
+                .single();
+
+            if (profile?.user_id) {
+                await supabase
+                    .from("teacher_profiles")
+                    .update({
+                        grade_id: primaryGradeId,
+                        subject_id: primarySubjectId,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", payload.teacherProfileId);
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({
+                queryKey: ["teacher_class_access", variables.teacherProfileId],
+            });
+            if (variables.teacherUserId) {
+                queryClient.invalidateQueries({
+                    queryKey: ["teacher_profile", variables.teacherUserId],
+                });
+            }
+        },
     });
 };
 
@@ -2316,15 +2512,66 @@ export const useTeacherAllTopics = (teacherProfileId: string) => {
                     *,
                     subject:subjects (*, grade:grades (*)),
                     _TeacherTopics!inner(A),
-                    mediaItems:topic_media(id)
+                    mediaItems:topic_media (id, topic_id, type, url, content, caption, file_name, sort_order, pdf_base64),
+                    quizQuestions:quiz_questions (*),
+                    challengeItems:challenge_questions (*)
                 `)
                 .eq("_TeacherTopics.A", teacherProfileId)
-                .order('created_at', { ascending: false });
+                .order("created_at", { ascending: false });
 
             if (error) throw error;
             return data;
         },
         enabled: !!teacherProfileId
+    });
+};
+
+export const useTeacherUploadedSounds = (teacherProfileId?: string) => {
+    return useQuery({
+        queryKey: ["teacher_uploaded_sounds", teacherProfileId],
+        queryFn: async () => {
+            if (!teacherProfileId) return [];
+            const { data, error } = await supabase
+                .from("teacher_uploaded_sounds")
+                .select("id, teacher_id, sound_category, url, label, storage_path, created_at")
+                .eq("teacher_id", teacherProfileId)
+                .order("created_at", { ascending: false });
+            if (error) throw error;
+            return data ?? [];
+        },
+        enabled: !!teacherProfileId,
+    });
+};
+
+export const useCreateTeacherUploadedSound = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            teacherId: string;
+            soundCategory: "correct" | "wrong" | "background";
+            url: string;
+            label?: string | null;
+            storagePath?: string | null;
+        }) => {
+            const { data, error } = await supabase
+                .from("teacher_uploaded_sounds")
+                .insert([
+                    {
+                        teacher_id: payload.teacherId,
+                        sound_category: payload.soundCategory,
+                        url: payload.url.trim(),
+                        label: payload.label?.trim() || null,
+                        storage_path: payload.storagePath?.trim() || null,
+                    },
+                ])
+                .select("id, teacher_id, sound_category, url, label, storage_path, created_at")
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["teacher_uploaded_sounds", data.teacher_id] });
+        },
     });
 };
 
@@ -2635,7 +2882,7 @@ export const useSaveChallengeQuestions = () => {
                 question: q.question || "",
                 options: q.options || [],
                 correct_answer: q.correctAnswer != null ? String(q.correctAnswer) : null,
-                image_url: q.imageUrl || null,
+                ...exclusiveQuestionAttachmentFields(q),
                 pairs: q.pairs || null,
                 order_items: q.orderItems || [],
                 explanation: q.explanation || null,
@@ -3667,7 +3914,34 @@ export const usePendingStudentRegistrationRequestsForTeacher = (teacherUserId?: 
         queryKey: ["registration_requests", "teacher", teacherId ?? "none"],
         queryFn: async () => {
             if (!teacherId) return [];
-            const { data, error } = await supabase
+
+            const { data: teacherUser, error: userErr } = await supabase
+                .from("users")
+                .select("organization_id")
+                .eq("id", teacherId)
+                .maybeSingle();
+            if (userErr) throw userErr;
+
+            const { data: profile, error: profileErr } = await supabase
+                .from("teacher_profiles")
+                .select("id, grade_id")
+                .eq("user_id", teacherId)
+                .maybeSingle();
+            if (profileErr) throw profileErr;
+            if (!profile?.id) return [];
+
+            const { data: gradeAccessRows, error: accessErr } = await supabase
+                .from("teacher_grade_access")
+                .select("grade_id")
+                .eq("teacher_profile_id", profile.id);
+            if (accessErr) throw accessErr;
+
+            const allowedGradeIds = new Set<string>();
+            if (profile.grade_id) allowedGradeIds.add(profile.grade_id);
+            (gradeAccessRows ?? []).forEach((row) => allowedGradeIds.add(row.grade_id));
+            if (!allowedGradeIds.size) return [];
+
+            let query = supabase
                 .from("registration_requests")
                 .select(`
                   *,
@@ -3677,8 +3951,14 @@ export const usePendingStudentRegistrationRequestsForTeacher = (teacherUserId?: 
                 .eq("status", "PENDING")
                 .eq("applicant_role", "STUDENT")
                 .eq("approver_role", "TEACHER")
-                .eq("teacher_user_id", teacherId)
+                .in("grade_id", Array.from(allowedGradeIds))
                 .order("created_at", { ascending: true });
+
+            if (teacherUser?.organization_id) {
+                query = query.eq("organization_id", teacherUser.organization_id);
+            }
+
+            const { data, error } = await query;
             if (error) throw error;
             return data ?? [];
         },
@@ -3762,10 +4042,20 @@ export const useReviewRegistrationRequest = () => {
                 if (upUserErr) throw upUserErr;
 
                 if (req.applicant_role === "TEACHER" && req.grade_id) {
+                    const { data: teacherProfile } = await supabase
+                        .from("teacher_profiles")
+                        .select("id")
+                        .eq("user_id", req.applicant_user_id)
+                        .maybeSingle();
+
                     await supabase
                         .from("teacher_profiles")
                         .update({ grade_id: req.grade_id, updated_at: now })
                         .eq("user_id", req.applicant_user_id);
+
+                    if (teacherProfile?.id) {
+                        await seedTeacherClassAccessForGrade(teacherProfile.id, req.grade_id);
+                    }
                 }
                 if (req.applicant_role === "STUDENT" && req.grade_id) {
                     await supabase
@@ -3804,6 +4094,7 @@ export const useReviewRegistrationRequest = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["registration_requests"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_class_access"] });
             queryClient.invalidateQueries({ queryKey: ["all_users"] });
             queryClient.invalidateQueries({ queryKey: ["admin_stats"] });
             queryClient.invalidateQueries({ queryKey: ["current_user"] });

@@ -28,9 +28,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCreateSubject, useUpdateSubject, useDeleteSubject } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgAdminTenant } from "@/hooks/useOrgAdminTenant";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 const SubjectsTab = () => {
     const { toast } = useToast();
+    const { t, dir, isRtl } = useDashboardLocale();
     const { scopedOrganizationId, allUsersOptions } = useOrgAdminTenant();
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedGradeId, setSelectedGradeId] = useState("all");
@@ -107,24 +110,24 @@ const SubjectsTab = () => {
                     id: editingSubject.id,
                     updates: formData
                 });
-                toast({ title: "تم التحديث", description: "تم تحديث بيانات المادة بنجاح." });
+                toast({ title: t("dash.admin.subjects.toast.updated"), description: t("dash.admin.subjects.toast.updatedDesc") });
             } else {
                 await createSubjectMutation.mutateAsync(formData);
-                toast({ title: "تم الإضافة", description: "تم إضافة المادة الجديدة بنجاح." });
+                toast({ title: t("dash.admin.subjects.toast.added"), description: t("dash.admin.subjects.toast.addedDesc") });
             }
             setIsDialogOpen(false);
         } catch (error) {
-            toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ أثناء حفظ البيانات." });
+            toast({ variant: "destructive", title: t("dash.common.error"), description: t("dash.admin.subjects.toast.saveErr") });
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (window.confirm("هل أنت متأكد من حذف هذه المادة؟ سيؤدي هذا لحذف جميع المواضيع والأنشطة المرتبطة بها.")) {
+        if (window.confirm(t("dash.admin.subjects.toast.deleteConfirm"))) {
             try {
                 await deleteSubjectMutation.mutateAsync(id);
-                toast({ title: "تم الحذف", description: "تم حذف المادة بنجاح." });
+                toast({ title: t("dash.admin.subjects.toast.deleted"), description: t("dash.admin.subjects.toast.deletedDesc") });
             } catch (error) {
-                toast({ variant: "destructive", title: "خطأ", description: "تعذر حذف المادة." });
+                toast({ variant: "destructive", title: t("dash.common.error"), description: t("dash.admin.subjects.toast.deleteErr") });
             }
         }
     };
@@ -140,9 +143,9 @@ const SubjectsTab = () => {
 
     const getLevelName = (level: string) => {
         switch (level) {
-            case "PRIMARY": return "ابتدائي";
-            case "MIDDLE": return "متوسط";
-            case "SECONDARY": return "ثانوي";
+            case "PRIMARY": return t("dash.admin.grades.levelPrimary");
+            case "MIDDLE": return t("dash.admin.grades.levelMiddle");
+            case "SECONDARY": return t("dash.admin.grades.levelSecondary");
             default: return level;
         }
     };
@@ -155,9 +158,9 @@ const SubjectsTab = () => {
                     <BookOpen className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold">المواد الدراسية</h2>
+                    <h2 className="text-2xl font-bold">{t("dash.admin.subjects.title")}</h2>
                     <p className="text-sm text-muted-foreground">
-                        {totalSubjects} مادة في {gradeGroups.length} صف دراسي
+                        {t("dash.admin.subjects.summary", { subjects: String(totalSubjects), grades: String(gradeGroups.length) })}
                     </p>
                 </div>
             </div>
@@ -166,10 +169,10 @@ const SubjectsTab = () => {
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                     <div className="relative w-full sm:w-72">
-                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground", isRtl ? "right-3" : "left-3")} />
                         <Input
-                            placeholder="بحث في المواد الدراسية..."
-                            className="pr-9"
+                            placeholder={t("dash.admin.subjects.searchPlaceholder")}
+                            className={isRtl ? "pr-9" : "pl-9"}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -177,10 +180,10 @@ const SubjectsTab = () => {
                     <Select value={selectedGradeId} onValueChange={setSelectedGradeId}>
                         <SelectTrigger className="w-full sm:w-52">
                             <Filter className="w-4 h-4 ml-2 text-muted-foreground" />
-                            <SelectValue placeholder="جميع الصفوف" />
+                            <SelectValue placeholder={t("dash.admin.subjects.allGrades")} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">جميع الصفوف</SelectItem>
+                            <SelectItem value="all">{t("dash.admin.subjects.allGrades")}</SelectItem>
                             {(gradesData || []).map((grade: any) => (
                                 <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>
                             ))}
@@ -192,7 +195,7 @@ const SubjectsTab = () => {
                     className="gap-2 bg-purple-600 hover:bg-purple-700"
                 >
                     <BookOpen className="w-4 h-4" />
-                    إضافة مادة جديدة
+                    {t("dash.admin.subjects.addNew")}
                 </Button>
             </div>
 
@@ -213,8 +216,8 @@ const SubjectsTab = () => {
             ) : gradeGroups.length === 0 ? (
                 <div className="text-center py-16">
                     <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                    <p className="text-muted-foreground text-lg">لا توجد مواد دراسية</p>
-                    <p className="text-sm text-muted-foreground mt-2">ابدأ بإضافة مواد جديدة للصفوف الدراسية</p>
+                    <p className="text-muted-foreground text-lg">{t("dash.admin.subjects.empty")}</p>
+                    <p className="text-sm text-muted-foreground mt-2">{t("dash.admin.subjects.emptyDesc")}</p>
                 </div>
             ) : (
                 <div className="space-y-8">
@@ -227,19 +230,19 @@ const SubjectsTab = () => {
                                         <School className="w-4 h-4 text-white" />
                                     </div>
                                     <h3 className="text-xl font-bold">
-                                        المواد الدراسية - {group.gradeName}
+                                        {t("dash.admin.subjects.groupTitle", { grade: group.gradeName })}
                                     </h3>
                                     <Badge variant="outline" className={getLevelBadgeColor(group.gradeLevel)}>
                                         {getLevelName(group.gradeLevel)}
                                     </Badge>
                                     <Badge variant="secondary" className="font-normal">
-                                        {group.subjects.length} مادة
+                                        {t("dash.admin.subjects.groupCount", { n: String(group.subjects.length) })}
                                     </Badge>
                                 </div>
                                 <Button variant="ghost" size="sm" asChild>
                                     <Link to={`/grade/${group.gradeSlug}`}>
-                                        عرض الصف
-                                        <ArrowUpRight className="w-4 h-4 mr-1" />
+                                        {t("dash.admin.subjects.viewGrade")}
+                                        <ArrowUpRight className={cn("w-4 h-4", isRtl ? "mr-1" : "ml-1")} />
                                     </Link>
                                 </Button>
                             </div>
@@ -268,15 +271,15 @@ const SubjectsTab = () => {
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
-                                                                <DropdownMenuItem onClick={() => handleOpenDialog(subject)}>تعديل المادة</DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => handleOpenDialog(subject)}>{t("dash.admin.subjects.edit")}</DropdownMenuItem>
                                                                 <DropdownMenuItem asChild>
-                                                                    <Link to={`/grade/${subject.gradeSlug}/subject/${subject.id}`}>إدارة المنهج</Link>
+                                                                    <Link to={`/grade/${subject.gradeSlug}/subject/${subject.id}`}>{t("dash.admin.subjects.manageCurriculum")}</Link>
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem
                                                                     onClick={() => handleDelete(subject.id)}
                                                                     className="text-destructive"
                                                                 >
-                                                                    حذف المادة
+                                                                    {t("dash.admin.subjects.delete")}
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
@@ -291,27 +294,27 @@ const SubjectsTab = () => {
                                                         <div className="text-center p-2 rounded-lg bg-muted/50">
                                                             <FolderOpen className="w-4 h-4 mx-auto mb-1 text-blue-500" />
                                                             <span className="text-xs font-bold">{subject.topics?.length || 0}</span>
-                                                            <span className="text-[10px] text-muted-foreground block">وحدة/درس</span>
+                                                            <span className="text-[10px] text-muted-foreground block">{t("dash.admin.subjects.statUnit")}</span>
                                                         </div>
                                                         <div className="text-center p-2 rounded-lg bg-muted/50">
                                                             <Video className="w-4 h-4 mx-auto mb-1 text-purple-500" />
                                                             <span className="text-xs font-bold">
                                                                 {(subject.topics || []).reduce((acc: number, t: any) => acc + (t.media_items?.filter((m: any) => m.type === 'video').length || t.mediaItems?.filter((m: any) => m.type === 'video').length || 0), 0)}
                                                             </span>
-                                                            <span className="text-[10px] text-muted-foreground block">فيديو</span>
+                                                            <span className="text-[10px] text-muted-foreground block">{t("dash.admin.subjects.statVideo")}</span>
                                                         </div>
                                                         <div className="text-center p-2 rounded-lg bg-muted/50">
                                                             <FileQuestion className="w-4 h-4 mx-auto mb-1 text-orange-500" />
                                                             <span className="text-xs font-bold">
                                                                 {(subject.topics || []).reduce((acc: number, t: any) => acc + (t.quiz_questions?.length || t.quizQuestions?.length || 0), 0)}
                                                             </span>
-                                                            <span className="text-[10px] text-muted-foreground block">سؤال</span>
+                                                            <span className="text-[10px] text-muted-foreground block">{t("dash.admin.subjects.statQuestion")}</span>
                                                         </div>
                                                     </div>
 
                                                     <Button size="sm" className="w-full mt-4 gap-2" variant="secondary" asChild>
                                                         <Link to={`/grade/${subject.gradeSlug}/subject/${subject.id}`}>
-                                                            عرض المنهج
+                                                            {t("dash.admin.subjects.viewCurriculum")}
                                                             <ArrowUpRight className="w-4 h-4" />
                                                         </Link>
                                                     </Button>
@@ -324,7 +327,7 @@ const SubjectsTab = () => {
                                 <Card className="border-dashed">
                                     <CardContent className="p-8 text-center text-muted-foreground">
                                         <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                        <p className="text-sm">لا توجد مواد لهذا الصف بعد</p>
+                                        <p className="text-sm">{t("dash.admin.subjects.noSubjectsInGrade")}</p>
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -335,7 +338,7 @@ const SubjectsTab = () => {
                                             }}
                                         >
                                             <BookOpen className="w-4 h-4" />
-                                            إضافة مادة
+                                            {t("dash.admin.subjects.addSubject")}
                                         </Button>
                                     </CardContent>
                                 </Card>
@@ -347,28 +350,28 @@ const SubjectsTab = () => {
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="font-cairo" dir="rtl">
+                <DialogContent className="font-cairo" dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>{editingSubject ? "تعديل المادة الدراسية" : "إضافة مادة دراسية جديدة"}</DialogTitle>
+                        <DialogTitle>{editingSubject ? t("dash.admin.subjects.dialogEdit") : t("dash.admin.subjects.dialogAdd")}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="name">اسم المادة</Label>
+                            <Label htmlFor="name">{t("dash.admin.subjects.fieldName")}</Label>
                             <Input
                                 id="name"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="مثلاً: الرياضيات"
+                                placeholder={t("dash.admin.subjects.namePlaceholder")}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="grade_id">الصف الدراسي</Label>
+                            <Label htmlFor="grade_id">{t("dash.admin.subjects.fieldGrade")}</Label>
                             <Select
                                 value={formData.grade_id}
                                 onValueChange={(value) => setFormData({ ...formData, grade_id: value })}
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="اختر الصف" />
+                                    <SelectValue placeholder={t("dash.admin.subjects.gradePlaceholder")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {(gradesData || []).map((grade: any) => (
@@ -378,17 +381,17 @@ const SubjectsTab = () => {
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="description">الوصف</Label>
+                            <Label htmlFor="description">{t("dash.admin.subjects.fieldDesc")}</Label>
                             <Input
                                 id="description"
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="وصف مختصر للمادة"
+                                placeholder={t("dash.admin.subjects.descPlaceholder")}
                             />
                         </div>
                         <div className="flex gap-4">
                             <div className="flex-1 space-y-2">
-                                <Label htmlFor="icon">الأيقونة (Emoji)</Label>
+                                <Label htmlFor="icon">{t("dash.admin.subjects.fieldIcon")}</Label>
                                 <Input
                                     id="icon"
                                     value={formData.icon}
@@ -397,7 +400,7 @@ const SubjectsTab = () => {
                                 />
                             </div>
                             <div className="flex-1 space-y-2">
-                                <Label htmlFor="color">اللون الأساسي</Label>
+                                <Label htmlFor="color">{t("dash.admin.subjects.fieldColor")}</Label>
                                 <Input
                                     id="color"
                                     type="color"
@@ -408,9 +411,9 @@ const SubjectsTab = () => {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>{t("dash.common.cancel")}</Button>
                         <Button onClick={handleSave} disabled={createSubjectMutation.isPending || updateSubjectMutation.isPending}>
-                            {createSubjectMutation.isPending || updateSubjectMutation.isPending ? "جاري الحفظ..." : "حفظ المادة"}
+                            {createSubjectMutation.isPending || updateSubjectMutation.isPending ? t("dash.common.saving") : t("dash.admin.subjects.saveSubject")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

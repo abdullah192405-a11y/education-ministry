@@ -1,5 +1,6 @@
 import { generateGeminiContent } from "./geminiClient";
 import type { ChallengeReportCsvOptions } from "./challengeReportDownload";
+import { getChallengeReportLabels, type ReportLanguage } from "./challengeReportLabels";
 
 export type ChallengeRecommendationSection = {
     title: string;
@@ -60,8 +61,9 @@ function clampText(value: unknown, maxLength: number): string {
     return stripHtml(value).slice(0, maxLength);
 }
 
-function getParticipantName(row: any): string {
-    return row?.user?.name || row?.name || row?.participant_display_name || row?.display_name || "طالب";
+function getParticipantName(row: any, language?: ReportLanguage): string {
+    const fallback = language === "en" ? "Student" : "طالب";
+    return row?.user?.name || row?.name || row?.participant_display_name || row?.display_name || fallback;
 }
 
 function getScorePercent(row: any): number {
@@ -99,17 +101,18 @@ function professionalizeFallbackSections(
 }
 
 function buildRecommendationInput(opts: ChallengeReportCsvOptions) {
+    const labels = getChallengeReportLabels(opts.language);
     const results = [...(opts.results || [])]
         .sort((a, b) => getScorePercent(b) - getScorePercent(a))
         .slice(0, 80)
         .map((row) => ({
-            name: clampText(getParticipantName(row), 60),
+            name: clampText(getParticipantName(row, opts.language), 60),
             percentage: getScorePercent(row),
             score: row?.score ?? null,
             correctAnswers: row?.correct_answers ?? row?.correctAnswers ?? null,
             wrongAnswers: row?.wrong_answers ?? row?.wrongAnswers ?? null,
             timeTakenSeconds: row?.time_taken ?? row?.timeTaken ?? null,
-            participantType: row?.user?.id ? "مسجل" : "زائر",
+            participantType: row?.user?.id ? labels.participantsTable.registered : labels.participantsTable.guest,
         }));
 
     const questionRows = (opts.questionRows || []).slice(0, 50).map((row, index) => ({
@@ -122,6 +125,7 @@ function buildRecommendationInput(opts: ChallengeReportCsvOptions) {
 
     return {
         reportMeta: {
+            outputLanguage: opts.language === "en" ? "en" : "ar",
             title: opts.topicTitle,
             lessonTitle: opts.lessonTitle,
             className: opts.className,
@@ -140,6 +144,9 @@ function buildRecommendationInput(opts: ChallengeReportCsvOptions) {
 }
 
 export function buildFallbackRecommendationReport(opts: ChallengeReportCsvOptions): ChallengeRecommendationReport {
+    if (opts.language === "en") {
+        return buildFallbackRecommendationReportEn(opts);
+    }
     const input = buildRecommendationInput(opts);
     const participants = input.participants;
     const questions = input.questions;
@@ -246,6 +253,106 @@ export function buildFallbackRecommendationReport(opts: ChallengeReportCsvOption
     };
 }
 
+function buildFallbackRecommendationReportEn(opts: ChallengeReportCsvOptions): ChallengeRecommendationReport {
+    const input = buildRecommendationInput(opts);
+    const participants = input.participants;
+    const questions = input.questions;
+    const avgScore = average(participants.map((p) => p.percentage));
+    const lowParticipants = participants.filter((p) => p.percentage < 60);
+    const nearMastery = participants.filter((p) => p.percentage >= 60 && p.percentage < 85);
+    const highParticipants = participants.filter((p) => p.percentage >= 85);
+    const weakQuestions = [...questions].sort((a, b) => a.accuracy - b.accuracy).slice(0, 4);
+    const weakestQuestion = weakQuestions[0];
+    const lessonTitle = opts.lessonTitle || opts.topicTitle || "the lesson";
+    const className = opts.className || "the class";
+
+    return {
+        headline: `Expanded recommendations for ${lessonTitle}`,
+        summary:
+            `This report summarizes ${participants.length} attempts in ${className}. ` +
+            `Overall average is ${avgScore}%, with ${lowParticipants.length} attempts needing direct support, ` +
+            `${nearMastery.length} near mastery, and ${highParticipants.length} advanced. ` +
+            `Use these actions in your next lesson.`,
+        keyFindings: [
+            `Overall average: ${avgScore}%.`,
+            `Attempts needing support: ${lowParticipants.length}.`,
+            weakestQuestion
+                ? `Weakest question accuracy: ${weakestQuestion.accuracy}%.`
+                : "Not enough per-question detail.",
+        ],
+        sections: [
+            {
+                title: "Performance diagnosis",
+                points: [
+                    `Open the next lesson by sharing the class average (${avgScore}%) and one measurable goal.`,
+                    `With only ${participants.length} attempts, treat conclusions as provisional until more data is collected.`,
+                    `Group learners: direct support (${lowParticipants.length}), near mastery (${nearMastery.length}), advanced (${highParticipants.length}).`,
+                    weakestQuestion
+                        ? `Start remediation with: "${weakestQuestion.question}" (${weakestQuestion.accuracy}% accuracy).`
+                        : "Run a quick class discussion to find the hardest step.",
+                ],
+            },
+            {
+                title: "Immediate interventions",
+                points: [
+                    "Spend 8–10 minutes re-teaching the core concept with one worked example.",
+                    "Have students solve one similar item individually, then discuss one common error.",
+                    "Give sub-60% students a support card: rule, worked example, quick check question.",
+                    "End with an exit ticket aligned to the weakest skill.",
+                ],
+            },
+            {
+                title: "Next lesson plan",
+                points: [
+                    `Start with a 3-minute diagnostic tied to ${lessonTitle}.`,
+                    "Model one full solution, then a partial solution for group completion.",
+                    "Use short groups: remediation, practice, enrichment.",
+                    "Close with two questions: remedial skill + transfer to a new context.",
+                ],
+            },
+            {
+                title: "Differentiated support by learner segment",
+                points: [
+                    "Below 60%: guided work with the teacher before independent practice.",
+                    "60–84%: short error-focused practice, then two check questions.",
+                    "85%+: enrichment task or peer coach role without giving away answers.",
+                    "Vary time, question count, and hints by segment.",
+                ],
+            },
+            {
+                title: "Suggested activities and questions",
+                points: [
+                    weakestQuestion
+                        ? `Turn the weakest question into three tiered items: recall, apply, explain.`
+                        : "Build three tiered questions on the main lesson skill.",
+                    "Use a short ‘find the error’ activity with one flawed solution.",
+                    "Have students write one rule in simple language and swap with a partner to verify.",
+                ],
+            },
+            {
+                title: "Follow-up and impact measurement",
+                points: [
+                    "Run a short re-challenge 24–48 hours after the intervention.",
+                    "Track movement from ‘needs support’ to ‘near mastery’ segments.",
+                    "Keep one fixed item across checks to compare progress over time.",
+                    weakestQuestion
+                        ? `If accuracy on the weakest skill stays low, change representation (visual/real-world) before re-testing.`
+                        : "If gains are flat, discuss with students to locate the blocking step.",
+                ],
+            },
+        ].map((section, index) => ({
+            ...section,
+            priority: index < 2 ? "high" : index < 5 ? "medium" : "follow-up",
+            timeframe: index < 4 ? "next lesson" : "this week",
+            actions: section.points,
+            successIndicators: [
+                "Target skill accuracy improves on the next short check.",
+                "More learners move from support segment to near-mastery segment.",
+            ],
+        })),
+    };
+}
+
 function extractText(data: GeminiTextResponse): string {
     return data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
 }
@@ -274,7 +381,8 @@ function sanitizeStringList(value: unknown, maxItems: number, maxLength: number)
     return value.map((item) => clampText(item, maxLength)).filter(Boolean).slice(0, maxItems);
 }
 
-function sanitizeRecommendationReport(value: unknown): ChallengeRecommendationReport {
+function sanitizeRecommendationReport(value: unknown, language?: ReportLanguage): ChallengeRecommendationReport {
+    const en = language === "en";
     const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
     const sectionsRaw = Array.isArray(record.sections) ? record.sections : [];
     const sections = sectionsRaw
@@ -286,7 +394,7 @@ function sanitizeRecommendationReport(value: unknown): ChallengeRecommendationRe
             const evidence = sanitizeStringList(row.evidence, 4, 320);
             const successIndicators = sanitizeStringList(row.successIndicators, 4, 260);
             return {
-                title: clampText(row.title, 90) || "توصية",
+                title: clampText(row.title, 90) || (en ? "Recommendation" : "توصية"),
                 priority: clampText(row.priority, 40),
                 timeframe: clampText(row.timeframe, 60),
                 evidence,
@@ -304,14 +412,59 @@ function sanitizeRecommendationReport(value: unknown): ChallengeRecommendationRe
         );
 
     return {
-        headline: clampText(record.headline, 120) || "تقرير توصيات تعليمية",
-        summary: clampText(record.summary, 1200) || "تم إنشاء توصيات تعليمية بناءً على بيانات الأداء المتاحة.",
+        headline: clampText(record.headline, 120) || (en ? "Teaching recommendations report" : "تقرير توصيات تعليمية"),
+        summary:
+            clampText(record.summary, 1200) ||
+            (en
+                ? "Recommendations were generated from the available performance data."
+                : "تم إنشاء توصيات تعليمية بناءً على بيانات الأداء المتاحة."),
         keyFindings: sanitizeStringList(record.keyFindings, 6, 220),
         sections,
     };
 }
 
-function buildPrompt(input: unknown): string {
+function buildPrompt(input: unknown, language?: ChallengeReportCsvOptions["language"]): string {
+    if (language === "en") {
+        return `
+You are an educational consultant. Create a full teaching recommendations report in English from challenge data.
+
+CRITICAL: Every string in the JSON (headline, summary, keyFindings, section titles, priority, timeframe, evidence, actions, successIndicators, points) MUST be written in English only. Do not use Arabic or mixed languages.
+
+Requirements:
+- Detailed, actionable report for the teacher's next lesson.
+- Link recommendations to scores, weak questions, time, and learner segments.
+- Write 6–7 sections with 4–8 bullet points in actions or points per section.
+- Return JSON only (no Markdown).
+
+Use these section titles (in English):
+1) Performance diagnosis and gaps
+2) Urgent intervention priorities
+3) Next lesson plan
+4) Differentiated support by learner segment
+5) Suggested activities and questions
+6) Enrichment for advanced learners
+7) Follow-up and impact measurement
+
+Schema:
+{
+  "headline": "short title in English",
+  "summary": "5–7 sentence executive summary in English",
+  "keyFindings": ["finding with a number"],
+  "sections": [{
+    "title": "section title in English",
+    "priority": "high | medium | low",
+    "timeframe": "next lesson | this week | follow-up",
+    "evidence": ["data-backed point"],
+    "actions": ["actionable step"],
+    "successIndicators": ["measurable indicator"],
+    "points": ["optional summary"]
+  }]
+}
+
+Report data:
+${JSON.stringify(input, null, 2)}
+`;
+    }
     return `
 أنت مستشار تربوي وخبير تقويم تعليمي. أنشئ تقرير توصيات تعليمية كامل باللغة العربية بناءً على بيانات تحدي تعليمي.
 
@@ -361,10 +514,40 @@ ${JSON.stringify(input, null, 2)}
 `;
 }
 
+function isArabicHeavyRecommendationReport(report: ChallengeRecommendationReport): boolean {
+    const chunks: string[] = [
+        report.headline,
+        report.summary,
+        ...(report.keyFindings || []),
+        ...report.sections.flatMap((section) => [
+            section.title,
+            section.priority || "",
+            section.timeframe || "",
+            ...(section.points || []),
+            ...(section.actions || []),
+            ...(section.evidence || []),
+            ...(section.successIndicators || []),
+        ]),
+    ];
+    const text = chunks.join(" ");
+    const arabic = (text.match(/[\u0600-\u06FF]/g) || []).length;
+    const latin = (text.match(/[a-zA-Z]/g) || []).length;
+    return arabic > 12 && arabic >= latin;
+}
+
 async function repairRecommendationJson(
     apiKey: string,
-    brokenText: string
+    brokenText: string,
+    language?: ChallengeReportCsvOptions["language"]
 ): Promise<unknown | null> {
+    const repairIntro =
+        language === "en"
+            ? "Convert the following text into valid JSON matching the required schema only. " +
+              "Do not add Markdown or commentary. If text is incomplete, complete it professionally. " +
+              "CRITICAL: All string values must remain in English.\n\n"
+            : "حوّل النص التالي إلى JSON صالح مطابق للمخطط المطلوب فقط. " +
+              "لا تضف Markdown ولا شرحاً. إذا كان النص ناقصاً فأكمله بأقصر صياغة مهنية ممكنة.\n\n";
+
     try {
         const data = (await generateGeminiContent(
             apiKey,
@@ -374,10 +557,7 @@ async function repairRecommendationJson(
                         role: "user",
                         parts: [
                             {
-                                text:
-                                    "حوّل النص التالي إلى JSON صالح مطابق للمخطط المطلوب فقط. " +
-                                    "لا تضف Markdown ولا شرحاً. إذا كان النص ناقصاً فأكمله بأقصر صياغة مهنية ممكنة.\n\n" +
-                                    extractJsonCandidate(brokenText).slice(0, 12000),
+                                text: repairIntro + extractJsonCandidate(brokenText).slice(0, 12000),
                             },
                         ],
                     },
@@ -413,7 +593,7 @@ export async function generateChallengeRecommendationReport(
     const data = (await generateGeminiContent(
         apiKey,
         {
-            contents: [{ role: "user", parts: [{ text: buildPrompt(input) }] }],
+            contents: [{ role: "user", parts: [{ text: buildPrompt(input, opts.language) }] }],
             generationConfig: {
                 temperature: 0.4,
                 topP: 0.9,
@@ -432,18 +612,31 @@ export async function generateChallengeRecommendationReport(
 
     const text = extractText(data);
     if (!text) {
-        throw new Error("لم يرجع Gemini نص توصيات صالحاً.");
-    }
-
-    const parsed = parseJsonObject(text) || await repairRecommendationJson(apiKey, text);
-    if (!parsed) {
-        const finishReason = data.candidates?.[0]?.finishReason;
         throw new Error(
-            finishReason
-                ? `رجع Gemini توصيات غير مكتملة (${finishReason}).`
-                : "رجع Gemini توصيات JSON غير صالحة."
+            opts.language === "en"
+                ? "Gemini did not return valid recommendation text."
+                : "لم يرجع Gemini نص توصيات صالحاً."
         );
     }
 
-    return sanitizeRecommendationReport(parsed);
+    const parsed =
+        parseJsonObject(text) || (await repairRecommendationJson(apiKey, text, opts.language));
+    if (!parsed) {
+        const finishReason = data.candidates?.[0]?.finishReason;
+        throw new Error(
+            opts.language === "en"
+                ? finishReason
+                    ? `Gemini returned incomplete recommendations (${finishReason}).`
+                    : "Gemini returned invalid recommendation JSON."
+                : finishReason
+                  ? `رجع Gemini توصيات غير مكتملة (${finishReason}).`
+                  : "رجع Gemini توصيات JSON غير صالحة."
+        );
+    }
+
+    const sanitized = sanitizeRecommendationReport(parsed, opts.language);
+    if (opts.language === "en" && isArabicHeavyRecommendationReport(sanitized)) {
+        return buildFallbackRecommendationReportEn(opts);
+    }
+    return sanitized;
 }

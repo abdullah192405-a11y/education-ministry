@@ -1,24 +1,28 @@
 import { motion } from "framer-motion";
 import { useFloatingChromeHidden } from "@/contexts/FloatingChromeContext";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const WhatsAppButton = () => {
   const hidden = useFloatingChromeHidden();
+  const { t, dir } = useTranslation();
 
   const phoneNumber = "966502418899";
-  const message = encodeURIComponent("مرحباً، أود الاستفسار عن خدماتكم.");
+  const message = encodeURIComponent(t("whatsapp.message"));
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${message}`;
 
   if (hidden) return null;
 
+  const positionClass = dir === "rtl" ? "left-6" : "right-6";
+
   return (
-    <div className="fixed bottom-6 left-6 z-50 flex flex-col items-center gap-2">
+    <div className={`fixed bottom-6 ${positionClass} z-50 flex flex-col items-center gap-2`}>
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
         className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#128C7E] shadow-md border border-gray-100"
       >
-        تواصل معنا
+        {t("whatsapp.contactUs")}
       </motion.div>
       <motion.a
         href={whatsappUrl}

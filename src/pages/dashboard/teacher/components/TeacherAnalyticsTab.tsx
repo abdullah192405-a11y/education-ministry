@@ -6,8 +6,11 @@ import {
 import { TrendingUp, Users, BookOpen, Gamepad2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUser, useTeacherProfile, useHostedChallengeResults, useActiveChallengesByHost, useStudentsInGrade, useGradeSubjectProgress, useSubject } from "@/hooks/useDatabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { averageChallengeResultScorePercent, getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 
 const TeacherAnalyticsTab = () => {
+    const { t, locale } = useDashboardLocale();
     const { data: user } = useUser();
     const { data: profile } = useTeacherProfile(user?.id || "");
     const { data: hostedResults, isLoading } = useHostedChallengeResults(user?.id || "", 50);
@@ -16,13 +19,10 @@ const TeacherAnalyticsTab = () => {
     const { data: gradeSubjectProgress, isLoading: isLoadingAnalytics } = useGradeSubjectProgress(profile?.grade_id || "", profile?.subject_id || "");
     const { data: teacherSubject } = useSubject(profile?.subject_id || "", profile?.id);
 
-    // Derive analytics from results
-    // Derive analytics from results
     const uniqueStudentsParticipated = new Set((hostedResults || []).map((r: any) => r.user_id || r.userId));
     const uniqueStudents = uniqueStudentsParticipated.size;
     const totalChallenges = (hostedResults || []).length;
 
-    // Filter subject progress to only include students who actually participated in this teacher's challenges
     const subjectProgressList = (gradeSubjectProgress || []).filter((sp: any) =>
         uniqueStudentsParticipated.has(sp.student_id) || uniqueStudentsParticipated.has(sp.student?.user_id)
     );
@@ -30,15 +30,14 @@ const TeacherAnalyticsTab = () => {
     const averageScore = subjectProgressList.length > 0
         ? Math.round(subjectProgressList.reduce((acc: number, r: any) => acc + (r.average_score || 0), 0) / subjectProgressList.length)
         : totalChallenges > 0
-            ? Math.round(hostedResults!.reduce((acc: number, r: any) => acc + (r.score || 0), 0) / totalChallenges)
-            : Math.round(profile?.average_score || 0);
+            ? averageChallengeResultScorePercent(hostedResults!)
+            : Math.max(0, Math.min(100, Math.round(Number(profile?.average_score) || 0)));
 
-    // Build score distribution from subject progress (more comprehensive)
     const scoreRanges = [
         { name: "90-100%", count: 0, color: "#10b981" },
         { name: "70-89%", count: 0, color: "#3b82f6" },
         { name: "50-69%", count: 0, color: "#f59e0b" },
-        { name: "أقل من 50%", count: 0, color: "#ef4444" },
+        { name: t("dash.teacher.scoreBelow50"), count: 0, color: "#ef4444" },
     ];
 
     if (subjectProgressList.length > 0) {
@@ -51,7 +50,7 @@ const TeacherAnalyticsTab = () => {
         });
     } else {
         (hostedResults || []).forEach((r: any) => {
-            const score = r.score || 0;
+            const score = getChallengeResultScorePercent(r);
             if (score >= 90) scoreRanges[0].count++;
             else if (score >= 70) scoreRanges[1].count++;
             else if (score >= 50) scoreRanges[2].count++;
@@ -59,10 +58,9 @@ const TeacherAnalyticsTab = () => {
         });
     }
 
-    // Build recent daily activity
     const dailyMap = new Map<string, number>();
     (hostedResults || []).forEach((r: any) => {
-        const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' }) : "—";
+        const date = r.created_at ? new Date(r.created_at).toLocaleDateString(locale, { month: 'short', day: 'numeric' }) : "—";
         dailyMap.set(date, (dailyMap.get(date) || 0) + 1);
     });
     const dailyActivity = Array.from(dailyMap.entries()).map(([date, count]) => ({
@@ -72,7 +70,6 @@ const TeacherAnalyticsTab = () => {
 
     return (
         <div className="space-y-6">
-            {/* KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                     <CardContent className="p-4 flex items-center gap-3">
@@ -80,7 +77,7 @@ const TeacherAnalyticsTab = () => {
                             <BookOpen className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-sm text-muted-foreground">الدروس</p>
+                            <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.lessons")}</p>
                             <p className="text-2xl font-bold">
                                 {isLoading ? <Skeleton className="h-7 w-10" /> : (teacherSubject?.topics?.length || profile?.total_topics || 0)}
                             </p>
@@ -93,7 +90,7 @@ const TeacherAnalyticsTab = () => {
                             <Users className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-sm text-muted-foreground">الطلاب</p>
+                            <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.students")}</p>
                             <p className="text-2xl font-bold">
                                 {isLoading ? <Skeleton className="h-7 w-10" /> : uniqueStudents}
                             </p>
@@ -106,7 +103,7 @@ const TeacherAnalyticsTab = () => {
                             <Gamepad2 className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-sm text-muted-foreground">التحديات</p>
+                            <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.challenges")}</p>
                             <p className="text-2xl font-bold">
                                 {isLoading ? <Skeleton className="h-7 w-10" /> : totalChallenges}
                             </p>
@@ -119,7 +116,7 @@ const TeacherAnalyticsTab = () => {
                             <TrendingUp className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-sm text-muted-foreground">المتوسط</p>
+                            <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.averageShort")}</p>
                             <p className="text-2xl font-bold">
                                 {isLoading ? <Skeleton className="h-7 w-10" /> : `${averageScore}%`}
                             </p>
@@ -128,12 +125,10 @@ const TeacherAnalyticsTab = () => {
                 </Card>
             </div>
 
-            {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Score Distribution */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-lg">توزيع الدرجات</CardTitle>
+                        <CardTitle className="text-lg">{t("dash.teacher.analytics.scoreDistTitle")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {scoreRanges.some(s => s.count > 0) ? (
@@ -159,7 +154,7 @@ const TeacherAnalyticsTab = () => {
                             </div>
                         ) : (
                             <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                                لا توجد بيانات كافية
+                                {t("dash.teacher.scoreNoData")}
                             </div>
                         )}
                         <div className="flex flex-wrap gap-3 justify-center mt-2">
@@ -173,10 +168,9 @@ const TeacherAnalyticsTab = () => {
                     </CardContent>
                 </Card>
 
-                {/* Daily Activity */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-lg">النشاط اليومي</CardTitle>
+                        <CardTitle className="text-lg">{t("dash.teacher.analytics.dailyActivity")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {dailyActivity.length > 0 ? (
@@ -187,23 +181,22 @@ const TeacherAnalyticsTab = () => {
                                         <XAxis dataKey="date" />
                                         <YAxis />
                                         <RechartsTooltip />
-                                        <Bar dataKey="challenges" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="تحديات" />
+                                        <Bar dataKey="challenges" fill="#8b5cf6" radius={[4, 4, 0, 0]} name={t("dash.teacher.analytics.challengesBar")} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         ) : (
                             <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                                لا توجد بيانات كافية
+                                {t("dash.teacher.scoreNoData")}
                             </div>
                         )}
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Active Challenges Quick View */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">التحديات النشطة حالياً</CardTitle>
+                    <CardTitle className="text-lg">{t("dash.teacher.analytics.activeNowTitle")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {(activeChallenges || []).length > 0 ? (
@@ -212,7 +205,7 @@ const TeacherAnalyticsTab = () => {
                                 <div key={ch.id} className="flex items-center gap-4 p-3 rounded-xl bg-muted/50">
                                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                                     <div className="flex-1">
-                                        <p className="font-medium text-sm">{ch.topic?.title || "تحدي"}</p>
+                                        <p className="font-medium text-sm">{ch.topic?.title || t("dash.teacher.challengeFallback")}</p>
                                         <p className="text-xs text-muted-foreground">PIN: {ch.pin}</p>
                                     </div>
                                     <div className="flex items-center gap-1 text-sm font-bold">
@@ -224,7 +217,7 @@ const TeacherAnalyticsTab = () => {
                         </div>
                     ) : (
                         <div className="text-center py-6 text-muted-foreground">
-                            لا توجد تحديات نشطة حالياً
+                            {t("dash.teacher.noActiveChallenges")}
                         </div>
                     )}
                 </CardContent>

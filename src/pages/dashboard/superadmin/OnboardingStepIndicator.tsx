@@ -5,11 +5,12 @@ type OnboardingStepIndicatorProps = {
     steps: { id: number; label: string }[];
     current: number;
     className?: string;
+    dir?: "rtl" | "ltr";
 };
 
-export function OnboardingStepIndicator({ steps, current, className }: OnboardingStepIndicatorProps) {
+export function OnboardingStepIndicator({ steps, current, className, dir = "rtl" }: OnboardingStepIndicatorProps) {
     return (
-        <div className={cn("w-full", className)} dir="rtl">
+        <div className={cn("w-full", className)} dir={dir}>
             <div className="flex items-center justify-between gap-1">
                 {steps.map((s, i) => {
                     const done = current > s.id;

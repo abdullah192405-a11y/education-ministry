@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-    ChevronLeft, Trophy, Zap, Clock, Target,
+    ChevronLeft, ChevronRight, Trophy, Zap, Clock, Target,
     CheckCircle2, XCircle, RotateCcw, Home, Share2, Check,
     ArrowLeft, ArrowRight, GripVertical, Sparkles, ArrowUp, ArrowDown,
     Volume2, VolumeX, Music, Trash2
@@ -47,12 +47,20 @@ import { supabase } from "@/lib/supabase";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
     buildChallengeShareMessage,
     buildSingleChallengeShareUrl,
     openWhatsAppShare,
 } from "@/lib/challengeShareMessage";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
+import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import {
+    resolveWheelSpinSoundUrl,
+    WHEEL_SPIN_DURATION_MS,
+    WHEEL_SPIN_DURATION_SEC,
+    WHEEL_SPIN_EASE,
+} from "@/lib/wheelSpinSounds";
 
 type GameState = "intro" | "playing" | "results";
 
@@ -66,6 +74,9 @@ const SingleChallenge = () => {
     const joinDisplayName = searchParams.get("name");
     const scheduledFromJoinUrl = searchParams.get("scheduled") === "1";
     const playerSessionIdFromJoin = searchParams.get("ps")?.trim() || "";
+    const { dir } = useTranslation();
+    const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
+    const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
 
     const { toast } = useToast();
     const { data: topic, isLoading } = useTopic(topicId || "");
@@ -160,10 +171,11 @@ const SingleChallenge = () => {
         correct: content?.correct_sound_url?.trim() || undefined,
         wrong: content?.wrong_sound_url?.trim() || undefined,
         background: content?.answering_background_sound_url?.trim() || undefined,
-    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url]);
+        wheel_spin: resolveWheelSpinSoundUrl(content?.wheel_spin_sound_url),
+    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url, content?.wheel_spin_sound_url]);
 
     // Initialize sound system
-    const { play, stop } = useSound(true, soundOverrides);
+    const { play, playWheelSpin, stop } = useSound(true, soundOverrides);
 
     // Initialize game
     // Initialize game
@@ -380,6 +392,7 @@ const SingleChallenge = () => {
         if (showResult) return;
         if (matchedPairs.some(p => p.leftIndex === index)) return;
         setSelectedLeft(index);
+        play("click");
     };
 
     const handleMatchingRightSelect = (shuffledIndex: number) => {
@@ -388,12 +401,11 @@ const SingleChallenge = () => {
         const rightItem = shuffledRight[shuffledIndex];
         if (matchedPairs.some(p => p.rightIndex === rightItem.originalIndex)) return;
 
-        // Check if it's a correct match
         if (selectedLeft === rightItem.originalIndex) {
             const newMatchedPairs = [...matchedPairs, { leftIndex: selectedLeft, rightIndex: rightItem.originalIndex }];
             setMatchedPairs(newMatchedPairs);
+            play("match_pair");
 
-            // Check if all pairs are matched
             if (newMatchedPairs.length === currentQuestion.pairs?.length) {
                 const timeTaken = (Date.now() - questionStartTime) / 1000;
                 setTotalTime(prev => prev + timeTaken);
@@ -402,6 +414,8 @@ const SingleChallenge = () => {
                 play("correct");
                 processAnswer(true, timeTaken);
             }
+        } else {
+            play("match_wrong");
         }
         setSelectedLeft(null);
     };
@@ -411,8 +425,7 @@ const SingleChallenge = () => {
         if (isSpinning || showResult) return;
         setIsSpinning(true);
 
-        // Play wheel spin sound
-        play('wheel_spin');
+        playWheelSpin();
 
         const segments = currentQuestion.wheelSegments;
         const labels = segments?.map(s => s.label) || currentQuestion.options || [];
@@ -466,7 +479,7 @@ const SingleChallenge = () => {
 
             setWheelPoints(pointsForQuestion);
             setWheelSubQuestion(subQ);
-        }, 4000);
+        }, WHEEL_SPIN_DURATION_MS);
     };
 
     const handleWheelSubAnswer = (answerIdx: number) => {
@@ -1302,7 +1315,7 @@ const SingleChallenge = () => {
                         className="w-full h-full rounded-full overflow-hidden border-4 border-primary shadow-2xl"
                         style={{ transformOrigin: "center center" }}
                         animate={{ rotate: wheelRotation }}
-                        transition={{ duration: 4, ease: [0.2, 0.8, 0.2, 1] }}
+                        transition={{ duration: WHEEL_SPIN_DURATION_SEC, ease: WHEEL_SPIN_EASE }}
                     >
                         <svg viewBox="0 0 100 100" className="w-full h-full">
                             {labels.map((option, i) => {
@@ -1889,16 +1902,11 @@ const SingleChallenge = () => {
                         {currentQuestion.question}
                     </h3>
 
-                    {/* Question Image */}
-                    {currentQuestion.imageUrl && (
-                        <div className="flex justify-center mb-8">
-                            <img
-                                src={currentQuestion.imageUrl}
-                                alt=""
-                                className="max-h-60 rounded-xl object-contain border shadow-sm"
-                            />
-                        </div>
-                    )}
+                    <QuestionAttachmentDisplay
+                        imageUrl={currentQuestion.imageUrl}
+                        videoUrl={currentQuestion.videoUrl}
+                        audioUrl={currentQuestion.audioUrl}
+                    />
 
                     {/* Multiple Choice / True-False / Shooting */}
                     {["multiple_choice", "true_false", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
@@ -2009,7 +2017,7 @@ const SingleChallenge = () => {
                             {currentIndex < questions.length - 1 ? (
                                 <>
                                     السؤال التالي
-                                    <ArrowLeft className="w-4 h-4" />
+                                    <ArrowForward className="w-4 h-4" />
                                 </>
                             ) : (
                                 <>
@@ -2474,7 +2482,7 @@ const SingleChallenge = () => {
                                 to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}/challenge`}
                                 className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                             >
-                                <ChevronLeft className="w-4 h-4" />
+                                <ChevronBack className="w-4 h-4" />
                                 <span>تغيير نوع التحدي</span>
                             </Link>
                         </motion.div>

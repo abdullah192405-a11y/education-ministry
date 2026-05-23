@@ -50,11 +50,16 @@ import { supabase } from "@/lib/supabase";
 import { isScheduledTeacherChallenge } from "@/lib/teacherScheduledChallenge";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { averageChallengeResultScorePercent, getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 
 const TeacherDashboard = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { signOut: clerkSignOut } = useAuth();
+    const { t, dir } = useTranslation();
+    const locale = t("common.locale");
     const { data: user, isLoading: isLoadingUser } = useUser();
     const createSessionMutation = useCreateChallengeSession();
     const updateSessionMutation = useUpdateChallengeSession();
@@ -115,18 +120,16 @@ const TeacherDashboard = () => {
     // Derive teacher data from real DB
     const teacherData = {
         id: user?.id || "",
-        name: user?.name || "معلم",
+        name: user?.name || t("dash.teacher.teacherFallback"),
         email: user?.email || "",
         avatar: user?.avatar || "https://api.dicebear.com/7.x/fun-emoji/svg?seed=teacher",
         verified: user?.verified || false,
         stats: {
             totalTopics: profile?.total_topics || topics.length || 0,
             totalStudents: uniqueStudentsCount || profile?.total_students || 0,
-            averageScore: (() => {
-                return hostedResults?.length
-                    ? Math.round(hostedResults.reduce((acc: number, r: any) => acc + (r.score || 0), 0) / hostedResults.length)
-                    : Math.round(profile?.average_score || 0);
-            })(),
+            averageScore: hostedResults?.length
+                ? averageChallengeResultScorePercent(hostedResults)
+                : Math.max(0, Math.min(100, Math.round(Number(profile?.average_score) || 0))),
             totalChallenges: hostedSessions?.length || profile?.total_challenges || 0,
         }
     };
@@ -139,12 +142,12 @@ const TeacherDashboard = () => {
         { name: "90-100%", count: 0, color: "#10b981" },
         { name: "70-89%", count: 0, color: "#3b82f6" },
         { name: "50-69%", count: 0, color: "#f59e0b" },
-        { name: "أقل من 50%", count: 0, color: "#ef4444" },
+        { name: t("dash.teacher.scoreBelow50"), count: 0, color: "#ef4444" },
     ];
 
     if ((hostedResults || []).length > 0) {
         hostedResults!.forEach((r: any) => {
-            const score = r.score || 0;
+            const score = getChallengeResultScorePercent(r);
             if (score >= 90) scoreDistribution[0].count++;
             else if (score >= 70) scoreDistribution[1].count++;
             else if (score >= 50) scoreDistribution[2].count++;
@@ -163,7 +166,7 @@ const TeacherDashboard = () => {
             gradeId: c.topic?.subject?.grade_id || c.topic?.grade_id || "",
             subjectId: c.topic?.subject_id || "",
             pin: c.pin,
-            topicTitle: c.topic?.title || "تحدي",
+            topicTitle: c.topic?.title || t("dash.teacher.challengeFallback"),
             mode: c.mode?.toLowerCase() || "group",
             players: (c.players || []).map((p: any) => ({
                 id: p.id,
@@ -172,7 +175,7 @@ const TeacherDashboard = () => {
             })),
             playersCount: c.players?.length || 0,
             status: c.status?.toLowerCase() || "waiting",
-            startedAt: c.created_at ? new Date(c.created_at).toLocaleString("ar-SA") : "",
+            startedAt: c.created_at ? new Date(c.created_at).toLocaleString(locale) : "",
             type: "admin" as const,
             category: c.category || "ACTIVITIES",
             scheduledStartTime: c.scheduled_start_time ?? c.scheduledStartTime,
@@ -193,10 +196,10 @@ const TeacherDashboard = () => {
 
     // Map hosted results for "recent students" section
     const recentStudents = (hostedResults || []).slice(0, 4).map((r: any) => ({
-        name: r.user?.name || "طالب",
-        score: Math.round(r.score || 0),
+        name: r.user?.name || t("common.student"),
+        score: getChallengeResultScorePercent(r),
         avatar: r.user?.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${r.user_id}`,
-        lastActive: r.created_at ? new Date(r.created_at).toLocaleString("ar-SA") : ""
+        lastActive: r.created_at ? new Date(r.created_at).toLocaleString(locale) : ""
     }));
 
     const handleStartSession = async (pin: string, topicId: string) => {
@@ -214,8 +217,8 @@ const TeacherDashboard = () => {
         } catch (error) {
             console.error("Failed to start session:", error);
             toast({
-                title: "خطأ",
-                description: "تعذر بدء التحدي.",
+                title: t("dash.common.error"),
+                description: t("dash.teacher.toast.cantStart"),
                 variant: "destructive"
             });
         }
@@ -226,14 +229,14 @@ const TeacherDashboard = () => {
             await deleteSessionMutation.mutateAsync(pin);
             setLocalChallenges(prev => prev.filter(c => c.pin !== pin));
             toast({
-                title: "تم إلغاء التحدي",
-                description: `تم إغلاق التحدي ذو الرمز ${pin} بنجاح.`,
+                title: t("dash.teacher.toast.cancelTitle"),
+                description: t("dash.teacher.toast.cancelDesc", { pin }),
             });
         } catch (error) {
             console.error("Failed to cancel session:", error);
             toast({
-                title: "خطأ",
-                description: "تعذر إلغاء التحدي.",
+                title: t("dash.common.error"),
+                description: t("dash.teacher.toast.cancelErr"),
                 variant: "destructive"
             });
         }
@@ -269,16 +272,16 @@ const TeacherDashboard = () => {
         const end = new Date(scheduledTimes.end);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
             toast({
-                title: "تاريخ غير صالح",
-                description: "يرجى اختيار وقت البدء والانتهاء.",
+                title: t("dash.teacher.toast.invalidDate"),
+                description: t("dash.teacher.toast.invalidDateDesc"),
                 variant: "destructive"
             });
             return;
         }
         if (end <= start) {
             toast({
-                title: "موعد غير صالح",
-                description: "يجب أن يكون وقت الانتهاء بعد وقت البدء.",
+                title: t("dash.teacher.toast.invalidRange"),
+                description: t("dash.teacher.toast.invalidRangeDesc"),
                 variant: "destructive"
             });
             return;
@@ -312,8 +315,8 @@ const TeacherDashboard = () => {
 
         if (!topic) {
             toast({
-                title: "تنبيه",
-                description: "لم يتم العثور على الدرس المطابق. يرجى تحديث الصفحة والمحاولة مرة أخرى.",
+                title: t("dash.teacher.toast.noTopicTitle"),
+                description: t("dash.teacher.toast.noTopicDesc"),
                 variant: "destructive"
             });
             return;
@@ -321,8 +324,8 @@ const TeacherDashboard = () => {
 
         if (!teacherData.id) {
             toast({
-                title: "خطأ في الجلسة",
-                description: "لم يتم العثور على بيانات المعلم. يرجى محاولة تسجيل الدخول مرة أخرى.",
+                title: t("dash.teacher.toast.sessionErr"),
+                description: t("dash.teacher.toast.sessionErrDesc"),
                 variant: "destructive"
             });
             return;
@@ -343,7 +346,7 @@ const TeacherDashboard = () => {
             players: [],
             playersCount: 0,
             status: "waiting" as const,
-            startedAt: isScheduled ? "مجدول" : "الآن",
+            startedAt: isScheduled ? t("dash.teacher.scheduledLabel") : t("dash.teacher.nowLabel"),
             type: "admin" as const,
             category: category,
             scheduledStartTime: details?.scheduledStartTime,
@@ -365,16 +368,16 @@ const TeacherDashboard = () => {
 
             const joinLink = `${window.location.origin}/join/${pin}`;
             const shareText = isScheduled 
-                ? `انضم إلى التحدي المجدول "${topic.title}"! رمز الانضمام: ${pin}. يبدأ في: ${new Date(details.scheduledStartTime).toLocaleString("ar-EG")}`
-                : `انضم إلى تحدي "${topic.title}"! رمز الانضمام: ${pin}`;
+                ? t("dash.teacher.share.scheduledShareText", { title: topic.title, pin, time: new Date(details.scheduledStartTime).toLocaleString(locale) })
+                : t("dash.teacher.share.shareText", { title: topic.title, pin });
 
             setCreatedChallengeInfo({ pin, title: topic.title, scheduledStartTime: details?.scheduledStartTime });
 
             toast({
-                title: isScheduled ? "تمت جدولة التحدي بنجاح" : "تم إنشاء التحدي بنجاح",
+                title: isScheduled ? t("dash.teacher.toast.scheduledSuccess") : t("dash.teacher.toast.createSuccess"),
                 description: (
                     <div className="flex flex-col gap-3 mt-1">
-                        <p>رمز الدخول: <span className="font-mono font-bold text-primary">{pin}</span>. {isScheduled ? "يمكن للطلاب الانضمام في الموعد المحدد." : "يمكنك الآن متابعة المنضمين من تبويب التحديات."}</p>
+                        <p>{isScheduled ? t("dash.teacher.toast.createDescScheduled", { pin }) : t("dash.teacher.toast.createDescNow", { pin })}</p>
                         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50">
                             <Button
                                 size="sm"
@@ -383,11 +386,11 @@ const TeacherDashboard = () => {
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     navigator.clipboard.writeText(joinLink);
-                                    toast({ title: "تم النسخ", description: "تم نسخ رابط التحدي بنجاح" });
+                                    toast({ title: t("dash.common.copied"), description: t("dash.teacher.toast.copiedLink") });
                                 }}
                             >
                                 <Copy className="w-3 h-3" />
-                                نسخ الرابط
+                                {t("dash.common.copyLink")}
                             </Button>
                             <Button
                                 size="sm"
@@ -398,7 +401,7 @@ const TeacherDashboard = () => {
                                 }}
                             >
                                 <Share2 className="w-3 h-3" />
-                                واتساب
+                                {t("dash.teacher.share.whatsapp")}
                             </Button>
                         </div>
                     </div>
@@ -410,13 +413,13 @@ const TeacherDashboard = () => {
             }
         } catch (error: any) {
             console.error("Detailed Error creating challenge:", error);
-            const errorMessage = error?.message || "تعذر إنشاء التحدي.";
-            toast({ title: "خطأ في إنشاء التحدي", description: errorMessage, variant: "destructive" });
+            const errorMessage = error?.message || t("dash.teacher.toast.createErrDefault");
+            toast({ title: t("dash.teacher.toast.createErr"), description: errorMessage, variant: "destructive" });
         }
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir={dir}>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
@@ -443,7 +446,7 @@ const TeacherDashboard = () => {
                                         </>
                                     ) : (
                                         <>
-                                            <span className="font-medium text-sm">لوحة المعلم</span>
+                                            <span className="font-medium text-sm">{t("dash.teacher.headerTitle")}</span>
                                             <p className="text-xs text-muted-foreground">{organizationName || teacherData.name}</p>
                                         </>
                                     )}
@@ -453,7 +456,8 @@ const TeacherDashboard = () => {
                         </div>
 
                         <div className="flex items-center gap-4">
-                            <Button variant="ghost" size="icon" className="relative">
+                            <LanguageSwitcher iconOnly />
+                            <Button variant="ghost" size="icon" className="relative" aria-label={t("dash.common.notifications")}>
                                 <Bell className="w-5 h-5" />
                             </Button>
                             <div className="flex items-center gap-2">
@@ -472,7 +476,7 @@ const TeacherDashboard = () => {
                                         <>
                                             <p className="font-medium text-sm">{teacherData.name}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                {organizationName ? `المؤسسة: ${organizationName}` : (user?.details || "معلم")}
+                                                {organizationName ? t("dash.teacher.organizationPrefix", { name: organizationName }) : (user?.details || t("dash.teacher.teacherFallback"))}
                                             </p>
                                         </>
                                     )}
@@ -516,24 +520,24 @@ const TeacherDashboard = () => {
                                     )}
                                     <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                                         <GraduationCap className="w-3 h-3" />
-                                        <span>{teacherData.stats.totalStudents} طالب</span>
-                                        <Award className="w-3 h-3 text-warning fill-warning mr-2" />
-                                        <span>{teacherData.stats.averageScore}%</span>
+                                        <span>{teacherData.stats.totalStudents} {t("dash.teacher.studentSuffix")}</span>
+                                        <Award className="w-3 h-3 text-warning fill-warning mx-2" />
+                                        <span>{Math.min(100, Math.max(0, teacherData.stats.averageScore))}%</span>
                                     </div>
                                 </div>
 
                                 {/* Navigation */}
                                 <nav className="space-y-1">
                                     {[
-                                        { id: "overview", icon: LayoutDashboard, label: "نظرة عامة" },
-                                        { id: "topics", icon: Library, label: "الدروس" },
-                                        { id: "challenges", icon: Gamepad2, label: "التحديات" },
-                                        { id: "live", icon: Radio, label: "البث المباشر" },
-                                        { id: "exams", icon: ClipboardList, label: "اختبارات" },
-                                        { id: "students", icon: Users, label: "الطلاب" },
-                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
-                                        { id: "analytics", icon: ChartBar, label: "الإحصائيات" },
-                                        { id: "settings", icon: Cog, label: "الإعدادات" }
+                                        { id: "overview", icon: LayoutDashboard, label: t("dash.teacher.nav.overview") },
+                                        { id: "topics", icon: Library, label: t("dash.teacher.nav.topics") },
+                                        { id: "challenges", icon: Gamepad2, label: t("dash.teacher.nav.challenges") },
+                                        { id: "live", icon: Radio, label: t("dash.teacher.nav.live") },
+                                        { id: "exams", icon: ClipboardList, label: t("dash.teacher.nav.exams") },
+                                        { id: "students", icon: Users, label: t("dash.teacher.nav.students") },
+                                        { id: "support", icon: LifeBuoy, label: t("dash.teacher.nav.support") },
+                                        { id: "analytics", icon: ChartBar, label: t("dash.teacher.nav.analytics") },
+                                        { id: "settings", icon: Cog, label: t("dash.teacher.nav.settings") }
                                     ].map(item => (
                                         <button
                                             key={item.id}
@@ -557,7 +561,7 @@ const TeacherDashboard = () => {
                                         onClick={handleLogout}
                                     >
                                         <LogOut className="w-4 h-4" />
-                                        تسجيل الخروج
+                                        {t("dash.common.logout")}
                                     </Button>
                                 </div>
                             </CardContent>
@@ -587,19 +591,19 @@ const TeacherDashboard = () => {
                                         <div className="relative p-6 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500">
                                             <div className="relative z-10">
                                                 <h1 className="text-2xl font-bold text-white mb-2">
-                                                    مرحباً، {teacherData.name.split(" ").pop() || teacherData.name}! 👋
+                                                    {t("dash.teacher.welcome", { name: teacherData.name.split(" ").pop() || teacherData.name })} 👋
                                                 </h1>
                                                 <p className="text-white/80 mb-4">
-                                                    مرحباً بك في لوحة التحكم
+                                                    {t("dash.teacher.welcomeSubtitle")}
                                                 </p>
                                                 <div className="flex gap-3">
                                                     <Button variant="secondary" size="sm" className="gap-2" onClick={() => setActiveTab("topics")}>
                                                         <Library className="w-4 h-4" />
-                                                        إدارة الدروس
+                                                        {t("dash.teacher.manageLessons")}
                                                     </Button>
                                                 </div>
                                             </div>
-                                            <div className="absolute left-0 top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+                                            <div className={`absolute ${dir === "rtl" ? "left-0" : "right-0"} top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl`} />
                                         </div>
                                     </Card>
 
@@ -614,7 +618,7 @@ const TeacherDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{teacherData.stats.totalTopics}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">درس</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.lessons")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -627,7 +631,7 @@ const TeacherDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{teacherData.stats.totalStudents}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">طالب</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.students")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -638,9 +642,9 @@ const TeacherDashboard = () => {
                                                 </div>
                                                 <div>
                                                     {isLoading ? <Skeleton className="h-7 w-12 mb-1" /> : (
-                                                        <p className="text-2xl font-bold">{teacherData.stats.averageScore}%</p>
+                                                        <p className="text-2xl font-bold">{Math.min(100, Math.max(0, teacherData.stats.averageScore))}%</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">متوسط النتائج</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.average")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -653,7 +657,7 @@ const TeacherDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{teacherData.stats.totalChallenges}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">تحدي</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.stats.challenges")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -666,7 +670,7 @@ const TeacherDashboard = () => {
                                             <CardHeader className="py-4">
                                                 <CardTitle className="text-sm font-bold flex items-center gap-2">
                                                     <ChartBar className="w-4 h-4 text-primary" />
-                                                    توزيع الدرجات (المادة)
+                                                    {t("dash.teacher.scoreDistribution")}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
@@ -693,7 +697,7 @@ const TeacherDashboard = () => {
                                                     </div>
                                                 ) : (
                                                     <div className="h-[180px] flex items-center justify-center text-muted-foreground text-xs text-center border-2 border-dashed rounded-xl">
-                                                        لا توجد بيانات <br /> كافية حالياً
+                                                        {t("dash.teacher.scoreNoData")}
                                                     </div>
                                                 )}
                                                 <div className="grid grid-cols-2 gap-2 mt-4">
@@ -712,10 +716,10 @@ const TeacherDashboard = () => {
                                             <CardHeader className="flex flex-row items-center justify-between py-4">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <Zap className="w-5 h-5 text-warning" />
-                                                    التحديات النشطة
+                                                    {t("dash.teacher.activeChallenges")}
                                                 </CardTitle>
                                                 <span className="px-2 py-1 rounded-full bg-success/10 text-success text-xs font-bold">
-                                                    {trulyActiveChallenges.length} قيد التشغيل
+                                                    {t("dash.teacher.runningCount", { n: trulyActiveChallenges.length })}
                                                 </span>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -758,7 +762,7 @@ const TeacherDashboard = () => {
 
                                                         <div className="flex items-center justify-between">
                                                             <div className="flex flex-col">
-                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">كود الانضمام</span>
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t("dash.teacher.joinCode")}</span>
                                                                 <span className="font-mono font-black text-lg text-primary tracking-tighter">{challenge.pin}</span>
                                                             </div>
                                                             <div className="flex flex-col gap-1.5">
@@ -774,7 +778,7 @@ const TeacherDashboard = () => {
                                                                     }}
                                                                 >
                                                                     <Eye className="w-3.5 h-3.5" />
-                                                                    لوحة التحكم
+                                                                    {t("dash.teacher.controlPanel")}
                                                                 </Button>
                                                                 <Button
                                                                     size="sm"
@@ -782,7 +786,7 @@ const TeacherDashboard = () => {
                                                                     onClick={() => handleStartSession(challenge.pin, challenge.topicId)}
                                                                 >
                                                                     <Zap className="w-3.5 h-3.5" />
-                                                                    بدء التحدي
+                                                                    {t("dash.teacher.startChallenge")}
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -791,7 +795,7 @@ const TeacherDashboard = () => {
                                                 {trulyActiveChallenges.length === 0 && (
                                                     <div className="text-center py-8 text-muted-foreground">
                                                         <Gamepad2 className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                        <p className="text-sm">لا توجد تحديات نشطة</p>
+                                                        <p className="text-sm">{t("dash.teacher.noActiveChallenges")}</p>
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -802,7 +806,7 @@ const TeacherDashboard = () => {
                                             <CardHeader className="py-4">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <Users className="w-5 h-5 text-primary" />
-                                                    آخر المشاركين
+                                                    {t("dash.teacher.recentParticipants")}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -831,7 +835,7 @@ const TeacherDashboard = () => {
                                                 ) : (
                                                     <div className="text-center py-8 text-muted-foreground">
                                                         <Users className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                        <p className="text-sm">لا يوجد طلاب حتى الآن</p>
+                                                        <p className="text-sm">{t("dash.teacher.noStudents")}</p>
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -843,10 +847,10 @@ const TeacherDashboard = () => {
                                         <CardHeader className="flex flex-row items-center justify-between py-4">
                                             <CardTitle className="text-lg flex items-center gap-2">
                                                 <Library className="w-5 h-5 text-primary" />
-                                                دروسي
+                                                {t("dash.teacher.myLessons")}
                                             </CardTitle>
                                             <Button size="sm" onClick={() => setActiveTab("topics")}>
-                                                عرض الكل
+                                                {t("dash.common.viewAll")}
                                             </Button>
                                         </CardHeader>
                                         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -863,26 +867,26 @@ const TeacherDashboard = () => {
                                                             <div className="flex-1">
                                                                 <div className="flex justify-between items-start mb-2">
                                                                     <h3 className="font-bold">{topic.title}</h3>
-                                                                    <Badge variant="outline" className="text-[10px] truncate max-w-[100px]">{topic.subject?.name || "مادة"}</Badge>
+                                                                    <Badge variant="outline" className="text-[10px] truncate max-w-[100px]">{topic.subject?.name || t("dash.teacher.subjectFallback")}</Badge>
                                                                 </div>
                                                                 <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{topic.description}</p>
                                                             </div>
                                                             <div className="flex items-center justify-between text-xs text-muted-foreground mb-3 pt-2 border-t">
-                                                                <span><Eye className="w-3 h-3 inline ml-1" />{topic.views || 0} مشاهدة</span>
-                                                                <span>{topic.mediaItems?.length || 0} عنصر</span>
+                                                                <span><Eye className="w-3 h-3 inline mx-1" />{topic.views || 0} {t("dash.teacher.viewsSuffix")}</span>
+                                                                <span>{topic.mediaItems?.length || 0} {t("dash.teacher.itemsSuffix")}</span>
                                                             </div>
                                                             <div className="flex gap-2">
                                                                 <Button size="sm" variant="outline" className="flex-1 text-xs" asChild>
                                                                     <Link to={`/grade/${gId}/subject/${sId}/topic/${topic.id}`}>
-                                                                        <Eye className="w-3 h-3 ml-1" />
-                                                                        عرض
+                                                                        <Eye className="w-3 h-3 mx-1" />
+                                                                        {t("dash.teacher.viewBtn")}
                                                                     </Link>
                                                                 </Button>
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
                                                                         <Button size="sm" className="flex-1 text-xs">
-                                                                            <Gamepad2 className="w-3 h-3 ml-1" />
-                                                                            تحدي
+                                                                            <Gamepad2 className="w-3 h-3 mx-1" />
+                                                                            {t("dash.teacher.challengeBtn")}
                                                                         </Button>
                                                                     </DropdownMenuTrigger>
                                                                     <DropdownMenuContent align="end" className="w-48">
@@ -893,7 +897,7 @@ const TeacherDashboard = () => {
                                                                             })}
                                                                         >
                                                                             <ListChecks className="w-3.5 h-3.5 text-blue-500" />
-                                                                            أنشطة تفاعلية
+                                                                            {t("dash.teacher.activitiesInteractive")}
                                                                         </DropdownMenuItem>
                                                                         <DropdownMenuItem 
                                                                             className="text-xs gap-2 cursor-pointer"
@@ -902,7 +906,7 @@ const TeacherDashboard = () => {
                                                                             })}
                                                                         >
                                                                             <Gamepad2 className="w-3.5 h-3.5 text-purple-500" />
-                                                                            أنشطة تلعيبية
+                                                                            {t("dash.teacher.activitiesGamified")}
                                                                         </DropdownMenuItem>
                                                                         <DropdownMenuItem 
                                                                             className="text-xs gap-2 cursor-pointer font-bold"
@@ -911,7 +915,7 @@ const TeacherDashboard = () => {
                                                                             })}
                                                                         >
                                                                             <Target className="w-3.5 h-3.5 text-emerald-500" />
-                                                                            الكل
+                                                                            {t("dash.teacher.activitiesAll")}
                                                                         </DropdownMenuItem>
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
@@ -922,10 +926,10 @@ const TeacherDashboard = () => {
                                             ) : (
                                                 <div className="col-span-1 md:col-span-2 text-center py-8">
                                                     <Library className="w-12 h-12 mx-auto mb-3 text-primary/30" />
-                                                    <p className="text-muted-foreground text-sm mb-4">لا توجد دروس حالياً، اذهب إلى تبويب "الدروس" لإنشاء درس جديد</p>
+                                                    <p className="text-muted-foreground text-sm mb-4">{t("dash.teacher.noLessons")}</p>
                                                     <Button onClick={() => setActiveTab("topics")} className="gap-2">
                                                         <Plus className="w-4 h-4" />
-                                                        إنشاء درس جديد
+                                                        {t("dash.teacher.createNewLesson")}
                                                     </Button>
                                                 </div>
                                             )}
@@ -955,7 +959,7 @@ const TeacherDashboard = () => {
                                             onDeleteChallenge={handleCancelChallenge}
                                             onCopyToClipboard={(text) => {
                                                 navigator.clipboard.writeText(text);
-                                                toast({ title: "تم النسخ", description: text });
+                                                toast({ title: t("dash.common.copied"), description: text });
                                             }}
                                         />
                                     )}
@@ -981,14 +985,16 @@ const TeacherDashboard = () => {
             </div >
 
             <Dialog open={!!createdChallengeInfo} onOpenChange={(open) => !open && setCreatedChallengeInfo(null)}>
-                <DialogContent className="sm:max-w-md" dir="rtl">
+                <DialogContent className="sm:max-w-md" dir={dir}>
                     <DialogHeader>
                         <div className="mx-auto w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
                             <Share2 className="w-6 h-6" />
                         </div>
-                        <DialogTitle className="text-center text-xl">شارك رابط التحدي</DialogTitle>
+                        <DialogTitle className="text-center text-xl">{t("dash.teacher.share.title")}</DialogTitle>
                         <DialogDescription className="text-center">
-                            تم {createdChallengeInfo?.scheduledStartTime ? "جدولة" : "إنشاء"} تحدي <span className="font-bold text-foreground">"{createdChallengeInfo?.title}"</span> بنجاح. شارك رمز الانضمام مع طلابك للبدء.
+                            {createdChallengeInfo?.scheduledStartTime
+                                ? t("dash.teacher.share.scheduledDesc", { title: createdChallengeInfo?.title || "" })
+                                : t("dash.teacher.share.createdDesc", { title: createdChallengeInfo?.title || "" })}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1000,15 +1006,15 @@ const TeacherDashboard = () => {
                                         <Clock className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">موعد البدء المجدول</div>
+                                        <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t("dash.teacher.share.scheduledStart")}</div>
                                         <div className="font-bold text-blue-950">
-                                            {new Date(createdChallengeInfo.scheduledStartTime).toLocaleString("ar-EG", { dateStyle: 'medium', timeStyle: 'short' })}
+                                            {new Date(createdChallengeInfo.scheduledStartTime).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
                                         </div>
                                     </div>
                                 </div>
                             )}
                             <div className="flex flex-col items-center justify-center bg-muted/50 p-6 rounded-2xl border-2 border-dashed">
-                                <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">رمز التحدي</span>
+                                <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">{t("dash.teacher.share.pinLabel")}</span>
                                 <span className="text-5xl font-mono font-black text-primary tracking-widest">{createdChallengeInfo.pin}</span>
                             </div>
 
@@ -1017,36 +1023,36 @@ const TeacherDashboard = () => {
                                     className="h-12 bg-[#25D366] hover:bg-[#25D366]/90 text-white gap-2"
                                     onClick={() => {
                                         const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
-                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        const text = t("dash.teacher.share.shareText", { title: createdChallengeInfo.title, pin: createdChallengeInfo.pin });
                                         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n\n" + text)}`);
                                     }}
                                 >
                                     <MessageCircle className="w-5 h-5" />
-                                    واتس اب
+                                    {t("dash.teacher.share.whatsapp")}
                                 </Button>
 
                                 <Button
                                     className="h-12 bg-[#1DA1F2] hover:bg-[#1DA1F2]/90 text-white gap-2"
                                     onClick={() => {
                                         const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
-                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        const text = t("dash.teacher.share.shareText", { title: createdChallengeInfo.title, pin: createdChallengeInfo.pin });
                                         window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
                                     }}
                                 >
                                     <Twitter className="w-5 h-5" />
-                                    تويتر / X
+                                    {t("dash.teacher.share.twitter")}
                                 </Button>
 
                                 <Button
                                     className="h-12 bg-[#0088cc] hover:bg-[#0088cc]/90 text-white gap-2"
                                     onClick={() => {
                                         const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
-                                        const text = `انضم إلى تحدي "${createdChallengeInfo.title}"! رمز الانضمام هو: ${createdChallengeInfo.pin}`;
+                                        const text = t("dash.teacher.share.shareText", { title: createdChallengeInfo.title, pin: createdChallengeInfo.pin });
                                         window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
                                     }}
                                 >
                                     <Send className="w-5 h-5" />
-                                    تيليجرام
+                                    {t("dash.teacher.share.telegram")}
                                 </Button>
 
                                 <Button
@@ -1055,11 +1061,11 @@ const TeacherDashboard = () => {
                                     onClick={() => {
                                         const link = `${window.location.origin}/join/${createdChallengeInfo.pin}`;
                                         navigator.clipboard.writeText(link);
-                                        toast({ title: "تم النسخ", description: "تم نسخ رابط التحدي بنجاح" });
+                                        toast({ title: t("dash.common.copied"), description: t("dash.teacher.toast.copiedLink") });
                                     }}
                                 >
                                     <Copy className="w-5 h-5" />
-                                    نسخ الرابط
+                                    {t("dash.common.copyLink")}
                                 </Button>
                             </div>
                         </div>
@@ -1069,14 +1075,14 @@ const TeacherDashboard = () => {
 
             {/* Scheduling Dialog */}
             <Dialog open={!!schedulingTopic} onOpenChange={(open) => !open && setSchedulingTopic(null)}>
-                <DialogContent className="sm:max-w-md" dir="rtl">
+                <DialogContent className="sm:max-w-md" dir={dir}>
                     <DialogHeader>
                         <div className="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
                             <Calendar className="w-6 h-6" />
                         </div>
-                        <DialogTitle className="text-center text-xl font-bold">جدولة تحدي جديد</DialogTitle>
+                        <DialogTitle className="text-center text-xl font-bold">{t("dash.teacher.schedule.title")}</DialogTitle>
                         <DialogDescription className="text-center">
-                            حدد الموعد الذي سيتمكن فيه الطلاب من الانضمام إلى تحدي <span className="font-bold text-foreground">"{schedulingTopic?.details?.title}"</span>.
+                            {t("dash.teacher.schedule.desc", { title: schedulingTopic?.details?.title || "" })}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1085,7 +1091,7 @@ const TeacherDashboard = () => {
                             <div className="space-y-2">
                                 <label className="text-sm font-bold flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-primary" />
-                                    وقت البدء:
+                                    {t("dash.teacher.schedule.startTime")}
                                 </label>
                                 <Input 
                                     type="datetime-local" 
@@ -1098,7 +1104,7 @@ const TeacherDashboard = () => {
                             <div className="space-y-2">
                                 <label className="text-sm font-bold flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-destructive" />
-                                    وقت الانتهاء:
+                                    {t("dash.teacher.schedule.endTime")}
                                 </label>
                                 <Input 
                                     type="datetime-local" 
@@ -1114,14 +1120,14 @@ const TeacherDashboard = () => {
                                 className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white font-bold"
                                 onClick={handleConfirmSchedule}
                             >
-                                تأكيد الجدولة
+                                {t("dash.teacher.schedule.confirm")}
                             </Button>
                             <Button
                                 variant="outline"
                                 className="flex-1 h-12 border-primary/20"
                                 onClick={() => setSchedulingTopic(null)}
                             >
-                                إلغاء
+                                {t("dash.common.cancel")}
                             </Button>
                         </div>
                     </div>

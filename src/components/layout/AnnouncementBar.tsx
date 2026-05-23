@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Megaphone, ArrowLeft } from "lucide-react";
+import { X, Megaphone, ArrowLeft, ArrowRight } from "lucide-react";
 import { useAnnouncements } from "@/hooks/useDatabase";
-import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const AnnouncementBar = () => {
     const [isVisible, setIsVisible] = useState(true);
     const { data: announcements = [], isLoading } = useAnnouncements();
+    const { t, dir } = useTranslation();
 
     if (!isVisible || isLoading || announcements.length === 0) return null;
 
-    const announcement = announcements[0]; // Show the most recent one
+    const announcement = announcements[0];
+    const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
 
     return (
         <AnimatePresence>
@@ -34,15 +36,15 @@ const AnnouncementBar = () => {
                                     href={announcement.link}
                                     className="flex items-center gap-1 font-bold hover:underline"
                                 >
-                                    اقرأ المزيد
-                                    <ArrowLeft className="w-3 h-3" />
+                                    {t("announcement.readMore")}
+                                    <ArrowIcon className="w-3 h-3" />
                                 </a>
                             )}
                         </div>
                         <button
                             onClick={() => setIsVisible(false)}
                             className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0"
-                            aria-label="إغلاق التنبيه"
+                            aria-label={t("announcement.closeAria")}
                         >
                             <X className="w-4 h-4" />
                         </button>

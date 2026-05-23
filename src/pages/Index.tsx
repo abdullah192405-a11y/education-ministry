@@ -7,6 +7,7 @@ import LeaderboardSection from "@/components/landing/LeaderboardSection";
 import JoinSection from "@/components/landing/JoinSection";
 import OrgSubscriptionSection from "@/components/landing/OrgSubscriptionSection";
 import OrganizationsSection from "@/components/landing/OrganizationsSection";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 import CTASection from "@/components/landing/CTASection";
 
@@ -14,8 +15,9 @@ import CTASection from "@/components/landing/CTASection";
 const SHOW_ORG_SUBSCRIPTION_FORM = false;
 
 const Index = () => {
+  const { dir } = useTranslation();
   return (
-    <div className="min-h-screen font-cairo" dir="rtl">
+    <div className="min-h-screen font-cairo" dir={dir}>
       <Header />
       <main>
         <HeroSection />

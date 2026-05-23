@@ -1,4 +1,4 @@
-import { LESSON_RATING_OPTIONS } from "@/components/LessonEmojiRating";
+import { getLessonRatingOptions } from "@/lib/lessonRatingLabels";
 
 export type TopicLessonRatingSummary = {
     total: number;
@@ -26,7 +26,7 @@ export function aggregateTopicLessonRatings(
             ? list.reduce((sum, r) => sum + Number(r.rating), 0) / total
             : 0;
 
-    const distribution = LESSON_RATING_OPTIONS.map((option) => {
+    const distribution = getLessonRatingOptions("ar").map((option) => {
         const count = list.filter((r) => Number(r.rating) === option.value).length;
         return {
             value: option.value,

@@ -18,6 +18,8 @@ import {
     parseWhatsAppFromDetails,
 } from "@/lib/accountOnboarding";
 import { useToast } from "@/hooks/use-toast";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 type AdminRow = {
     id: string;
@@ -36,6 +38,7 @@ export function OrgAdminsTable({
     isLoading: boolean;
 }) {
     const { toast } = useToast();
+    const { t, dir, isRtl } = useDashboardLocale();
     const [q, setQ] = useState("");
 
     const rows = useMemo(() => {
@@ -58,31 +61,31 @@ export function OrgAdminsTable({
     }
 
     if (admins.length === 0) {
-        return <p className="text-sm text-muted-foreground py-8 text-center">لم يُنشأ أي أدمن بعد.</p>;
+        return <p className="text-sm text-muted-foreground py-8 text-center">{t("dash.super.admins.empty")}</p>;
     }
 
     return (
         <div className="space-y-3">
             <div className="relative max-w-md">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", isRtl ? "right-3" : "left-3")} />
                 <Input
-                    className="pr-10"
-                    placeholder="بحث بالاسم أو البريد أو المؤسسة..."
+                    className={isRtl ? "pr-10" : "pl-10"}
+                    placeholder={t("dash.super.admins.search")}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                 />
             </div>
             {rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">لا توجد نتائج.</p>
+                <p className="text-sm text-muted-foreground py-6 text-center">{t("dash.super.admins.noResults")}</p>
             ) : (
                 <div className="rounded-xl border overflow-hidden">
-                    <Table dir="rtl">
+                    <Table dir={dir}>
                         <TableHeader>
                             <TableRow className="bg-muted/40">
-                                <TableHead className="text-right">الاسم</TableHead>
-                                <TableHead className="text-right">البريد</TableHead>
-                                <TableHead className="text-right">المؤسسة</TableHead>
-                                <TableHead className="text-center w-[100px]">إجراء</TableHead>
+                                <TableHead className="text-start">{t("dash.super.admins.colName")}</TableHead>
+                                <TableHead className="text-start">{t("dash.super.admins.colEmail")}</TableHead>
+                                <TableHead className="text-start">{t("dash.super.admins.colOrg")}</TableHead>
+                                <TableHead className="text-center w-[100px]">{t("dash.super.admins.colAction")}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -91,7 +94,7 @@ export function OrgAdminsTable({
                                     ? (row.organizations as { name?: string }[])[0]
                                     : (row.organizations as { name?: string } | null);
                                 const phone = parseWhatsAppFromDetails(row.details);
-                                const orgName = org?.name ?? "المؤسسة";
+                                const orgName = org?.name ?? t("dash.super.admins.orgFallback");
                                 return (
                                     <TableRow key={row.id}>
                                         <TableCell className="font-medium">{row.name}</TableCell>
@@ -100,7 +103,7 @@ export function OrgAdminsTable({
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
                                             {org?.name ??
-                                                (row.organization_id ? "(غير متاح الاسم)" : "غير مربوط")}
+                                                (row.organization_id ? t("dash.super.admins.orgNameUnavailable") : t("dash.super.admins.notLinkedBadge"))}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex justify-center gap-1">
@@ -109,11 +112,11 @@ export function OrgAdminsTable({
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-8 w-8"
-                                                    title="نسخ البريد"
+                                                    title={t("dash.super.admins.copyEmail")}
                                                     onClick={async () => {
                                                         const ok = await copyToClipboard(row.email);
                                                         toast({
-                                                            description: ok ? "تم نسخ البريد." : "تعذّر النسخ.",
+                                                            description: ok ? t("dash.super.admins.copyOk") : t("dash.super.admins.copyFail"),
                                                             variant: ok ? "default" : "destructive",
                                                         });
                                                     }}
@@ -125,7 +128,7 @@ export function OrgAdminsTable({
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-8 w-8 text-[#25D366]"
-                                                    title="تذكير واتساب (بدون كلمة مرور)"
+                                                    title={t("dash.super.admins.whatsappReminder")}
                                                     onClick={() => {
                                                         const msg = buildOrgAdminLoginReminderMessage({
                                                             adminName: row.name,

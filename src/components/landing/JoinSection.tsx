@@ -2,13 +2,16 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, BookOpen, Users, Trophy, Gamepad2, ArrowLeft } from "lucide-react";
+import { Play, BookOpen, Users, Trophy, Gamepad2, ArrowLeft, ArrowRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const JoinSection = () => {
   const navigate = useNavigate();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const { t, dir } = useTranslation();
+  const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
 
   const handlePinChange = (value: string) => {
     // Only allow numbers
@@ -19,7 +22,7 @@ const JoinSection = () => {
 
   const handleJoin = () => {
     if (pin.length !== 6) {
-      setError("الرمز يجب أن يتكون من 6 أرقام");
+      setError(t("joinSection.pinError"));
       return;
     }
     navigate(`/join/${pin}`);
@@ -51,10 +54,10 @@ const JoinSection = () => {
               className="text-white"
             >
               <h2 className="text-3xl md:text-5xl font-black mb-6">
-                تعلّم <span className="text-amber-300">والعب</span> معاً
+                {t("joinSection.title")} <span className="text-amber-300">{t("joinSection.titleHighlight")}</span> {t("joinSection.titleSuffix")}
               </h2>
               <p className="text-white/80 text-lg mb-8">
-                صمم تحدياتك الخاصة لرفع حماس طلابك!
+                {t("joinSection.description")}
               </p>
 
               {/* Stats */}
@@ -62,12 +65,12 @@ const JoinSection = () => {
                 <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
                   <BookOpen className="w-8 h-8 text-white mx-auto mb-2" />
                   <div className="text-2xl font-black text-white">50+</div>
-                  <div className="text-white/70 text-sm">محتوى تعليمي</div>
+                  <div className="text-white/70 text-sm">{t("joinSection.educationalContent")}</div>
                 </div>
                 <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
                   <Gamepad2 className="w-8 h-8 text-white mx-auto mb-2" />
                   <div className="text-2xl font-black text-white">200+</div>
-                  <div className="text-white/70 text-sm">تحدي تفاعلي</div>
+                  <div className="text-white/70 text-sm">{t("joinSection.interactiveChallenges")}</div>
                 </div>
               </div>
 
@@ -78,7 +81,7 @@ const JoinSection = () => {
               >
                 <Link to="/grades">
                   <Play className="w-5 h-5" />
-                  استكشف المحتوى
+                  {t("joinSection.exploreContent")}
                 </Link>
               </Button>
             </motion.div>
@@ -95,8 +98,8 @@ const JoinSection = () => {
                   <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center mb-4">
                     <Users className="w-8 h-8 text-white" />
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">انضم لتحدي</h3>
-                  <p className="text-gray-500">أدخل رمز التحدي للانضمام للعبة</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{t("joinSection.joinChallenge")}</h3>
+                  <p className="text-gray-500">{t("joinSection.enterPin")}</p>
                 </div>
 
                 <div className="space-y-4">
@@ -121,13 +124,13 @@ const JoinSection = () => {
                     className="w-full h-14 text-lg gap-2"
                     disabled={pin.length !== 6}
                   >
-                    <ArrowLeft className="w-5 h-5" />
-                    انضم للتحدي
+                    <ArrowIcon className="w-5 h-5" />
+                    {t("joinSection.joinButton")}
                   </Button>
 
                   <div className="text-center">
                     <p className="text-sm text-gray-400">
-                      أو <Link to="/join" className="text-primary hover:underline font-medium">انضم بدون رمز</Link>
+                      {t("joinSection.orJoinWithoutPin")} <Link to="/join" className="text-primary hover:underline font-medium">{t("joinSection.joinWithoutPin")}</Link>
                     </p>
                   </div>
                 </div>
@@ -136,15 +139,15 @@ const JoinSection = () => {
                 <div className="mt-6 pt-6 border-t grid grid-cols-3 gap-2 text-center">
                   <div>
                     <Trophy className="w-5 h-5 mx-auto mb-1 text-amber-500" />
-                    <span className="text-xs text-gray-500">جوائز</span>
+                    <span className="text-xs text-gray-500">{t("joinSection.prizes")}</span>
                   </div>
                   <div>
                     <Gamepad2 className="w-5 h-5 mx-auto mb-1 text-emerald-500" />
-                    <span className="text-xs text-gray-500">ألعاب</span>
+                    <span className="text-xs text-gray-500">{t("joinSection.games")}</span>
                   </div>
                   <div>
                     <Users className="w-5 h-5 mx-auto mb-1 text-purple-500" />
-                    <span className="text-xs text-gray-500">جماعي</span>
+                    <span className="text-xs text-gray-500">{t("joinSection.team")}</span>
                   </div>
                 </div>
               </div>

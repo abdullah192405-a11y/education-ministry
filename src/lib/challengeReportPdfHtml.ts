@@ -32,7 +32,18 @@ type ChallengeReportLessonRating = {
     }>;
 };
 
+import {
+    formatReportLabel,
+    getChallengeReportLabels,
+    type ChallengeReportLabels,
+    type ReportLanguage,
+} from "./challengeReportLabels";
+import { getLessonRatingLabel } from "./lessonRatingLabels";
+
+let L: ChallengeReportLabels = getChallengeReportLabels("ar");
+
 type ChallengeReportOptions = {
+    language?: ReportLanguage;
     topicTitle: string;
     lessonTitle?: string;
     className?: string;
@@ -146,12 +157,12 @@ function computeSummary(results: any[]) {
 
 function renderMetricCards(summary: ReturnType<typeof computeSummary>): string {
     const metrics = [
-        ["إجمالي المحاولات", summary.count],
-        ["متوسط النسبة", `${summary.averagePercent}%`],
-        ["متوسط النقاط", summary.averageScore],
-        ["أعلى نقاط", summary.maxScore],
-        ["أعضاء مسجلون", summary.members],
-        ["زوار", summary.guests],
+        [L.metrics.totalAttempts, summary.count],
+        [L.metrics.avgPercent, `${summary.averagePercent}%`],
+        [L.metrics.avgPoints, summary.averageScore],
+        [L.metrics.maxPoints, summary.maxScore],
+        [L.metrics.registeredMembers, summary.members],
+        [L.metrics.guests, summary.guests],
     ];
 
     return `
@@ -172,13 +183,13 @@ function renderMetricCards(summary: ReturnType<typeof computeSummary>): string {
 
 function renderReportMeta(opts: ChallengeReportOptions, generatedAt: string): string {
     const rows = [
-        ["اسم الدرس", opts.lessonTitle],
-        ["اسم الصف / الفصل", opts.className],
-        ["المادة", opts.subjectName],
-        ["اسم المعلم", opts.teacherName],
-        ["التاريخ", opts.sessionDate],
-        ["الوقت", opts.sessionTime],
-        ["تم الإنشاء", generatedAt],
+        [L.meta.lessonName, opts.lessonTitle],
+        [L.meta.className, opts.className],
+        [L.meta.subject, opts.subjectName],
+        [L.meta.teacherName, opts.teacherName],
+        [L.meta.date, opts.sessionDate],
+        [L.meta.time, opts.sessionTime],
+        [L.meta.generatedAt, generatedAt],
     ].filter(([, value]) => value);
 
     return rows
@@ -194,10 +205,14 @@ function renderLessonRatings(lessonRating?: ChallengeReportLessonRating): string
 
     return `
         <section class="section page-break-avoid">
-            <h2>تقييم الدرس</h2>
+            <h2>${escapeHtml(L.sections.lessonRating)}</h2>
             <p class="lesson-rating-summary">
-                <strong>${lessonRating.total}</strong> تقييم — المتوسط
-                <strong>${lessonRating.average.toFixed(1)}</strong> / 5
+                ${escapeHtml(
+                    formatReportLabel(L.sections.lessonRatingSummaryLine, {
+                        count: lessonRating.total,
+                        avg: lessonRating.average.toFixed(1),
+                    })
+                )}
             </p>
             <div class="lesson-rating-bars">
                 ${lessonRating.distribution
@@ -207,7 +222,7 @@ function renderLessonRatings(lessonRating?: ChallengeReportLessonRating): string
                             <div class="lesson-rating-row">
                                 <div class="lesson-rating-label">
                                     <span class="lesson-rating-emoji">${row.emoji}</span>
-                                    <span>${escapeHtml(row.label)}</span>
+                                    <span>${escapeHtml(getLessonRatingLabel(row.value, L.lang as ReportLanguage))}</span>
                                 </div>
                                 <div class="lesson-rating-track">
                                     <div class="lesson-rating-fill" style="width:${width}%"></div>
@@ -227,7 +242,7 @@ function renderAnalysisRows(rows?: Array<{ label: string; value: string | number
 
     return `
         <section class="section">
-            <h2>تحليل إضافي</h2>
+            <h2>${escapeHtml(L.sections.additionalAnalysis)}</h2>
             <div class="analysis-grid">
                 ${rows
                     .map(
@@ -249,7 +264,7 @@ function renderRecommendations(recommendations?: string[]): string {
 
     return `
         <section class="section">
-            <h2>توصيات تعليمية</h2>
+            <h2>${escapeHtml(L.sections.educationalRecommendations)}</h2>
             <ul class="recommendations">
                 ${recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
             </ul>
@@ -275,9 +290,9 @@ function renderRecommendationReport(report?: ChallengeRecommendationReport, reco
 
     return `
         <section class="section recommendation-report">
-            <h2>توصيات تعليمية</h2>
+            <h2>${escapeHtml(L.sections.educationalRecommendations)}</h2>
             <div class="recommendation-summary">
-                <div class="recommendation-kicker">تقرير توصيات مهني مولّد من تحليل النتائج</div>
+                <div class="recommendation-kicker">${escapeHtml(L.sections.recommendationsKicker)}</div>
                 <h3>${escapeHtml(report.headline)}</h3>
                 <p>${escapeHtml(report.summary)}</p>
             </div>
@@ -297,14 +312,14 @@ function renderRecommendationReport(report?: ChallengeRecommendationReport, reco
                                     <div>
                                         <h4>${escapeHtml(section.title)}</h4>
                                         <div class="recommendation-badges">
-                                            ${section.priority ? `<span>الأولوية: ${escapeHtml(section.priority)}</span>` : ""}
-                                            ${section.timeframe ? `<span>الزمن: ${escapeHtml(section.timeframe)}</span>` : ""}
+                                            ${section.priority ? `<span>${escapeHtml(L.recommendation.priority)}: ${escapeHtml(section.priority)}</span>` : ""}
+                                            ${section.timeframe ? `<span>${escapeHtml(L.recommendation.timeframe)}: ${escapeHtml(section.timeframe)}</span>` : ""}
                                         </div>
                                     </div>
                                 </div>
-                                ${renderRecommendationListBlock("الدليل من البيانات", section.evidence, "evidence-block")}
-                                ${renderRecommendationListBlock("الإجراءات المقترحة", actions, "actions-block")}
-                                ${renderRecommendationListBlock("مؤشرات النجاح", section.successIndicators, "indicators-block")}
+                                ${renderRecommendationListBlock(L.recommendation.dataEvidence, section.evidence, "evidence-block")}
+                                ${renderRecommendationListBlock(L.recommendation.suggestedActions, actions, "actions-block")}
+                                ${renderRecommendationListBlock(L.recommendation.successIndicators, section.successIndicators, "indicators-block")}
                             </article>
                         `;
                     })
@@ -348,7 +363,7 @@ function renderBarChart(title: string, rows?: Array<Record<string, unknown>>, su
         <div class="chart-card">
             <div class="chart-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>المتوسط ${escapeHtml(formatChartValue(average, suffix))}</span>
+                <span>${escapeHtml(L.charts.average)} ${escapeHtml(formatChartValue(average, suffix))}</span>
             </div>
             <div class="bar-list">
                 ${visibleRows
@@ -368,7 +383,7 @@ function renderBarChart(title: string, rows?: Array<Record<string, unknown>>, su
                     })
                     .join("")}
             </div>
-            ${rows.length > visibleRows.length ? `<p class="chart-note">يعرض أعلى ${visibleRows.length} عناصر من أصل ${rows.length}.</p>` : ""}
+            ${rows.length > visibleRows.length ? `<p class="chart-note">${escapeHtml(formatReportLabel(L.charts.showsTopN, { shown: visibleRows.length, total: rows.length }))}</p>` : ""}
         </div>
     `;
 }
@@ -409,14 +424,14 @@ function renderDonutChart(title: string, rows?: Array<Record<string, unknown>>):
         <div class="chart-card">
             <div class="chart-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>الإجمالي ${escapeHtml(total)}</span>
+                <span>${escapeHtml(L.charts.total)} ${escapeHtml(total)}</span>
             </div>
             <div class="donut-wrap">
                 <svg class="donut" viewBox="0 0 144 144" aria-hidden="true">
                     <circle cx="72" cy="72" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="22" />
                     ${segments}
                     <text x="72" y="68" text-anchor="middle" class="donut-total">${escapeHtml(total)}</text>
-                    <text x="72" y="86" text-anchor="middle" class="donut-label">إجمالي</text>
+                    <text x="72" y="86" text-anchor="middle" class="donut-label">${escapeHtml(L.charts.total)}</text>
                 </svg>
                 <div class="legend">
                     ${visibleRows
@@ -465,8 +480,8 @@ function renderDailyTrendChart(rows?: Array<Record<string, unknown>>): string {
     return `
         <div class="chart-card chart-card-wide">
             <div class="chart-head">
-                <h3>اتجاه الأداء الأسبوعي</h3>
-                <span>الأعمدة = المحاولات، الخط = متوسط الأداء</span>
+                <h3>${escapeHtml(L.charts.weeklyTrend)}</h3>
+                <span>${escapeHtml(L.charts.weeklyTrendSub)}</span>
             </div>
             <svg class="trend-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
                 ${[0, 25, 50, 75, 100]
@@ -522,8 +537,8 @@ function renderScatterChart(rows?: Array<Record<string, unknown>>): string {
     return `
         <div class="chart-card chart-card-wide">
             <div class="chart-head">
-                <h3>العلاقة بين الزمن والدرجة</h3>
-                <span>كل نقطة تمثل محاولة واحدة</span>
+                <h3>${escapeHtml(L.charts.timeVsScore)}</h3>
+                <span>${escapeHtml(L.charts.timeVsScoreSub)}</span>
             </div>
             <svg class="scatter-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
                 ${[0, 25, 50, 75, 100]
@@ -546,10 +561,10 @@ function renderScatterChart(rows?: Array<Record<string, unknown>>): string {
                         return `<circle cx="${x}" cy="${y}" r="5" fill="${escapeHtml(getChartColor(row, index))}" opacity="0.78" />`;
                     })
                     .join("")}
-                <text x="${left}" y="${height - 14}" class="x-label">زمن أقل</text>
-                <text x="${width - right}" y="${height - 14}" class="x-label">زمن أكثر</text>
+                <text x="${left}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.lessTime)}</text>
+                <text x="${width - right}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.moreTime)}</text>
             </svg>
-            ${rows.length > visibleRows.length ? `<p class="chart-note">يعرض أول ${visibleRows.length} محاولة من أصل ${rows.length}.</p>` : ""}
+            ${rows.length > visibleRows.length ? `<p class="chart-note">${escapeHtml(formatReportLabel(L.charts.showsFirstN, { shown: visibleRows.length, total: rows.length }))}</p>` : ""}
         </div>
     `;
 }
@@ -559,23 +574,23 @@ function renderCharts(charts?: ChallengeReportOptions["charts"]): string {
 
     const chartSections = [
         renderDailyTrendChart(charts.dailyTrend),
-        renderDonutChart("نوع المشاركين", charts.participantTypeData),
-        renderDonutChart("نتائج الإجابات", charts.answerOutcomeData),
-        renderBarChart("توزيع الدرجات", charts.scoreDistribution),
-        renderBarChart("أفضل النتائج", charts.topScoreChartData, "%", 6),
-        renderBarChart("دقة الأسئلة", charts.questionAccuracyChartData, "%", 8),
-        renderBarChart("متوسط زمن الأسئلة", charts.questionTimeChartData, "ث", 8),
-        renderBarChart("ملخص توزيع الدرجات", charts.scoreBoxData),
+        renderDonutChart(L.charts.participantType, charts.participantTypeData),
+        renderDonutChart(L.charts.answerOutcomes, charts.answerOutcomeData),
+        renderBarChart(L.charts.scoreDistribution, charts.scoreDistribution),
+        renderBarChart(L.charts.topScores, charts.topScoreChartData, "%", 6),
+        renderBarChart(L.charts.questionAccuracy, charts.questionAccuracyChartData, "%", 8),
+        renderBarChart(L.charts.avgQuestionTime, charts.questionTimeChartData, L.charts.secSuffix, 8),
+        renderBarChart(L.charts.scoreDistributionSummary, charts.scoreBoxData),
         renderScatterChart(charts.scoreTimeScatterData),
-        renderBarChart("شرائح المتعلمين", charts.learnerSegments),
-        renderBarChart("صعوبة الأسئلة", charts.questionDifficultyData),
+        renderBarChart(L.charts.learnerSegments, charts.learnerSegments),
+        renderBarChart(L.charts.questionDifficulty, charts.questionDifficultyData),
     ].filter(Boolean);
 
     if (!chartSections.length) return "";
 
     return `
         <section class="section page-break-avoid">
-            <h2>الرسوم والمؤشرات</h2>
+            <h2>${escapeHtml(L.sections.chartsAndIndicators)}</h2>
             <div class="charts-grid">${chartSections.join("")}</div>
         </section>
     `;
@@ -586,18 +601,18 @@ function renderParticipants(results: any[]): string {
 
     return `
         <section class="section">
-            <h2>سجل المشاركين والنتائج</h2>
+            <h2>${escapeHtml(L.sections.participantsLog)}</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>الترتيب</th>
-                        <th>المشارك</th>
-                        <th>النسبة</th>
-                        <th>النقاط</th>
-                        <th>صحيح</th>
-                        <th>خطأ</th>
-                        <th>الوقت</th>
-                        <th>النوع</th>
+                        <th>${escapeHtml(L.participantsTable.rank)}</th>
+                        <th>${escapeHtml(L.participantsTable.participant)}</th>
+                        <th>${escapeHtml(L.participantsTable.percent)}</th>
+                        <th>${escapeHtml(L.participantsTable.points)}</th>
+                        <th>${escapeHtml(L.participantsTable.correct)}</th>
+                        <th>${escapeHtml(L.participantsTable.wrong)}</th>
+                        <th>${escapeHtml(L.participantsTable.time)}</th>
+                        <th>${escapeHtml(L.participantsTable.type)}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -614,12 +629,12 @@ function renderParticipants(results: any[]): string {
                                             <td>${escapeHtml(row?.correct_answers ?? row?.correctAnswers ?? "—")}</td>
                                             <td>${escapeHtml(row?.wrong_answers ?? row?.wrongAnswers ?? "—")}</td>
                                             <td>${escapeHtml(row?.time_taken ?? row?.timeTaken ?? "—")}</td>
-                                            <td>${row?.user?.id ? "مسجل" : "زائر"}</td>
+                                            <td>${row?.user?.id ? escapeHtml(L.participantsTable.registered) : escapeHtml(L.participantsTable.guest)}</td>
                                         </tr>
                                     `
                                   )
                                   .join("")
-                            : `<tr><td colspan="8" class="empty">لا توجد نتائج مسجلة.</td></tr>`
+                            : `<tr><td colspan="8" class="empty">${escapeHtml(L.participantsTable.empty)}</td></tr>`
                     }
                 </tbody>
             </table>
@@ -632,14 +647,14 @@ function renderQuestionRows(rows?: ChallengeReportQuestionRow[]): string {
 
     return `
         <section class="section">
-            <h2>تحليل الأسئلة</h2>
+            <h2>${escapeHtml(L.sections.questionAnalysis)}</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>السؤال</th>
-                        <th>الدقة</th>
-                        <th>إجابات صحيحة</th>
-                        <th>إجمالي الإجابات</th>
+                        <th>${escapeHtml(L.questionsTable.question)}</th>
+                        <th>${escapeHtml(L.questionsTable.accuracy)}</th>
+                        <th>${escapeHtml(L.questionsTable.correct)}</th>
+                        <th>${escapeHtml(L.questionsTable.total)}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -665,19 +680,20 @@ export function buildChallengeReportHtml(
     options: ChallengeReportOptions,
     fontFacesCss: string = buildUrlReportFontFaces(getReportFontBaseUrl())
 ): string {
-    const opts = options || { topicTitle: "تقرير التحدي" };
+    L = getChallengeReportLabels(options.language);
+    const opts = options || { topicTitle: L.defaultTitle };
     const results = Array.isArray(opts.results) ? opts.results : [];
     const summary = computeSummary(results);
-    const generatedAt = new Date().toLocaleString("ar-SA", {
+    const generatedAt = new Date().toLocaleString(L.locale, {
         dateStyle: "full",
         timeStyle: "short",
     });
 
     return `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${L.lang}" dir="${L.dir}">
 <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(opts.topicTitle || "تقرير التحدي")}</title>
+    <title>${escapeHtml(opts.topicTitle || L.defaultTitle)}</title>
     <style>
         ${fontFacesCss}
         @page { size: A4; margin: 12mm 10mm; }
@@ -693,10 +709,28 @@ export function buildChallengeReportHtml(
             margin: 0;
             color: #0f172a;
             background: #ffffff;
-            direction: rtl;
+            direction: ${L.dir};
+            text-align: start;
             font-family: "Cairo", "Tahoma", "Arial Unicode MS", "Segoe UI", sans-serif;
             font-size: 12px;
             line-height: 1.75;
+        }
+        h1, h2, h3, h4, p, li, th, td, span, strong {
+            text-align: inherit;
+        }
+        .metric-grid,
+        .analysis-grid,
+        .charts-grid,
+        .chart-card,
+        .chart-card-wide,
+        .donut-wrap,
+        .bar-list,
+        .bar-row,
+        .trend-chart,
+        .scatter-chart,
+        .lesson-rating-bars,
+        .lesson-rating-row {
+            direction: ltr;
         }
         .header {
             margin-bottom: 18px;
@@ -796,7 +830,7 @@ export function buildChallengeReportHtml(
         .lesson-rating-meta {
             font-size: 10px;
             color: #64748b;
-            text-align: left;
+            text-align: end;
         }
         .section {
             margin-top: 18px;
@@ -826,7 +860,7 @@ export function buildChallengeReportHtml(
         th, td {
             padding: 8px 9px;
             border-bottom: 1px solid #e2e8f0;
-            text-align: right;
+            text-align: start;
             vertical-align: top;
         }
         tbody tr:nth-child(even) td { background: #f8fafc; }
@@ -836,10 +870,12 @@ export function buildChallengeReportHtml(
         }
         .recommendations {
             margin: 0;
-            padding: 12px 28px 12px 12px;
+            padding-block: 12px;
+            padding-inline: 28px 12px;
             border: 1px solid #fde68a;
             border-radius: 16px;
             background: #fffbeb;
+            list-style-position: outside;
         }
         .recommendations li { margin: 5px 0; }
         .recommendation-report {
@@ -964,7 +1000,9 @@ export function buildChallengeReportHtml(
         }
         .recommendation-block ul {
             margin: 0;
-            padding: 0 18px 0 0;
+            padding-inline-start: 18px;
+            padding-inline-end: 0;
+            list-style-position: outside;
         }
         .recommendation-block li {
             margin: 4px 0;
@@ -1000,7 +1038,7 @@ export function buildChallengeReportHtml(
             flex-shrink: 0;
             color: #64748b;
             font-size: 9.5px;
-            text-align: left;
+            text-align: end;
         }
         .bar-row {
             display: grid;
@@ -1030,7 +1068,7 @@ export function buildChallengeReportHtml(
         .bar-row strong {
             color: #0f172a;
             font-size: 10.5px;
-            text-align: left;
+            text-align: end;
         }
         .chart-note {
             margin: 8px 0 0;
@@ -1085,7 +1123,37 @@ export function buildChallengeReportHtml(
         .trend-chart, .scatter-chart {
             width: 100%;
             height: auto;
+        }
+        html[dir="ltr"] .header,
+        html[dir="ltr"] .section,
+        html[dir="ltr"] .meta,
+        html[dir="ltr"] .footer,
+        html[dir="ltr"] table,
+        html[dir="ltr"] .lesson-rating-summary,
+        html[dir="ltr"] .lesson-rating-label,
+        html[dir="ltr"] .recommendation-report,
+        html[dir="ltr"] .recommendation-summary,
+        html[dir="ltr"] .recommendation-section,
+        html[dir="ltr"] .recommendation-section-head,
+        html[dir="ltr"] .recommendation-badges,
+        html[dir="ltr"] .recommendation-block,
+        html[dir="ltr"] .key-findings,
+        html[dir="ltr"] .recommendations {
             direction: ltr;
+            text-align: start;
+        }
+        html[dir="ltr"] .recommendation-block ul {
+            padding-inline-start: 18px;
+            padding-inline-end: 0;
+        }
+        html[dir="ltr"] .recommendation-section-head {
+            grid-template-columns: 34px 1fr;
+        }
+        html[dir="ltr"] .donut-wrap {
+            grid-template-columns: 132px 1fr;
+        }
+        html[dir="ltr"] .chart-head {
+            flex-direction: row;
         }
         .grid-line {
             stroke: #e2e8f0;
@@ -1135,8 +1203,8 @@ export function buildChallengeReportHtml(
 </head>
 <body>
     <header class="header">
-        <p class="eyebrow">تقرير أداء التحدي التعليمي</p>
-        <h1>${escapeHtml(opts.topicTitle || "تقرير التحدي")}</h1>
+        <p class="eyebrow">${escapeHtml(L.eyebrow)}</p>
+        <h1>${escapeHtml(opts.topicTitle || L.defaultTitle)}</h1>
         <div class="meta">
             ${renderReportMeta(opts, generatedAt)}
         </div>
@@ -1152,8 +1220,8 @@ export function buildChallengeReportHtml(
     ${renderRecommendationReport(opts.recommendationReport, opts.recommendations)}
 
     <footer class="footer">
-        منصة lab4<br />
-        المملكة العربية السعودية
+        ${escapeHtml(L.footerPlatform)}<br />
+        ${escapeHtml(L.footerRegion)}
     </footer>
 </body>
 </html>`;

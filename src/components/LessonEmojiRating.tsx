@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { useTopicRatings, useUpsertTopicRating } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
 import { findMyTopicRating, getOrCreateTopicRatingGuestId } from "@/lib/topicRatingGuest";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getLessonRatingOptions } from "@/lib/lessonRatingLabels";
 import {
     Dialog,
     DialogContent,
@@ -13,13 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-export const LESSON_RATING_OPTIONS = [
-    { value: 1, emoji: "\u{1F620}", label: "سيء جداً" },
-    { value: 2, emoji: "\u{1F61E}", label: "غير راضٍ" },
-    { value: 3, emoji: "\u{1F610}", label: "محايد" },
-    { value: 4, emoji: "\u{1F604}", label: "جيد" },
-    { value: 5, emoji: "\u{1F929}", label: "ممتاز" },
-] as const;
+/** @deprecated Use getLessonRatingOptions(language) for localized labels */
+export const LESSON_RATING_OPTIONS = getLessonRatingOptions("ar");
 
 type LessonEmojiRatingContentProps = {
     topicId: string;
@@ -37,6 +34,8 @@ export const LessonEmojiRatingContent = ({
     onRated,
 }: LessonEmojiRatingContentProps) => {
     const { toast } = useToast();
+    const { t, language, dir } = useLanguage();
+    const ratingOptions = useMemo(() => getLessonRatingOptions(language), [language]);
     const { data: topicRatings = [] } = useTopicRatings(topicId);
     const upsertTopicRatingMutation = useUpsertTopicRating();
     const [guestId] = useState(() => getOrCreateTopicRatingGuestId());
@@ -63,11 +62,18 @@ export const LessonEmojiRatingContent = ({
                 guestId: userId ? null : guestId,
                 rating: value,
             });
-            toast({ title: "شكراً!", description: "تم حفظ تقييمك للدرس." });
+            toast({
+                title: t("lessonRating.toastThanks"),
+                description: t("lessonRating.toastSaved"),
+            });
             onRated?.();
         } catch (e) {
             console.error(e);
-            toast({ title: "خطأ", description: "تعذر حفظ التقييم", variant: "destructive" });
+            toast({
+                title: t("lessonRating.toastError"),
+                description: t("lessonRating.toastSaveFailed"),
+                variant: "destructive",
+            });
         }
     };
 
@@ -76,11 +82,14 @@ export const LessonEmojiRatingContent = ({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             className={cn("text-center", className)}
-            dir="rtl"
+            dir={dir}
         >
             {!compact && ratingsTotal > 0 && (
                 <p className="text-xs text-muted-foreground mb-4">
-                    {ratingsTotal} تقييم — المتوسط {ratingsAvg.toFixed(1)} / 5
+                    {t("lessonRating.summaryLine", {
+                        count: ratingsTotal,
+                        avg: ratingsAvg.toFixed(1),
+                    })}
                 </p>
             )}
 
@@ -89,7 +98,7 @@ export const LessonEmojiRatingContent = ({
                 animate={{ opacity: 1, y: 0 }}
                 className="grid w-full grid-cols-5 gap-1.5 sm:gap-3 max-w-lg mx-auto"
             >
-                {LESSON_RATING_OPTIONS.map((option) => {
+                {ratingOptions.map((option) => {
                     const selected = myRating === option.value;
                     return (
                         <button
@@ -126,7 +135,8 @@ export const LessonEmojiRatingContent = ({
 
             {myRating > 0 && (
                 <p className="text-xs text-muted-foreground mt-3">
-                    تقييمك: {LESSON_RATING_OPTIONS.find((o) => o.value === myRating)?.emoji}
+                    {t("lessonRating.yourRating")}{" "}
+                    {ratingOptions.find((o) => o.value === myRating)?.emoji}
                 </p>
             )}
         </motion.div>
@@ -136,20 +146,24 @@ export const LessonEmojiRatingContent = ({
 type LessonEmojiRatingProps = LessonEmojiRatingContentProps;
 
 /** Inline card (e.g. topic page). */
-const LessonEmojiRating = ({ className, ...props }: LessonEmojiRatingProps) => (
-    <motion.div
-        className={cn(
-            "rounded-2xl border border-primary/15 bg-muted/30 px-4 py-5",
-            className
-        )}
-    >
-        <h3 className="text-base font-bold mb-1 text-center">تقييم الدرس</h3>
-        {props.compact && (
-            <p className="text-xs text-muted-foreground mb-4 text-center">كيف كانت تجربة هذا الدرس؟</p>
-        )}
-        <LessonEmojiRatingContent {...props} compact={props.compact ?? false} />
-    </motion.div>
-);
+const LessonEmojiRating = ({ className, ...props }: LessonEmojiRatingProps) => {
+    const { t, dir } = useLanguage();
+    return (
+        <motion.div
+            dir={dir}
+            className={cn(
+                "rounded-2xl border border-primary/15 bg-muted/30 px-4 py-5",
+                className
+            )}
+        >
+            <h3 className="text-base font-bold mb-1 text-center">{t("lessonRating.title")}</h3>
+            {props.compact && (
+                <p className="text-xs text-muted-foreground mb-4 text-center">{t("lessonRating.prompt")}</p>
+            )}
+            <LessonEmojiRatingContent {...props} compact={props.compact ?? false} />
+        </motion.div>
+    );
+};
 
 type LessonEmojiRatingDialogProps = {
     topicId: string;
@@ -164,10 +178,12 @@ export const LessonEmojiRatingDialog = ({
     userId,
     open,
     onOpenChange,
-}: LessonEmojiRatingDialogProps) => (
+}: LessonEmojiRatingDialogProps) => {
+    const { t, dir } = useLanguage();
+    return (
     <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-            dir="rtl"
+            dir={dir}
             className={cn(
                 "gap-3 border-0 p-4 shadow-2xl sm:gap-4 sm:border sm:p-6 sm:max-w-md sm:rounded-2xl",
                 // Mobile: bottom sheet
@@ -184,9 +200,9 @@ export const LessonEmojiRatingDialog = ({
             <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-muted sm:hidden" aria-hidden />
 
             <DialogHeader className="space-y-1 text-center sm:text-center">
-                <DialogTitle className="text-lg font-black sm:text-xl">تقييم الدرس</DialogTitle>
+                <DialogTitle className="text-lg font-black sm:text-xl">{t("lessonRating.title")}</DialogTitle>
                 <DialogDescription className="text-sm leading-relaxed sm:text-base">
-                    كيف كانت تجربة هذا الدرس؟ اختر إيموجي يعبر عن رأيك
+                    {t("lessonRating.dialogDesc")}
                 </DialogDescription>
             </DialogHeader>
 
@@ -204,10 +220,11 @@ export const LessonEmojiRatingDialog = ({
                 className="mt-1 h-11 w-full text-muted-foreground sm:mt-2 sm:h-12"
                 onClick={() => onOpenChange(false)}
             >
-                لاحقاً
+                {t("lessonRating.later")}
             </Button>
         </DialogContent>
     </Dialog>
-);
+    );
+};
 
 export default LessonEmojiRating;

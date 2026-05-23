@@ -16,8 +16,11 @@ import {
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 const TeacherSettingsTab = () => {
+    const { t, dir, isRtl } = useDashboardLocale();
     const { data: user } = useUser();
     const { data: platformSettings } = usePlatformSettings();
     const { mutateAsync: updateUser, isPending: isUpdatingUser } = useUpdateUser();
@@ -48,9 +51,9 @@ const TeacherSettingsTab = () => {
 
         if (file.size > 5 * 1024 * 1024) {
             toast({
-                title: "حجم الملف كبير",
-                description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت",
-                variant: "destructive"
+                title: t("dash.student.toast.fileLargeTitle"),
+                description: t("dash.student.toast.fileLargeDesc"),
+                variant: "destructive",
             });
             return;
         }
@@ -73,15 +76,15 @@ const TeacherSettingsTab = () => {
 
             setAvatar(data.publicUrl);
             toast({
-                title: "تم رفع الصورة",
-                description: "تم تحديث صورتك الرمزية بنجاح",
+                title: t("dash.student.toast.uploaded"),
+                description: t("dash.student.toast.uploadedDesc"),
             });
         } catch (error: any) {
             console.error("Error uploading avatar:", error);
             toast({
-                title: "خطأ",
-                description: error.message || "حدث خطأ أثناء رفع الصورة. الرجاء التأكد من وجود bucket باسم teacher-content في Supabase.",
-                variant: "destructive"
+                title: t("dash.common.error"),
+                description: error.message || t("dash.teacher.settings.uploadErr"),
+                variant: "destructive",
             });
         } finally {
             setIsUploading(false);
@@ -96,15 +99,15 @@ const TeacherSettingsTab = () => {
                 updates: { name, avatar }
             });
             toast({
-                title: "تم حفظ التغييرات",
-                description: "تم تحديث معلوماتك الشخصية بنجاح",
+                title: t("dash.teacher.settings.toast.saved"),
+                description: t("dash.teacher.settings.toast.profileSaved"),
             });
         } catch (err) {
             console.error("User update error:", err);
             toast({
-                title: "خطأ",
-                description: "فشل تحديث المعلومات الشخصية",
-                variant: "destructive"
+                title: t("dash.common.error"),
+                description: t("dash.teacher.settings.toast.profileFail"),
+                variant: "destructive",
             });
         }
     };
@@ -115,52 +118,59 @@ const TeacherSettingsTab = () => {
                 key: STUDENT_PUBLIC_DISCUSSIONS_ENABLED_KEY,
                 value: String(discussionsEnabled),
                 type: "boolean",
-                label: "تفعيل ساحة النقاش للطلاب",
+                label: t("dash.teacher.settings.discussions"),
             });
             toast({
-                title: "تم حفظ إعدادات الفصل",
-                description: "تم تحديث إعدادات المناقشات العامة بنجاح",
+                title: t("dash.teacher.settings.toast.saved"),
+                description: t("dash.teacher.settings.toast.classSaved"),
             });
         } catch (err) {
             console.error("Failed to save class preferences:", err);
             toast({
-                title: "خطأ",
-                description: "فشل حفظ إعدادات الفصل",
+                title: t("dash.common.error"),
+                description: t("dash.teacher.settings.toast.classFail"),
                 variant: "destructive",
             });
         }
     };
 
+    const notifItems = [
+        { title: t("dash.teacher.settings.notif1"), desc: t("dash.teacher.settings.notif1Desc") },
+        { title: t("dash.teacher.settings.notif2"), desc: t("dash.teacher.settings.notif2Desc") },
+        { title: t("dash.teacher.settings.notif3"), desc: t("dash.teacher.settings.notif3Desc") },
+        { title: t("dash.teacher.settings.notif4"), desc: t("dash.teacher.settings.notif4Desc") },
+    ];
+
     const isUpdating = isUpdatingUser || isSavingClassPreferences;
 
     return (
-        <Tabs defaultValue="profile" className="w-full" dir="rtl">
-            <TabsList className="w-full justify-end mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto">
+        <Tabs defaultValue="profile" className="w-full" dir={dir}>
+            <TabsList className={cn("w-full mb-6 bg-transparent p-0 gap-2 border-b rounded-none h-auto", isRtl ? "justify-end" : "justify-start")}>
                 <TabsTrigger
                     value="profile"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    الملف الشخصي
+                    {t("dash.teacher.settings.tab.profile")}
                 </TabsTrigger>
                 <TabsTrigger
                     value="notifications"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    الإشعارات
+                    {t("dash.teacher.settings.tab.notifications")}
                 </TabsTrigger>
                 <TabsTrigger
                     value="class"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    إعدادات الفصل
+                    {t("dash.teacher.settings.tab.class")}
                 </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="profile" className="space-y-6" dir="rtl">
+            <TabsContent value="profile" className="space-y-6" dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>المعلومات الشخصية</CardTitle>
-                        <CardDescription>قم بتحديث اسمك وصورتك الرمزية</CardDescription>
+                        <CardTitle>{t("dash.teacher.settings.profileTitle")}</CardTitle>
+                        <CardDescription>{t("dash.teacher.settings.profileDesc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-center gap-6">
@@ -176,18 +186,18 @@ const TeacherSettingsTab = () => {
                                 onChange={handleAvatarUpload}
                             />
                             <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                                {isUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                                {isUploading ? "جاري الرفع..." : "تغيير الصورة"}
+                                {isUploading ? <Loader2 className="w-4 h-4 mx-2 animate-spin" /> : null}
+                                {isUploading ? t("dash.student.settings.uploading") : t("dash.student.settings.changeAvatar")}
                             </Button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label>الاسم الكامل</Label>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="أدخل اسمك الكامل" />
+                                <Label>{t("dash.teacher.settings.fullName")}</Label>
+                                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("dash.teacher.settings.fullNamePlaceholder")} />
                             </div>
                             <div className="space-y-2">
-                                <Label>البريد الإلكتروني</Label>
+                                <Label>{t("dash.teacher.settings.email")}</Label>
                                 <Input value={user?.email || ""} disabled className="bg-muted" />
                             </div>
                         </div>
@@ -195,27 +205,22 @@ const TeacherSettingsTab = () => {
                         <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
                             <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                             <div className="text-sm text-blue-800">
-                                <p className="font-medium mb-1">الصف والمادة الدراسية</p>
-                                <p>يتم اختيار الصف والمادة الدراسية مباشرةً عند إنشاء الدرس في تبويب "الدروس"، مما يتيح لك تدريس أكثر من صف ومادة.</p>
+                                <p className="font-medium mb-1">{t("dash.teacher.settings.gradeInfoTitle")}</p>
+                                <p>{t("dash.teacher.settings.gradeInfoDesc")}</p>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-6" dir="rtl">
+            <TabsContent value="notifications" className="space-y-6" dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>تفضيلات الإشعارات</CardTitle>
-                        <CardDescription>اختر كيف تريد تلقي التنبيهات</CardDescription>
+                        <CardTitle>{t("dash.teacher.settings.notifTitle")}</CardTitle>
+                        <CardDescription>{t("dash.teacher.settings.notifDesc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {[
-                            { title: "إكمال الطلاب للواجبات", desc: "تلقي إشعار عندما يكمل طالب واجباً" },
-                            { title: "رسائل أولياء الأمور", desc: "تنبيهات الرسائل المباشرة" },
-                            { title: "التقارير الأسبوعية", desc: "ملخص أسبوعي لأداء الفصل" },
-                            { title: "تنبيهات النظام", desc: "تحديثات وإعلانات المنصة" },
-                        ].map((item, i) => (
+                        {notifItems.map((item, i) => (
                             <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
                                 <div className="flex items-center gap-3">
                                     <Bell className="w-5 h-5 text-muted-foreground" />
@@ -231,19 +236,19 @@ const TeacherSettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="class" className="space-y-6" dir="rtl">
+            <TabsContent value="class" className="space-y-6" dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>تفضيلات الفصل الدراسي</CardTitle>
-                        <CardDescription>إعدادات عامة لتجربة الطلاب</CardDescription>
+                        <CardTitle>{t("dash.teacher.settings.classTitle")}</CardTitle>
+                        <CardDescription>{t("dash.teacher.settings.classDesc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center justify-between p-4 border rounded-lg">
                             <div className="flex items-center gap-3">
                                 <TrophyIcon className="w-5 h-5 text-muted-foreground" />
                                 <div>
-                                    <p className="font-medium">لوحة المتصدرين</p>
-                                    <p className="text-sm text-muted-foreground">السماح للطلاب برؤية ترتيبهم</p>
+                                    <p className="font-medium">{t("dash.teacher.settings.leaderboard")}</p>
+                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.settings.leaderboardDesc")}</p>
                                 </div>
                             </div>
                             <Switch defaultChecked />
@@ -252,8 +257,8 @@ const TeacherSettingsTab = () => {
                             <div className="flex items-center gap-3">
                                 <Globe className="w-5 h-5 text-muted-foreground" />
                                 <div>
-                                    <p className="font-medium">المناقشات العامة</p>
-                                    <p className="text-sm text-muted-foreground">تفعيل ساحة النقاش للطلاب</p>
+                                    <p className="font-medium">{t("dash.teacher.settings.discussions")}</p>
+                                    <p className="text-sm text-muted-foreground">{t("dash.teacher.settings.discussionsDesc")}</p>
                                 </div>
                             </div>
                             <Switch checked={discussionsEnabled} onCheckedChange={setDiscussionsEnabled} />
@@ -262,7 +267,7 @@ const TeacherSettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <div className="flex justify-end pt-4">
+            <div className={cn("flex pt-4", isRtl ? "justify-end" : "justify-start")}>
                 <Button
                     className="gap-2 bg-purple-600 hover:bg-purple-700"
                     onClick={async () => {
@@ -271,7 +276,7 @@ const TeacherSettingsTab = () => {
                     disabled={isUpdating}
                 >
                     <Save className="w-4 h-4" />
-                    {isUpdating ? "جاري الحفظ..." : "حفظ التغييرات"}
+                    {isUpdating ? t("dash.teacher.settings.saving") : t("dash.teacher.settings.saveChanges")}
                 </Button>
             </div>
         </Tabs>

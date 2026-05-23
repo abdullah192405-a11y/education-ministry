@@ -2,14 +2,15 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
 import {
     Loader2, File, Image as ImageIcon, LinkIcon, Eye, Download,
-    AlertTriangle, Search, Filter, Grid3x3
+    AlertTriangle, Search
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useUser, useStudentProfile, useTeacherProfile } from "@/hooks/useDatabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 interface ContentItem {
     id: string;
@@ -22,6 +23,7 @@ interface ContentItem {
 
 const StudentContentView = ({ teacherId }: { teacherId: string }) => {
     const { toast } = useToast();
+    const { t, locale, isRtl } = useDashboardLocale();
     const { data: user } = useUser();
     const { data: profile } = useStudentProfile(user?.id || "");
     const { data: teacherProfile } = useTeacherProfile(teacherId);
@@ -34,12 +36,10 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
 
     const BUCKET_NAME = "teacher-content";
 
-    // Load teacher's content
     useEffect(() => {
         loadContent();
     }, [teacherId]);
 
-    // Filter content based on search and type
     useEffect(() => {
         let filtered = contentItems;
 
@@ -61,7 +61,6 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
 
         setIsLoading(true);
         try {
-            // Get list of files in storage
             const { data: files, error } = await supabase.storage
                 .from(BUCKET_NAME)
                 .list(`${teacherId}/content`, {
@@ -86,7 +85,7 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                         type: file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "image",
                         url: publicUrl.publicUrl,
                         size: file.metadata?.size,
-                        uploadedAt: new Date(file.created_at).toLocaleString("ar-SA")
+                        uploadedAt: new Date(file.created_at).toLocaleString(locale)
                     };
                 });
 
@@ -96,8 +95,8 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
             console.error("Error loading content:", error);
             toast({
                 variant: "destructive",
-                title: "خطأ",
-                description: "فشل تحميل محتوى المعلم"
+                title: t("dash.common.error"),
+                description: t("dash.student.content.loadFailed")
             });
         } finally {
             setIsLoading(false);
@@ -122,43 +121,47 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
         }
     };
 
+    const searchIconPos = isRtl ? "right-3" : "left-3";
+    const searchPadding = isRtl ? "pr-10" : "pl-10";
+
+    const filterOptions = [
+        { value: "all" as const, label: t("dash.student.content.filterAll") },
+        { value: "image" as const, label: t("dash.student.content.filterImages") },
+        { value: "pdf" as const, label: "PDFs" },
+        { value: "link" as const, label: t("dash.student.content.filterLinks") },
+    ];
+
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>محتوى المعلم</CardTitle>
+                    <CardTitle>{t("dash.student.content.title")}</CardTitle>
                     <CardDescription>
-                        {teacherProfile?.full_name || "المعلم"} - {teacherProfile?.subject}
+                        {teacherProfile?.full_name || t("dash.student.content.teacherFallback")} - {teacherProfile?.subject}
                     </CardDescription>
                 </CardHeader>
             </Card>
 
-            {/* Search and Filter */}
             <Card>
                 <CardContent className="pt-6">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center">
                         <div className="flex-1 relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Search className={cn("absolute top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400", searchIconPos)} />
                             <Input
-                                placeholder="ابحث عن محتوى..."
+                                placeholder={t("dash.student.content.searchPlaceholder")}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-10"
+                                className={searchPadding}
                             />
                         </div>
 
                         <div className="flex gap-2">
-                            {[
-                                { value: "all", label: "الكل" },
-                                { value: "image", label: "الصور" },
-                                { value: "pdf", label: "PDFs" },
-                                { value: "link", label: "الروابط" }
-                            ].map(option => (
+                            {filterOptions.map(option => (
                                 <Button
                                     key={option.value}
                                     variant={filterType === option.value ? "default" : "outline"}
                                     size="sm"
-                                    onClick={() => setFilterType(option.value as any)}
+                                    onClick={() => setFilterType(option.value)}
                                 >
                                     {option.label}
                                 </Button>
@@ -168,13 +171,12 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                 </CardContent>
             </Card>
 
-            {/* Content Display */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between">
-                        <span>المحتوى المتوفر</span>
+                        <span>{t("dash.student.content.available")}</span>
                         <span className="text-sm font-normal text-gray-500">
-                            {filteredItems.length} عنصر
+                            {t("dash.student.content.itemCount", { n: String(filteredItems.length) })}
                         </span>
                     </CardTitle>
                 </CardHeader>
@@ -186,7 +188,7 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                     ) : filteredItems.length === 0 ? (
                         <div className="text-center py-8 text-gray-500">
                             <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                            <p>لا يوجد محتوى متاح في الوقت الحالي</p>
+                            <p>{t("dash.student.content.empty")}</p>
                         </div>
                     ) : (
                         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -195,7 +197,6 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                                     key={item.id}
                                     className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow bg-white"
                                 >
-                                    {/* Thumbnail */}
                                     <div className="aspect-video bg-gray-100 flex items-center justify-center relative group overflow-hidden">
                                         {item.type === "image" ? (
                                             <img
@@ -212,14 +213,13 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                                             </div>
                                         )}
 
-                                        {/* Action Buttons Overlay */}
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                             <a
                                                 href={item.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="p-2 bg-white rounded-lg hover:bg-gray-100 transition-colors"
-                                                title="عرض"
+                                                title={t("dash.common.viewBtn")}
                                             >
                                                 <Eye className="w-5 h-5 text-gray-700" />
                                             </a>
@@ -228,7 +228,7 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                                                     href={item.url}
                                                     download
                                                     className="p-2 bg-white rounded-lg hover:bg-gray-100 transition-colors"
-                                                    title="تحميل"
+                                                    title={t("dash.student.content.download")}
                                                 >
                                                     <Download className="w-5 h-5 text-gray-700" />
                                                 </a>
@@ -236,7 +236,6 @@ const StudentContentView = ({ teacherId }: { teacherId: string }) => {
                                         </div>
                                     </div>
 
-                                    {/* Content Info */}
                                     <div className="p-4">
                                         <h3 className="font-medium text-sm line-clamp-2 mb-2">
                                             {item.name}

@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import {
     ChevronLeft, Trophy, Zap, Clock, Users, Crown,
     CheckCircle2, XCircle, Play, Copy, Share2, Check,
-    Sparkles, Medal, Star, ArrowLeft, Volume2, VolumeX,
+    Sparkles, Medal, Star, ArrowLeft, ArrowRight, Volume2, VolumeX,
     ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity, Gamepad2,
     Calendar, RefreshCw, BarChart3
 } from "lucide-react";
@@ -36,6 +36,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+    resolveWheelSpinSoundUrl,
+    WHEEL_SPIN_DURATION_MS,
+    WHEEL_SPIN_DURATION_SEC,
+    WHEEL_SPIN_EASE,
+} from "@/lib/wheelSpinSounds";
+import {
     getRandomAvatar,
     getWheelSubQuestion,
     getLevelFromScore,
@@ -49,10 +55,12 @@ import { useSound } from "@/hooks/useSound";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
+import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
 import { useMutation } from "@tanstack/react-query";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 type GamePhase = "lobby" | "countdown" | "playing" | "question_result" | "leaderboard" | "final_results";
 
@@ -64,6 +72,9 @@ const GroupChallenge = () => {
     const isCreator = searchParams.get("creator") === "true";
     const isScheduledHostUrl = searchParams.get("scheduled") === "1";
     const playerName = searchParams.get("name") || "لاعب";
+    const { dir } = useTranslation();
+    const ArrowBack = dir === "rtl" ? ArrowRight : ArrowLeft;
+    const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
 
     const effectiveCategory = category?.toUpperCase() || "ACTIVITIES";
     const [phase, setPhase] = useState<GamePhase>("lobby");
@@ -119,9 +130,10 @@ const GroupChallenge = () => {
         correct: content?.correct_sound_url?.trim() || undefined,
         wrong: content?.wrong_sound_url?.trim() || undefined,
         background: content?.answering_background_sound_url?.trim() || undefined,
-    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url]);
+        wheel_spin: resolveWheelSpinSoundUrl(content?.wheel_spin_sound_url),
+    }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url, content?.wheel_spin_sound_url]);
 
-    const { play, stop } = useSound(true, soundOverrides);
+    const { play, playWheelSpin, stop } = useSound(true, soundOverrides);
 
     // Mutation hooks for saving results
     const saveResultMutation = useSaveChallengeResult();
@@ -522,6 +534,7 @@ const GroupChallenge = () => {
     const handleLeftSelect = (index: number) => {
         if (matchedPairs.some(p => p.leftIndex === index) || isHost) return;
         setSelectedLeft(index);
+        play("click");
     };
 
     const handleRightSelect = (shuffledIdx: number) => {
@@ -532,11 +545,14 @@ const GroupChallenge = () => {
         if (selectedLeft === right.originalIndex) {
             const newPairs = [...matchedPairs, { leftIndex: selectedLeft, rightIndex: right.originalIndex }];
             setMatchedPairs(newPairs);
+            play("match_pair");
             if (newPairs.length === currentQuestion.pairs?.length) {
                 setSelectedAnswer("complete");
                 play("correct");
                 processAnswer(true, undefined, "جميع الأربطة صحيحة");
             }
+        } else {
+            play("match_wrong");
         }
         setSelectedLeft(null);
     };
@@ -545,6 +561,7 @@ const GroupChallenge = () => {
     const spinWheel = () => {
         if (isSpinning) return;
         setIsSpinning(true);
+        playWheelSpin();
 
         const segments = currentQuestion.wheelSegments;
         const labels = segments?.map(s => s.label) || currentQuestion.options || [];
@@ -595,7 +612,7 @@ const GroupChallenge = () => {
 
             setWheelPoints(pointsForQuestion);
             setWheelSubQuestion(subQ);
-        }, 4000);
+        }, WHEEL_SPIN_DURATION_MS);
     };
 
     const handleWheelSubAnswer = (answerIdx: number) => {
@@ -1108,7 +1125,7 @@ const GroupChallenge = () => {
                         className="w-full h-full rounded-full overflow-hidden border-4 border-primary shadow-2xl"
                         style={{ transformOrigin: "center center" }}
                         animate={{ rotate: wheelRotation }}
-                        transition={{ duration: 4, ease: [0.2, 0.8, 0.2, 1] }}
+                        transition={{ duration: WHEEL_SPIN_DURATION_SEC, ease: WHEEL_SPIN_EASE }}
                     >
                         <svg viewBox="0 0 100 100" className="w-full h-full">
                             {labels.map((option, i) => {
@@ -1577,7 +1594,7 @@ const GroupChallenge = () => {
             >
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                     <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate("/dashboard/teacher")}>
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowBack className="w-4 h-4" />
                         لوحة المعلم
                     </Button>
                     <Button
@@ -2270,16 +2287,11 @@ const GroupChallenge = () => {
                         {currentQuestion.question}
                     </h3>
 
-                    {/* Question Image */}
-                    {currentQuestion.imageUrl && (
-                        <div className="flex justify-center mb-8">
-                            <img
-                                src={currentQuestion.imageUrl}
-                                alt=""
-                                className="max-h-60 rounded-xl object-contain border shadow-sm"
-                            />
-                        </div>
-                    )}
+                    <QuestionAttachmentDisplay
+                        imageUrl={currentQuestion.imageUrl}
+                        videoUrl={currentQuestion.videoUrl}
+                        audioUrl={currentQuestion.audioUrl}
+                    />
 
                     {/* Multiple Choice / True-False / Puzzle / Shooting */}
                     {["multiple_choice", "true_false", "puzzle", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
@@ -2445,7 +2457,7 @@ const GroupChallenge = () => {
                                             className="w-full h-14 text-lg shadow-xl"
                                         >
                                             كشف الترتيب
-                                            <ArrowLeft className="w-5 h-5 mr-2" />
+                                            <ArrowForward className="w-5 h-5 mr-2" />
                                         </Button>
                                         {currentIndex < questions.length - 1 && (
                                             <Button
@@ -2455,7 +2467,7 @@ const GroupChallenge = () => {
                                                 className="w-full h-14 text-lg shadow-sm"
                                             >
                                                 السؤال التالي مباشرة
-                                                <ArrowLeft className="w-5 h-5 mr-2" />
+                                                <ArrowForward className="w-5 h-5 mr-2" />
                                             </Button>
                                         )}
                                     </div>
@@ -2605,7 +2617,7 @@ const GroupChallenge = () => {
                             {currentIndex < questions.length - 1 ? (
                                 <>
                                     المرحلة القادمة
-                                    <ArrowLeft className="w-6 h-6 mr-3 group-hover:-translate-x-2 transition-transform" />
+                                    <ArrowForward className={`w-6 h-6 mr-3 transition-transform ${dir === "rtl" ? "group-hover:-translate-x-2" : "group-hover:translate-x-2"}`} />
                                 </>
                             ) : (
                                 <>كشف الفائزين 🏆</>
@@ -2843,7 +2855,7 @@ const GroupChallenge = () => {
                             >
                                 <Link to={`/grade/${gradeId}/subject/${subjectId}/topic/${topicId}`} className="flex items-center">
                                     <span>العودة للمحتوى</span>
-                                    <ArrowLeft className="w-6 h-6 mr-3 group-hover:-translate-x-2 transition-transform" />
+                                    <ArrowBack className={`w-6 h-6 mr-3 transition-transform ${dir === "rtl" ? "group-hover:-translate-x-2" : "group-hover:translate-x-2"}`} />
                                 </Link>
                             </Button>
                         </motion.div>

@@ -12,12 +12,18 @@ import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
+import { useTranslation } from "@/contexts/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/translations";
+
+type LevelOption = "ALL" | "PRIMARY" | "MIDDLE" | "SECONDARY";
 
 const Grades = () => {
     const [searchTerm, setSearchTerm] = useState("");
-    const [selectedLevel, setSelectedLevel] = useState("الكل");
+    const [selectedLevel, setSelectedLevel] = useState<LevelOption>("ALL");
     const [searchParams] = useSearchParams();
     const kindParam = searchParams.get("kind");
+    const { t, dir } = useTranslation();
+    const localeId = t("common.locale");
 
     const { data: gradesData, isLoading, error } = useGrades();
     const { mode: visitorGradeMode } = useCatalogGradeClassMode();
@@ -30,7 +36,25 @@ const Grades = () => {
 
     const showKindFilter = visitorGradeMode === "all";
 
-    const levels = ["الكل", "ابتدائي", "متوسط", "ثانوي"];
+    const levelOptions: ReadonlyArray<{ id: LevelOption; labelKey: TranslationKey; stageKey?: TranslationKey }> = [
+        { id: "ALL", labelKey: "common.all" },
+        { id: "PRIMARY", labelKey: "level.primary", stageKey: "level.primaryStage" },
+        { id: "MIDDLE", labelKey: "level.middle", stageKey: "level.middleStage" },
+        { id: "SECONDARY", labelKey: "level.secondary", stageKey: "level.secondaryStage" },
+    ];
+
+    const getLevelTranslationKey = (level: string): TranslationKey | null => {
+        switch (level) {
+            case "PRIMARY":
+                return "level.primary";
+            case "MIDDLE":
+                return "level.middle";
+            case "SECONDARY":
+                return "level.secondary";
+            default:
+                return null;
+        }
+    };
 
     const catalogGrades = filterGradesForPublicCatalog(gradesData || [], visitorGradeMode);
 
@@ -42,31 +66,32 @@ const Grades = () => {
         if (kind === "teaching" && classKind !== "تعليمي") return false;
         if (kind === "enrichment" && classKind !== "اثرائي") return false;
 
-        const matchesSearch = grade.name.includes(searchTerm) ||
-            grade.description.includes(searchTerm);
-        const matchesLevel = selectedLevel === "الكل" || (
-            grade.level === "PRIMARY" ? "ابتدائي" :
-                grade.level === "MIDDLE" ? "متوسط" :
-                    grade.level === "SECONDARY" ? "ثانوي" : "الكل"
-        ) === selectedLevel;
+        const search = searchTerm.toLowerCase();
+        const matchesSearch = !search ||
+            grade.name.toLowerCase().includes(search) ||
+            (grade.description || "").toLowerCase().includes(search);
+        const matchesLevel = selectedLevel === "ALL" || grade.level === selectedLevel;
         return matchesSearch && matchesLevel;
     });
 
     const getLevelColor = (level: string) => {
         switch (level) {
-            case "ابتدائي":
+            case "PRIMARY":
                 return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
-            case "متوسط":
+            case "MIDDLE":
                 return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
-            case "ثانوي":
+            case "SECONDARY":
                 return "bg-purple-500/10 text-purple-700 dark:text-purple-400";
             default:
                 return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
         }
     };
 
+    const isEducational = visitorGradeMode === "teaching_only" || (visitorGradeMode === "all" && kind === "teaching");
+    const isEnrichment = visitorGradeMode === "enrichment_only" || (visitorGradeMode === "all" && kind === "enrichment");
+
     return (
-        <div className="min-h-screen font-cairo" dir="rtl">
+        <div className="min-h-screen font-cairo" dir={dir}>
             <Header />
             <main className="pt-32 pb-16">
                 <div className="container mx-auto px-4">
@@ -77,49 +102,39 @@ const Grades = () => {
                         className="text-center mb-12 mt-8"
                     >
                         <h1 className="text-4xl md:text-5xl font-black mb-4">
-                            {visitorGradeMode === "teaching_only" ? (
+                            {isEducational ? (
                                 <>
-                                    الصفوف <span className="text-primary">التعليمية</span>
+                                    {t("gradesPage.titleEducation1")} <span className="text-primary">{t("gradesPage.titleEducation2")}</span>
                                 </>
-                            ) : visitorGradeMode === "enrichment_only" ? (
+                            ) : isEnrichment ? (
                                 <>
-                                    قنوات <span className="text-primary">المحتوى</span>
-                                </>
-                            ) : kind === "teaching" ? (
-                                <>
-                                    الصفوف <span className="text-primary">التعليمية</span>
-                                </>
-                            ) : kind === "enrichment" ? (
-                                <>
-                                    قنوات <span className="text-primary">المحتوى</span>
+                                    {t("gradesPage.titleEnrichment1")} <span className="text-primary">{t("gradesPage.titleEnrichment2")}</span>
                                 </>
                             ) : (
                                 <>
-                                    اكتشف <span className="text-primary">الصفوف الدراسية</span>
+                                    {t("gradesPage.titleDefault1")} <span className="text-primary">{t("gradesPage.titleDefault2")}</span>
                                 </>
                             )}
                         </h1>
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                            {visitorGradeMode === "enrichment_only" ||
-                            (visitorGradeMode === "all" && kind === "enrichment")
-                                ? "اختر محتواك التفاعلي واصنع التحديات"
-                                : visitorGradeMode === "teaching_only" ||
-                                    (visitorGradeMode === "all" && kind === "teaching")
-                                  ? "اختر صفك واستكشف المواد التعليمية والتحديات المناسبة لمرحلتك"
-                                  : "اختر صفك الدراسي واستكشف المواد التعليمية المتنوعة والتحديات الممتعة"}
+                            {isEnrichment
+                                ? t("gradesPage.descEnrichment")
+                                : isEducational
+                                  ? t("gradesPage.descEducation")
+                                  : t("gradesPage.descDefault")}
                         </p>
                     </motion.div>
 
                     {showKindFilter && (
                         <div className="flex flex-wrap gap-2 justify-center mb-10">
                             <Button asChild variant={kind == null ? "default" : "outline"} size="sm" className="rounded-full">
-                                <Link to="/grades">الكل</Link>
+                                <Link to="/grades">{t("common.all")}</Link>
                             </Button>
                             <Button asChild variant={kind === "teaching" ? "default" : "outline"} size="sm" className="rounded-full">
-                                <Link to="/grades?kind=teaching">تعليمي</Link>
+                                <Link to="/grades?kind=teaching">{t("gradesPage.tabEducational")}</Link>
                             </Button>
                             <Button asChild variant={kind === "enrichment" ? "default" : "outline"} size="sm" className="rounded-full">
-                                <Link to="/grades?kind=enrichment">إثرائي</Link>
+                                <Link to="/grades?kind=enrichment">{t("gradesPage.tabEnrichment")}</Link>
                             </Button>
                         </div>
                     )}
@@ -133,32 +148,32 @@ const Grades = () => {
                     >
                         <div className="flex flex-col md:flex-row gap-4 mb-6">
                             <div className="relative flex-1">
-                                <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                                <Search className={`absolute ${dir === "rtl" ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground`} />
                                 <Input
                                     type="text"
-                                    placeholder="ابحث عن صف دراسي..."
+                                    placeholder={t("gradesPage.searchPlaceholder")}
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pr-12 h-12"
+                                    className={`${dir === "rtl" ? "pr-12" : "pl-12"} h-12`}
                                 />
                             </div>
                             <Button variant="outline" className="h-12 gap-2">
                                 <Filter className="w-4 h-4" />
-                                فلترة
+                                {t("common.filter")}
                             </Button>
                         </div>
 
                         {/* Levels Filter */}
                         <div className="flex flex-wrap gap-2">
-                            {levels.map((level) => (
+                            {levelOptions.map((opt) => (
                                 <Button
-                                    key={level}
-                                    variant={selectedLevel === level ? "default" : "outline"}
+                                    key={opt.id}
+                                    variant={selectedLevel === opt.id ? "default" : "outline"}
                                     size="sm"
-                                    onClick={() => setSelectedLevel(level)}
+                                    onClick={() => setSelectedLevel(opt.id)}
                                     className="rounded-full"
                                 >
-                                    {level === "الكل" ? level : `المرحلة ${level === "ابتدائي" ? "الابتدائية" : level === "متوسط" ? "المتوسطة" : "الثانوية"}`}
+                                    {opt.id === "ALL" ? t(opt.labelKey) : t(opt.stageKey!)}
                                 </Button>
                             ))}
                         </div>
@@ -172,9 +187,9 @@ const Grades = () => {
                             ))
                         ) : error ? (
                             <div className="col-span-full text-center py-10 text-destructive font-bold">
-                                <p className="mb-2">خطأ في تحميل البيانات:</p>
+                                <p className="mb-2">{t("gradesPage.errorLoading")}</p>
                                 <p className="text-sm font-mono opacity-80">{(error as any)?.message || JSON.stringify(error)}</p>
-                                <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>إعادة المحاولة</Button>
+                                <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>{t("common.tryAgain")}</Button>
                             </div>
                         ) : (
 
@@ -200,13 +215,12 @@ const Grades = () => {
                                                     <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
 
                                                     {/* Level Badge */}
-                                                    <div className="absolute top-3 right-3">
-                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${getLevelColor(
-                                                            grade.level === "PRIMARY" ? "ابتدائي" :
-                                                                grade.level === "MIDDLE" ? "متوسط" :
-                                                                    grade.level === "SECONDARY" ? "ثانوي" : "الكل"
-                                                        )}`}>
-                                                            {grade.level === "PRIMARY" ? "ابتدائي" : grade.level === "MIDDLE" ? "متوسط" : "ثانوي"}
+                                                    <div className={`absolute top-3 ${dir === "rtl" ? "right-3" : "left-3"}`}>
+                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${getLevelColor(grade.level)}`}>
+                                                            {(() => {
+                                                                const k = getLevelTranslationKey(grade.level);
+                                                                return k ? t(k) : grade.level;
+                                                            })()}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -236,11 +250,11 @@ const Grades = () => {
                                                     <div className="flex items-center justify-between text-sm pt-4 border-t">
                                                         <div className="flex items-center gap-1 text-muted-foreground">
                                                             <Users className="w-4 h-4" />
-                                                            <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")} طالب</span>
+                                                            <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString(localeId)} {t("gradesPage.studentsSuffix")}</span>
                                                         </div>
                                                         <div className="flex items-center gap-1 text-primary">
                                                             <BookOpen className="w-4 h-4" />
-                                                            <span>{grade.subjects?.length || 0} مواد</span>
+                                                            <span>{grade.subjects?.length || 0} {t("gradesPage.subjectsSuffix")}</span>
                                                         </div>
                                                     </div>
                                                 </CardContent>
@@ -252,15 +266,15 @@ const Grades = () => {
                         )}
                     </div>
 
-                    {filteredGrades.length === 0 && (
+                    {!isLoading && !error && filteredGrades.length === 0 && (
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             className="text-center py-16"
                         >
                             <GraduationCap className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                            <p className="text-muted-foreground text-lg">لم يتم العثور على صفوف دراسية</p>
-                            <p className="text-sm text-muted-foreground mt-2">جرّب البحث بكلمات مختلفة</p>
+                            <p className="text-muted-foreground text-lg">{t("gradesPage.noGradesFound")}</p>
+                            <p className="text-sm text-muted-foreground mt-2">{t("gradesPage.tryDifferentKeywords")}</p>
                         </motion.div>
                     )}
                 </div>

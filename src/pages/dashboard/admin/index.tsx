@@ -18,6 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import GradesTab from "./components/GradesTab";
 import TeachersTab from "./components/TeachersTab";
 import StudentsTab from "./components/StudentsTab";
@@ -39,6 +41,8 @@ const AdminDashboard = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { signOut: clerkSignOut } = useAuth();
+    const { t, dir } = useTranslation();
+    const locale = t("common.locale");
 
     const handleLogout = async () => {
         try {
@@ -94,12 +98,12 @@ const AdminDashboard = () => {
     // Derive admin data from real DB
     const adminData = {
         id: user?.id || "",
-        name: user?.name || "مدير المؤسسة",
+        name: user?.name || t("dash.admin.adminFallback"),
         email: user?.email || "",
         avatar: user?.avatar || "https://api.dicebear.com/7.x/fun-emoji/svg?seed=admin",
         role: scopedOrganizationId
-            ? "مدير المؤسسة / المدرسة"
-            : "مدير مؤسسة (بانتظار ربط المؤسسة)",
+            ? t("dash.admin.role.adminLinked")
+            : t("dash.admin.role.adminPending"),
         verified: user?.verified || false
     };
     const adminNeedsOrgAssignment = isOrgAdmin && !isTenantLinked;
@@ -125,7 +129,7 @@ const AdminDashboard = () => {
         return {
             type: log.action,
             message: log.details || `${log.action} on ${log.entity_type || "entity"}`,
-            time: log.created_at ? new Date(log.created_at).toLocaleString("ar-SA") : "",
+            time: log.created_at ? new Date(log.created_at).toLocaleString(locale) : "",
             icon: meta.icon,
             color: meta.color,
             user: log.user?.name || ""
@@ -133,7 +137,7 @@ const AdminDashboard = () => {
     });
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-amber/5" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-amber/5" dir={dir}>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
@@ -149,20 +153,21 @@ const AdminDashboard = () => {
                                     <Shield className="w-5 h-5 text-white" />
                                 </div>
                                 <div className="hidden md:block">
-                                    <span className="font-medium text-sm">لوحة إدارة المؤسسة</span>
+                                    <span className="font-medium text-sm">{t("dash.admin.headerTitle")}</span>
                                     <p className="text-xs text-muted-foreground">
                                         {scopedOrganizationId
                                             ? organizationName
-                                              ? `${organizationName} — اشتراكك يُدار من قبل السوبر أدمن`
-                                              : "مستخدمو مؤسستك فقط"
-                                            : "يرجى من السوبر أدمن ربط حسابك بمؤسسة لتفعيل الصلاحيات."}
+                                              ? t("dash.admin.subscriptionInfo", { name: organizationName })
+                                              : t("dash.admin.usersOnly")
+                                            : t("dash.admin.notLinkedHint")}
                                     </p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-4">
-                            <Button variant="ghost" size="icon" className="relative">
+                            <LanguageSwitcher iconOnly />
+                            <Button variant="ghost" size="icon" className="relative" aria-label={t("dash.common.notifications")}>
                                 <Bell className="w-5 h-5" />
                             </Button>
                             <div className="flex items-center gap-2">
@@ -217,7 +222,7 @@ const AdminDashboard = () => {
                                     {adminData.verified && (
                                         <div className="flex items-center justify-center gap-1 text-xs text-primary mt-2">
                                             <CheckCircle className="w-3 h-3 fill-primary" />
-                                            <span>مصادق عليه</span>
+                                            <span>{t("dash.common.verified")}</span>
                                         </div>
                                     )}
                                 </div>
@@ -225,14 +230,14 @@ const AdminDashboard = () => {
                                 {/* Navigation */}
                                 <nav className="space-y-1">
                                     {[
-                                        { id: "overview", icon: LayoutDashboard, label: "نظرة عامة" },
-                                        { id: "grades", icon: School, label: "الصفوف الدراسية" },
-                                        { id: "teachers", icon: UserCheck, label: "المعلمين" },
-                                        { id: "students", icon: GraduationCap, label: "الطلاب" },
-                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
-                                        { id: "subjects", icon: BookOpen, label: "المواد الدراسية" },
-                                        { id: "analytics", icon: ChartBar, label: "تقارير شاملة" },
-                                        { id: "settings", icon: Settings, label: "إعدادات" }
+                                        { id: "overview", icon: LayoutDashboard, label: t("dash.admin.nav.overview") },
+                                        { id: "grades", icon: School, label: t("dash.admin.nav.grades") },
+                                        { id: "teachers", icon: UserCheck, label: t("dash.admin.nav.teachers") },
+                                        { id: "students", icon: GraduationCap, label: t("dash.admin.nav.students") },
+                                        { id: "support", icon: LifeBuoy, label: t("dash.admin.nav.support") },
+                                        { id: "subjects", icon: BookOpen, label: t("dash.admin.nav.subjects") },
+                                        { id: "analytics", icon: ChartBar, label: t("dash.admin.nav.analytics") },
+                                        { id: "settings", icon: Settings, label: t("dash.admin.nav.settings") }
                                     ].map(item => (
                                         <button
                                             key={item.id}
@@ -251,7 +256,7 @@ const AdminDashboard = () => {
                                 <div className="mt-4 pt-4 border-t">
                                     <Button variant="ghost" size="sm" className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2" onClick={handleLogout}>
                                         <LogOut className="w-4 h-4" />
-                                        تسجيل الخروج
+                                        {t("dash.common.logout")}
                                     </Button>
                                 </div>
                             </CardContent>
@@ -277,16 +282,15 @@ const AdminDashboard = () => {
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
                                                 <Shield className="w-5 h-5" />
-                                                صلاحياتك موقوفة مؤقتًا حتى ربط المؤسسة
+                                                {t("dash.admin.notLinkedTitle")}
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-3 text-sm">
                                             <p>
-                                                حساب الأدمن يجب أن يكون مرتبطًا بمؤسسة/مدرسة واحدة. بعد الربط ستظهر لك فقط بيانات
-                                                المستخدمين (أدمن/معلم/طالب) التابعة لتلك المؤسسة.
+                                                {t("dash.admin.notLinkedDesc1")}
                                             </p>
                                             <p className="text-muted-foreground">
-                                                تواصل مع السوبر أدمن لربط حسابك من لوحة السوبر أدمن (قسم أدمن المؤسسات).
+                                                {t("dash.admin.notLinkedDesc2")}
                                             </p>
                                         </CardContent>
                                     </Card>
@@ -307,23 +311,23 @@ const AdminDashboard = () => {
                                         <div className="relative p-6 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500">
                                             <div className="relative z-10">
                                                 <h1 className="text-2xl font-bold text-white mb-2">
-                                                    لوحة إدارة Lab4 🏛️
+                                                    {t("dash.admin.welcomeTitle")}
                                                 </h1>
                                                 <p className="text-white/80 mb-4">
-                                                    إدارة شاملة لـ Lab4 - نظرة عامة على الأداء
+                                                    {t("dash.admin.welcomeSubtitle")}
                                                 </p>
                                                 <div className="flex gap-3">
                                                     <Button variant="secondary" size="sm" className="gap-2" onClick={() => setActiveTab("grades")}>
                                                         <Plus className="w-4 h-4" />
-                                                        إدارة الصفوف
+                                                        {t("dash.admin.manageGrades")}
                                                     </Button>
                                                     <Button variant="outline" size="sm" className="gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20" onClick={() => setActiveTab("analytics")}>
                                                         <FileText className="w-4 h-4" />
-                                                        تقرير شامل
+                                                        {t("dash.admin.fullReport")}
                                                     </Button>
                                                 </div>
                                             </div>
-                                            <div className="absolute left-0 top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+                                            <div className={`absolute ${dir === "rtl" ? "left-0" : "right-0"} top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl`} />
                                         </div>
                                     </Card>
 
@@ -338,7 +342,7 @@ const AdminDashboard = () => {
                                                     {isLoadingStats ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{currentStats.totalGrades}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">صف دراسي</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.admin.stats.gradeSuffix")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -351,7 +355,7 @@ const AdminDashboard = () => {
                                                     {isLoadingStats ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{currentStats.totalSubjects}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">مادة دراسية</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.admin.stats.subjectSuffix")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -362,9 +366,9 @@ const AdminDashboard = () => {
                                                 </div>
                                                 <div>
                                                     {isLoadingStats ? <Skeleton className="h-7 w-12 mb-1" /> : (
-                                                        <p className="text-2xl font-bold">{currentStats.totalStudents.toLocaleString()}</p>
+                                                        <p className="text-2xl font-bold">{currentStats.totalStudents.toLocaleString(locale)}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">طالب</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.admin.stats.studentSuffix")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -377,7 +381,7 @@ const AdminDashboard = () => {
                                                     {isLoadingStats ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{currentStats.totalTeachers}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">معلم</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.admin.stats.teacherSuffix")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -388,7 +392,7 @@ const AdminDashboard = () => {
                                         <Card className="p-4 border-dashed">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground mb-1">إجمالي الدروس</p>
+                                                    <p className="text-xs text-muted-foreground mb-1">{t("dash.admin.stats.totalTopics")}</p>
                                                     {isLoadingStats ? <Skeleton className="h-6 w-12" /> : (
                                                         <p className="text-xl font-bold">{currentStats.totalTopics}</p>
                                                     )}
@@ -399,9 +403,9 @@ const AdminDashboard = () => {
                                         <Card className="p-4 border-dashed">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground mb-1">إجمالي التحديات</p>
+                                                    <p className="text-xs text-muted-foreground mb-1">{t("dash.admin.stats.totalChallenges")}</p>
                                                     {isLoadingStats ? <Skeleton className="h-6 w-12" /> : (
-                                                        <p className="text-xl font-bold">{currentStats.totalChallenges.toLocaleString()}</p>
+                                                        <p className="text-xl font-bold">{currentStats.totalChallenges.toLocaleString(locale)}</p>
                                                     )}
                                                 </div>
                                                 <Gamepad2 className="w-8 h-8 text-purple-500 opacity-50" />
@@ -410,9 +414,9 @@ const AdminDashboard = () => {
                                         <Card className="p-4 border-dashed">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground mb-1">إجمالي المستخدمين</p>
+                                                    <p className="text-xs text-muted-foreground mb-1">{t("dash.admin.stats.totalUsers")}</p>
                                                     {isLoadingStats ? <Skeleton className="h-6 w-12" /> : (
-                                                        <p className="text-xl font-bold">{currentStats.totalUsers.toLocaleString()}</p>
+                                                        <p className="text-xl font-bold">{currentStats.totalUsers.toLocaleString(locale)}</p>
                                                     )}
                                                 </div>
                                                 <Activity className="w-8 h-8 text-success opacity-50" />
@@ -428,7 +432,7 @@ const AdminDashboard = () => {
                                             <CardHeader className="pb-3">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <Award className="w-5 h-5 text-primary" />
-                                                    المعلمون ({teacherUsers.length})
+                                                    {t("dash.admin.teachersHeader", { n: teacherUsers.length })}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -454,7 +458,7 @@ const AdminDashboard = () => {
                                                 ) : (
                                                     <div className="text-center py-8 text-muted-foreground">
                                                         <UserCheck className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                        <p className="text-sm">لا يوجد معلمون بعد</p>
+                                                        <p className="text-sm">{t("dash.admin.noTeachers")}</p>
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -465,7 +469,7 @@ const AdminDashboard = () => {
                                             <CardHeader className="pb-3">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <GraduationCap className="w-5 h-5 text-primary" />
-                                                    آخر الطلاب ({studentUsers.length})
+                                                    {t("dash.admin.recentStudentsHeader", { n: studentUsers.length })}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -490,7 +494,7 @@ const AdminDashboard = () => {
                                                 ) : (
                                                     <div className="text-center py-8 text-muted-foreground">
                                                         <GraduationCap className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                        <p className="text-sm">لا يوجد طلاب بعد</p>
+                                                        <p className="text-sm">{t("dash.admin.noStudents")}</p>
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -502,14 +506,14 @@ const AdminDashboard = () => {
                                         <CardHeader>
                                             <CardTitle className="text-lg flex items-center gap-2">
                                                 <Clock className="w-5 h-5 text-primary" />
-                                                آخر الأنشطة
+                                                {t("dash.admin.recentActivities")}
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-3">
                                             {scopedOrganizationId ? (
                                                 <div className="text-center py-8 text-muted-foreground">
                                                     <Clock className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">سجل النشاط العام مخفي عن مديري المؤسسات.</p>
+                                                    <p className="text-sm">{t("dash.admin.recentActivitiesHidden")}</p>
                                                 </div>
                                             ) : isLoadingLogs ? (
                                                 Array.from({ length: 3 }).map((_, i) => (
@@ -532,7 +536,7 @@ const AdminDashboard = () => {
                                             ) : (
                                                 <div className="text-center py-8 text-muted-foreground">
                                                     <Clock className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">لا توجد أنشطة حديثة</p>
+                                                    <p className="text-sm">{t("dash.admin.noRecentActivities")}</p>
                                                 </div>
                                             )}
                                         </CardContent>
@@ -543,10 +547,10 @@ const AdminDashboard = () => {
                                         <CardHeader className="flex flex-row items-center justify-between">
                                             <CardTitle className="text-lg flex items-center gap-2">
                                                 <School className="w-5 h-5 text-primary" />
-                                                جميع الصفوف الدراسية ({grades?.length || 0})
+                                                {t("dash.admin.allGrades", { n: grades?.length || 0 })}
                                             </CardTitle>
                                             <Button size="sm" onClick={() => setActiveTab("grades")}>
-                                                إدارة الصفوف
+                                                {t("dash.admin.manageGradesBtn")}
                                             </Button>
                                         </CardHeader>
                                         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -567,13 +571,13 @@ const AdminDashboard = () => {
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                            <span><BookOpen className="w-3 h-3 inline ml-1" />{grade.subjects?.length || 0} مادة</span>
-                                                            <span><GraduationCap className="w-3 h-3 inline ml-1" />{grade.students_count || 0} طالب</span>
+                                                            <span><BookOpen className="w-3 h-3 inline mx-1" />{t("dash.admin.gradeSubjects", { n: grade.subjects?.length || 0 })}</span>
+                                                            <span><GraduationCap className="w-3 h-3 inline mx-1" />{t("dash.admin.gradeStudents", { n: grade.students_count || 0 })}</span>
                                                         </div>
                                                         <Button size="sm" variant="outline" className="w-full mt-3 text-xs" asChild>
                                                             <Link to={`/grade/${grade.slug}`}>
-                                                                <Eye className="w-3 h-3 ml-1" />
-                                                                عرض التفاصيل
+                                                                <Eye className="w-3 h-3 mx-1" />
+                                                                {t("dash.common.viewDetails")}
                                                             </Link>
                                                         </Button>
                                                     </div>
@@ -581,7 +585,7 @@ const AdminDashboard = () => {
                                             ) : (
                                                 <div className="col-span-3 text-center py-8 text-muted-foreground">
                                                     <School className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">لا توجد صفوف دراسية بعد</p>
+                                                    <p className="text-sm">{t("dash.admin.noGrades")}</p>
                                                 </div>
                                             )}
                                         </CardContent>

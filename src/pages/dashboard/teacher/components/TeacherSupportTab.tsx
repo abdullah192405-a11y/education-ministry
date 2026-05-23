@@ -22,13 +22,8 @@ import {
 } from "@/hooks/useDatabase";
 import { useToast } from "@/components/ui/use-toast";
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
-
-const statusMeta: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    OPEN: { label: "مفتوحة", variant: "default" },
-    IN_PROGRESS: { label: "قيد المعالجة", variant: "secondary" },
-    RESOLVED: { label: "تم الحل", variant: "outline" },
-    ESCALATED: { label: "مُصعّدة", variant: "destructive" },
-};
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 type TicketRow = {
     id: string;
@@ -42,7 +37,6 @@ type TicketRow = {
     author?: { name?: string; email?: string };
 };
 
-/** TEACHER_TO_ADMIN row possibly linked to an escalated student ticket */
 type TeacherOutboundTicket = TicketRow & {
     parent?: {
         id: string;
@@ -60,8 +54,9 @@ type Props = {
 
 const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
     const { toast } = useToast();
+    const { t, dir, language, isRtl, textAlign } = useDashboardLocale();
     const { data: incoming, isLoading: loadingIncoming } = useTeacherIncomingStudentTickets(
-        teacherGradeId || undefined
+        teacherGradeId || undefined,
     );
     const { data: outbound, isLoading: loadingOutbound } = useTeacherAdminSupportTickets(teacherUserId);
     const createAdmin = useCreateTeacherAdminSupportTicket();
@@ -75,6 +70,13 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
     const [escalateTicket, setEscalateTicket] = useState<TicketRow | null>(null);
     const [escalateNote, setEscalateNote] = useState("");
 
+    const statusMeta: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+        OPEN: { label: t("supportTab.status.OPEN"), variant: "default" },
+        IN_PROGRESS: { label: t("supportTab.status.IN_PROGRESS"), variant: "secondary" },
+        RESOLVED: { label: t("supportTab.status.RESOLVED"), variant: "outline" },
+        ESCALATED: { label: t("supportTab.status.ESCALATED"), variant: "destructive" },
+    };
+
     const handleCreateAdmin = (e: React.FormEvent) => {
         e.preventDefault();
         if (!adminSubject.trim() || !adminBody.trim()) return;
@@ -82,18 +84,18 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
             { authorUserId: teacherUserId, subject: adminSubject, body: adminBody },
             {
                 onSuccess: () => {
-                    toast({ title: "تم الإرسال", description: "وصلت التذكرة إلى الإدارة." });
+                    toast({ title: t("dash.teacher.support.toast.sent"), description: t("dash.teacher.support.toast.sentDesc") });
                     setAdminOpen(false);
                     setAdminSubject("");
                     setAdminBody("");
                 },
                 onError: (err: any) =>
                     toast({
-                        title: "خطأ",
+                        title: t("dash.common.error"),
                         description: err?.message,
                         variant: "destructive",
                     }),
-            }
+            },
         );
     };
 
@@ -111,80 +113,78 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
             },
             {
                 onSuccess: () => {
-                    toast({ title: "تم التصعيد", description: "أُرسلت التذكرة إلى الإدارة." });
+                    toast({ title: t("dash.teacher.support.toast.escalated"), description: t("dash.teacher.support.toast.escalatedDesc") });
                     setEscalateTicket(null);
                     setEscalateNote("");
                 },
                 onError: (err: any) =>
                     toast({
-                        title: "خطأ",
+                        title: t("dash.common.error"),
                         description: err?.message,
                         variant: "destructive",
                     }),
-            }
+            },
         );
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" dir={dir}>
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <LifeBuoy className="w-6 h-6 text-primary" />
-                        تذاكر الدعم
+                        {t("dash.teacher.support.title")}
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        طلبات طلاب صفك، وتذاكرك للإدارة
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">{t("dash.teacher.support.subtitle")}</p>
                 </div>
                 <Button onClick={() => setAdminOpen(true)} className="gap-2">
                     <Send className="w-4 h-4" />
-                    تذكرة جديدة للإدارة
+                    {t("dash.teacher.support.newTicket")}
                 </Button>
             </div>
 
             {!teacherGradeId && (
                 <div className="p-3 rounded-lg bg-amber-500/10 text-amber-800 dark:text-amber-200 text-sm">
-                    لم يُحدد صف في ملفك كمعلم؛ لن تظهر تذاكر الطلاب حتى تربط حسابك بصف من الإعدادات.
+                    {t("dash.teacher.support.noGradeWarning")}
                 </div>
             )}
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">من الطلاب</CardTitle>
-                    <CardDescription>تذاكر الدعم المرسلة من طلاب صفك</CardDescription>
+                    <CardTitle className="text-lg">{t("dash.teacher.support.fromStudents")}</CardTitle>
+                    <CardDescription>{t("dash.teacher.support.fromStudentsDesc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {loadingIncoming ? (
-                        <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.teacher.support.loading")}</p>
                     ) : !incoming?.length ? (
-                        <p className="text-sm text-muted-foreground">لا توجد تذاكر من الطلاب.</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.teacher.support.noStudentTickets")}</p>
                     ) : (
                         <ul className="space-y-4">
-                            {incoming.map((t: TicketRow) => {
-                                const sm = statusMeta[t.status] || statusMeta.OPEN;
-                                const disabledActions = t.status === "RESOLVED" || t.status === "ESCALATED";
+                            {incoming.map((tk: TicketRow) => {
+                                const sm = statusMeta[tk.status] || statusMeta.OPEN;
+                                const disabledActions = tk.status === "RESOLVED" || tk.status === "ESCALATED";
                                 return (
-                                    <li key={t.id} className="p-4 rounded-xl border bg-card space-y-3 text-right">
+                                    <li key={tk.id} className={cn("p-4 rounded-xl border bg-card space-y-3", textAlign)}>
                                         <div className="flex flex-wrap items-start justify-between gap-2">
                                             <div className="space-y-1">
                                                 <Badge variant="outline" className="font-normal">
-                                                    {getSupportTicketTypeLabel(t.ticketType)}
+                                                    {getSupportTicketTypeLabel(tk.ticketType, language)}
                                                 </Badge>
-                                                <p className="font-semibold">{t.subject}</p>
+                                                <p className="font-semibold">{tk.subject}</p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    من:{" "}
-                                                    {t.authorNameSnapshot?.trim() ||
-                                                        t.author?.name ||
-                                                        "طالب"}
+                                                    {t("dash.teacher.support.fromPrefix")}
+                                                    {tk.authorNameSnapshot?.trim() ||
+                                                        tk.author?.name ||
+                                                        t("dash.teacher.support.studentFallback")}
                                                 </p>
                                             </div>
                                             <Badge variant={sm.variant}>{sm.label}</Badge>
                                         </div>
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.body}</p>
-                                        {(t.attachmentUrls?.length ?? 0) > 0 && (
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tk.body}</p>
+                                        {(tk.attachmentUrls?.length ?? 0) > 0 && (
                                             <div className="flex flex-wrap gap-2">
-                                                {t.attachmentUrls!.map((url) => (
+                                                {tk.attachmentUrls!.map((url) => (
                                                     <a
                                                         key={url}
                                                         href={url}
@@ -201,23 +201,26 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
                                                 ))}
                                             </div>
                                         )}
-                                        <div className="flex flex-wrap gap-2 justify-end">
+                                        <div className={cn("flex flex-wrap gap-2", isRtl ? "justify-end" : "justify-start")}>
                                             <Button
                                                 size="sm"
                                                 variant="outline"
                                                 disabled={disabledActions || updateStatus.isPending}
                                                 onClick={() =>
                                                     updateStatus.mutate(
-                                                        { id: t.id, status: "IN_PROGRESS" },
+                                                        { id: tk.id, status: "IN_PROGRESS" },
                                                         {
                                                             onSuccess: () =>
-                                                                toast({ title: "تم", description: "حالة: قيد المعالجة" }),
-                                                        }
+                                                                toast({
+                                                                    title: t("dash.teacher.support.toast.inProgress"),
+                                                                    description: t("dash.teacher.support.toast.inProgressDesc"),
+                                                                }),
+                                                        },
                                                     )
                                                 }
                                             >
-                                                <PlayCircle className="w-4 h-4 ml-1" />
-                                                قيد المعالجة
+                                                <PlayCircle className="w-4 h-4 mx-1" />
+                                                {t("dash.teacher.support.inProgress")}
                                             </Button>
                                             <Button
                                                 size="sm"
@@ -225,25 +228,28 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
                                                 disabled={disabledActions || updateStatus.isPending}
                                                 onClick={() =>
                                                     updateStatus.mutate(
-                                                        { id: t.id, status: "RESOLVED", resolved: true },
+                                                        { id: tk.id, status: "RESOLVED", resolved: true },
                                                         {
                                                             onSuccess: () =>
-                                                                toast({ title: "تم الحل", description: "أُغلقت التذكرة." }),
-                                                        }
+                                                                toast({
+                                                                    title: t("dash.teacher.support.toast.resolved"),
+                                                                    description: t("dash.teacher.support.toast.resolvedDesc"),
+                                                                }),
+                                                        },
                                                     )
                                                 }
                                             >
-                                                <CheckCircle2 className="w-4 h-4 ml-1" />
-                                                تم الحل
+                                                <CheckCircle2 className="w-4 h-4 mx-1" />
+                                                {t("dash.teacher.support.resolved")}
                                             </Button>
                                             <Button
                                                 size="sm"
                                                 variant="destructive"
                                                 disabled={disabledActions || escalate.isPending}
-                                                onClick={() => setEscalateTicket(t)}
+                                                onClick={() => setEscalateTicket(tk)}
                                             >
-                                                <ArrowUpCircle className="w-4 h-4 ml-1" />
-                                                تصعيد للإدارة
+                                                <ArrowUpCircle className="w-4 h-4 mx-1" />
+                                                {t("dash.teacher.support.escalate")}
                                             </Button>
                                         </div>
                                     </li>
@@ -256,48 +262,46 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">تذاكري للإدارة</CardTitle>
-                    <CardDescription>
-                        ما أرسلته إلى الإدارة؛ إن وُجد تصعيد من طالب يُعرض اسم الطالب.
-                    </CardDescription>
+                    <CardTitle className="text-lg">{t("dash.teacher.support.toAdmin")}</CardTitle>
+                    <CardDescription>{t("dash.teacher.support.toAdminDesc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {loadingOutbound ? (
-                        <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.teacher.support.loading")}</p>
                     ) : !outbound?.length ? (
-                        <p className="text-sm text-muted-foreground">لا توجد تذاكر مرسلة للإدارة.</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.teacher.support.noAdminTickets")}</p>
                     ) : (
                         <ul className="space-y-3">
-                            {outbound.map((t: TeacherOutboundTicket) => {
-                                const sm = statusMeta[t.status] || statusMeta.OPEN;
+                            {outbound.map((tk: TeacherOutboundTicket) => {
+                                const sm = statusMeta[tk.status] || statusMeta.OPEN;
                                 const studentName =
-                                    t.parent?.studentAuthor?.name?.trim() ||
-                                    t.parent?.authorNameSnapshot?.trim();
-                                const isFromStudent = !!t.parent;
+                                    tk.parent?.studentAuthor?.name?.trim() ||
+                                    tk.parent?.authorNameSnapshot?.trim();
+                                const isFromStudent = !!tk.parent;
                                 return (
-                                    <li key={t.id} className="p-4 rounded-xl border text-right space-y-2">
+                                    <li key={tk.id} className={cn("p-4 rounded-xl border space-y-2", textAlign)}>
                                         <div className="flex justify-between gap-2">
-                                            <span className="font-semibold">{t.subject}</span>
+                                            <span className="font-semibold">{tk.subject}</span>
                                             <Badge variant={sm.variant}>{sm.label}</Badge>
                                         </div>
                                         {isFromStudent && (
                                             <p className="text-sm">
-                                                <span className="text-muted-foreground">الطالب: </span>
+                                                <span className="text-muted-foreground">{t("dash.teacher.support.studentLabel")}</span>
                                                 <span className="font-semibold text-foreground">
                                                     {studentName || "—"}
                                                 </span>
-                                                {t.parent?.studentAuthor?.email ? (
-                                                    <span className="text-xs text-muted-foreground mr-1">
+                                                {tk.parent?.studentAuthor?.email ? (
+                                                    <span className="text-xs text-muted-foreground mx-1">
                                                         {" "}
-                                                        · {t.parent.studentAuthor.email}
+                                                        · {tk.parent.studentAuthor.email}
                                                     </span>
                                                 ) : null}
-                                                <Badge variant="outline" className="mr-2 text-[10px] font-normal">
-                                                    تصعيد من طالب
+                                                <Badge variant="outline" className="mx-2 text-[10px] font-normal">
+                                                    {t("dash.teacher.support.escalatedFromStudent")}
                                                 </Badge>
                                             </p>
                                         )}
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.body}</p>
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tk.body}</p>
                                     </li>
                                 );
                             })}
@@ -307,26 +311,26 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
             </Card>
 
             <Dialog open={adminOpen} onOpenChange={setAdminOpen}>
-                <DialogContent className="sm:max-w-lg" dir="rtl">
+                <DialogContent className="sm:max-w-lg" dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>تذكرة دعم للإدارة</DialogTitle>
-                        <DialogDescription>صف المشكلة أو الطلب الموجّه لمسؤولي المنصة.</DialogDescription>
+                        <DialogTitle>{t("dash.teacher.support.adminDialogTitle")}</DialogTitle>
+                        <DialogDescription>{t("dash.teacher.support.adminDialogDesc")}</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreateAdmin} className="space-y-3">
                         <Input
                             value={adminSubject}
                             onChange={(e) => setAdminSubject(e.target.value)}
-                            placeholder="العنوان"
+                            placeholder={t("dash.teacher.support.subjectPlaceholder")}
                         />
                         <Textarea
                             value={adminBody}
                             onChange={(e) => setAdminBody(e.target.value)}
-                            placeholder="التفاصيل"
+                            placeholder={t("dash.teacher.support.bodyPlaceholder")}
                             rows={5}
                         />
-                        <DialogFooter className="gap-2 sm:justify-start">
+                        <DialogFooter className={cn("gap-2", isRtl ? "sm:justify-start" : "sm:justify-end")}>
                             <Button type="submit" disabled={createAdmin.isPending}>
-                                {createAdmin.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "إرسال"}
+                                {createAdmin.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("dash.teacher.support.send")}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -334,24 +338,22 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
             </Dialog>
 
             <Dialog open={!!escalateTicket} onOpenChange={(o) => !o && setEscalateTicket(null)}>
-                <DialogContent className="sm:max-w-lg" dir="rtl">
+                <DialogContent className="sm:max-w-lg" dir={dir}>
                     <DialogHeader>
-                        <DialogTitle>تصعيد التذكرة للإدارة</DialogTitle>
-                        <DialogDescription>
-                            أضف ملاحظة توضّح ما جرّبته أو سبب التصعيد. ستُرسل نسخة للإدارة مع تفاصيل الطالب.
-                        </DialogDescription>
+                        <DialogTitle>{t("dash.teacher.support.escalateDialogTitle")}</DialogTitle>
+                        <DialogDescription>{t("dash.teacher.support.escalateDialogDesc")}</DialogDescription>
                     </DialogHeader>
                     {escalateTicket && (
                         <div className="space-y-3">
                             <p className="text-sm">
-                                <span className="text-muted-foreground">الطالب: </span>
+                                <span className="text-muted-foreground">{t("dash.teacher.support.studentLabel")}</span>
                                 <span className="font-semibold">
                                     {escalateTicket.authorNameSnapshot?.trim() ||
                                         escalateTicket.author?.name ||
                                         "—"}
                                 </span>
                                 {escalateTicket.author?.email ? (
-                                    <span className="text-xs text-muted-foreground mr-1">
+                                    <span className="text-xs text-muted-foreground mx-1">
                                         {" "}
                                         · {escalateTicket.author.email}
                                     </span>
@@ -364,17 +366,17 @@ const TeacherSupportTab = ({ teacherUserId, teacherGradeId }: Props) => {
                             <Textarea
                                 value={escalateNote}
                                 onChange={(e) => setEscalateNote(e.target.value)}
-                                placeholder="ملاحظة للإدارة..."
+                                placeholder={t("dash.teacher.support.escalatePlaceholder")}
                                 rows={4}
                             />
                         </div>
                     )}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEscalateTicket(null)}>
-                            إلغاء
+                            {t("common.cancel")}
                         </Button>
                         <Button onClick={handleEscalate} disabled={!escalateNote.trim() || escalate.isPending}>
-                            {escalate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "تأكيد التصعيد"}
+                            {escalate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("dash.teacher.support.confirmEscalate")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

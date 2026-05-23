@@ -57,7 +57,249 @@ function buildEmbeddedReportFontFaces() {
   ).join("");
 }
 
+// src/lib/challengeReportLabels.ts
+var ar = {
+  lang: "ar",
+  dir: "rtl",
+  locale: "ar-SA",
+  defaultTitle: "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A",
+  eyebrow: "\u062A\u0642\u0631\u064A\u0631 \u0623\u062F\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u064A",
+  footerPlatform: "\u0645\u0646\u0635\u0629 lab4",
+  footerRegion: "\u0627\u0644\u0645\u0645\u0644\u0643\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0633\u0639\u0648\u062F\u064A\u0629",
+  metrics: {
+    totalAttempts: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0627\u062A",
+    avgPercent: "\u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0646\u0633\u0628\u0629",
+    avgPoints: "\u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0646\u0642\u0627\u0637",
+    maxPoints: "\u0623\u0639\u0644\u0649 \u0646\u0642\u0627\u0637",
+    registeredMembers: "\u0623\u0639\u0636\u0627\u0621 \u0645\u0633\u062C\u0644\u0648\u0646",
+    guests: "\u0632\u0648\u0627\u0631"
+  },
+  meta: {
+    lessonName: "\u0627\u0633\u0645 \u0627\u0644\u062F\u0631\u0633",
+    className: "\u0627\u0633\u0645 \u0627\u0644\u0635\u0641 / \u0627\u0644\u0641\u0635\u0644",
+    subject: "\u0627\u0644\u0645\u0627\u062F\u0629",
+    teacherName: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0639\u0644\u0645",
+    date: "\u0627\u0644\u062A\u0627\u0631\u064A\u062E",
+    time: "\u0627\u0644\u0648\u0642\u062A",
+    generatedAt: "\u062A\u0645 \u0627\u0644\u0625\u0646\u0634\u0627\u0621"
+  },
+  sections: {
+    lessonRating: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062F\u0631\u0633",
+    lessonRatingSummary: "\u062A\u0642\u064A\u064A\u0645 \u2014 \u0627\u0644\u0645\u062A\u0648\u0633\u0637",
+    lessonRatingSummaryLine: "{count} \u062A\u0642\u064A\u064A\u0645 \u2014 \u0627\u0644\u0645\u062A\u0648\u0633\u0637 {avg} / 5",
+    additionalAnalysis: "\u062A\u062D\u0644\u064A\u0644 \u0625\u0636\u0627\u0641\u064A",
+    educationalRecommendations: "\u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629",
+    recommendationsKicker: "\u062A\u0642\u0631\u064A\u0631 \u062A\u0648\u0635\u064A\u0627\u062A \u0645\u0647\u0646\u064A \u0645\u0648\u0644\u0651\u062F \u0645\u0646 \u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0646\u062A\u0627\u0626\u062C",
+    chartsAndIndicators: "\u0627\u0644\u0631\u0633\u0648\u0645 \u0648\u0627\u0644\u0645\u0624\u0634\u0631\u0627\u062A",
+    participantsLog: "\u0633\u062C\u0644 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u064A\u0646 \u0648\u0627\u0644\u0646\u062A\u0627\u0626\u062C",
+    questionAnalysis: "\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0623\u0633\u0626\u0644\u0629"
+  },
+  recommendation: {
+    priority: "\u0627\u0644\u0623\u0648\u0644\u0648\u064A\u0629",
+    timeframe: "\u0627\u0644\u0632\u0645\u0646",
+    dataEvidence: "\u0627\u0644\u062F\u0644\u064A\u0644 \u0645\u0646 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A",
+    suggestedActions: "\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629",
+    successIndicators: "\u0645\u0624\u0634\u0631\u0627\u062A \u0627\u0644\u0646\u062C\u0627\u062D"
+  },
+  charts: {
+    participantType: "\u0646\u0648\u0639 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u064A\u0646",
+    answerOutcomes: "\u0646\u062A\u0627\u0626\u062C \u0627\u0644\u0625\u062C\u0627\u0628\u0627\u062A",
+    scoreDistribution: "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062F\u0631\u062C\u0627\u062A",
+    topScores: "\u0623\u0641\u0636\u0644 \u0627\u0644\u0646\u062A\u0627\u0626\u062C",
+    questionAccuracy: "\u062F\u0642\u0629 \u0627\u0644\u0623\u0633\u0626\u0644\u0629",
+    avgQuestionTime: "\u0645\u062A\u0648\u0633\u0637 \u0632\u0645\u0646 \u0627\u0644\u0623\u0633\u0626\u0644\u0629",
+    scoreDistributionSummary: "\u0645\u0644\u062E\u0635 \u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062F\u0631\u062C\u0627\u062A",
+    learnerSegments: "\u0634\u0631\u0627\u0626\u062D \u0627\u0644\u0645\u062A\u0639\u0644\u0645\u064A\u0646",
+    questionDifficulty: "\u0635\u0639\u0648\u0628\u0629 \u0627\u0644\u0623\u0633\u0626\u0644\u0629",
+    weeklyTrend: "\u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u0623\u062F\u0627\u0621 \u0627\u0644\u0623\u0633\u0628\u0648\u0639\u064A",
+    weeklyTrendSub: "\u0627\u0644\u0623\u0639\u0645\u062F\u0629 = \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0627\u062A\u060C \u0627\u0644\u062E\u0637 = \u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0623\u062F\u0627\u0621",
+    timeVsScore: "\u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0628\u064A\u0646 \u0627\u0644\u0632\u0645\u0646 \u0648\u0627\u0644\u062F\u0631\u062C\u0629",
+    timeVsScoreSub: "\u0643\u0644 \u0646\u0642\u0637\u0629 \u062A\u0645\u062B\u0644 \u0645\u062D\u0627\u0648\u0644\u0629 \u0648\u0627\u062D\u062F\u0629",
+    lessTime: "\u0632\u0645\u0646 \u0623\u0642\u0644",
+    moreTime: "\u0632\u0645\u0646 \u0623\u0643\u062B\u0631",
+    total: "\u0625\u062C\u0645\u0627\u0644\u064A",
+    average: "\u0627\u0644\u0645\u062A\u0648\u0633\u0637",
+    showsTopN: "\u064A\u0639\u0631\u0636 \u0623\u0639\u0644\u0649 {shown} \u0639\u0646\u0627\u0635\u0631 \u0645\u0646 \u0623\u0635\u0644 {total}.",
+    showsFirstN: "\u064A\u0639\u0631\u0636 \u0623\u0648\u0644 {shown} \u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0646 \u0623\u0635\u0644 {total}.",
+    secSuffix: "\u062B"
+  },
+  participantsTable: {
+    rank: "\u0627\u0644\u062A\u0631\u062A\u064A\u0628",
+    participant: "\u0627\u0644\u0645\u0634\u0627\u0631\u0643",
+    percent: "\u0627\u0644\u0646\u0633\u0628\u0629",
+    points: "\u0627\u0644\u0646\u0642\u0627\u0637",
+    correct: "\u0635\u062D\u064A\u062D",
+    wrong: "\u062E\u0637\u0623",
+    time: "\u0627\u0644\u0648\u0642\u062A",
+    type: "\u0627\u0644\u0646\u0648\u0639",
+    registered: "\u0645\u0633\u062C\u0644",
+    guest: "\u0632\u0627\u0626\u0631",
+    empty: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C \u0645\u0633\u062C\u0644\u0629."
+  },
+  questionsTable: {
+    question: "\u0627\u0644\u0633\u0624\u0627\u0644",
+    accuracy: "\u0627\u0644\u062F\u0642\u0629",
+    correct: "\u0625\u062C\u0627\u0628\u0627\u062A \u0635\u062D\u064A\u062D\u0629",
+    total: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0625\u062C\u0627\u0628\u0627\u062A"
+  },
+  csv: {
+    field: "\u0627\u0644\u062D\u0642\u0644",
+    value: "\u0627\u0644\u0642\u064A\u0645\u0629",
+    topicTitle: "\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062F\u0631\u0633 / \u0627\u0644\u0645\u0648\u0636\u0648\u0639",
+    note: "\u0645\u0644\u0627\u062D\u0638\u0629",
+    participants: "\u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0648\u0646",
+    lessonRating: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062F\u0631\u0633",
+    totalRatings: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0642\u064A\u064A\u0645\u0627\u062A",
+    avgOutOf5: "\u0627\u0644\u0645\u062A\u0648\u0633\u0637 / 5",
+    emoji: "\u0627\u0644\u0625\u064A\u0645\u0648\u062C\u064A",
+    label: "\u0627\u0644\u062A\u0633\u0645\u064A\u0629",
+    count: "\u0627\u0644\u0639\u062F\u062F",
+    percent: "\u0627\u0644\u0646\u0633\u0628\u0629 %",
+    questionAnalysis: "\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0623\u0633\u0626\u0644\u0629",
+    questionTextShort: "\u0646\u0635 \u0627\u0644\u0633\u0624\u0627\u0644 (\u0645\u062E\u062A\u0635\u0631)",
+    accuracyPct: "\u0627\u0644\u062F\u0642\u0629 %",
+    totalAnswers: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0625\u062C\u0627\u0628\u0627\u062A",
+    recommendations: "\u062A\u0648\u0635\u064A\u0627\u062A"
+  }
+};
+var en = {
+  lang: "en",
+  dir: "ltr",
+  locale: "en-US",
+  defaultTitle: "Challenge report",
+  eyebrow: "Educational challenge performance report",
+  footerPlatform: "lab4 platform",
+  footerRegion: "Kingdom of Saudi Arabia",
+  metrics: {
+    totalAttempts: "Total attempts",
+    avgPercent: "Average %",
+    avgPoints: "Average points",
+    maxPoints: "Highest score",
+    registeredMembers: "Registered members",
+    guests: "Guests"
+  },
+  meta: {
+    lessonName: "Lesson",
+    className: "Grade / class",
+    subject: "Subject",
+    teacherName: "Teacher",
+    date: "Date",
+    time: "Time",
+    generatedAt: "Generated"
+  },
+  sections: {
+    lessonRating: "Lesson rating",
+    lessonRatingSummary: "ratings \u2014 average",
+    lessonRatingSummaryLine: "{count} ratings \xB7 average {avg} / 5",
+    additionalAnalysis: "Additional analysis",
+    educationalRecommendations: "Teaching recommendations",
+    recommendationsKicker: "Professional recommendations from results analysis",
+    chartsAndIndicators: "Charts & indicators",
+    participantsLog: "Participants & results",
+    questionAnalysis: "Question analysis"
+  },
+  recommendation: {
+    priority: "Priority",
+    timeframe: "Timeframe",
+    dataEvidence: "Evidence from data",
+    suggestedActions: "Suggested actions",
+    successIndicators: "Success indicators"
+  },
+  charts: {
+    participantType: "Participant type",
+    answerOutcomes: "Answer outcomes",
+    scoreDistribution: "Score distribution",
+    topScores: "Top scores",
+    questionAccuracy: "Question accuracy",
+    avgQuestionTime: "Avg. question time",
+    scoreDistributionSummary: "Score distribution summary",
+    learnerSegments: "Learner segments",
+    questionDifficulty: "Question difficulty",
+    weeklyTrend: "Weekly performance trend",
+    weeklyTrendSub: "Bars = attempts, line = average performance",
+    timeVsScore: "Time vs. score",
+    timeVsScoreSub: "Each point is one attempt",
+    lessTime: "Less time",
+    moreTime: "More time",
+    total: "Total",
+    average: "Average",
+    showsTopN: "Showing top {shown} of {total} items.",
+    showsFirstN: "Showing first {shown} of {total} attempts.",
+    secSuffix: "s"
+  },
+  participantsTable: {
+    rank: "Rank",
+    participant: "Participant",
+    percent: "%",
+    points: "Points",
+    correct: "Correct",
+    wrong: "Wrong",
+    time: "Time",
+    type: "Type",
+    registered: "Registered",
+    guest: "Guest",
+    empty: "No recorded results."
+  },
+  questionsTable: {
+    question: "Question",
+    accuracy: "Accuracy",
+    correct: "Correct",
+    total: "Total answers"
+  },
+  csv: {
+    field: "Field",
+    value: "Value",
+    topicTitle: "Lesson / topic title",
+    note: "Note",
+    participants: "Participants",
+    lessonRating: "Lesson rating",
+    totalRatings: "Total ratings",
+    avgOutOf5: "Average / 5",
+    emoji: "Emoji",
+    label: "Label",
+    count: "Count",
+    percent: "Percent %",
+    questionAnalysis: "Question analysis",
+    questionTextShort: "Question text (short)",
+    accuracyPct: "Accuracy %",
+    totalAnswers: "Total answers",
+    recommendations: "Recommendations"
+  }
+};
+function getChallengeReportLabels(language) {
+  return language === "en" ? en : ar;
+}
+function formatReportLabel(template, vars) {
+  return Object.entries(vars).reduce(
+    (s, [k, v]) => s.replace(new RegExp(`\\{${k}\\}`, "g"), String(v)),
+    template
+  );
+}
+
+// src/lib/lessonRatingLabels.ts
+var LESSON_RATING_LABELS = {
+  ar: {
+    1: "\u0633\u064A\u0621 \u062C\u062F\u0627\u064B",
+    2: "\u063A\u064A\u0631 \u0631\u0627\u0636\u064D",
+    3: "\u0645\u062D\u0627\u064A\u062F",
+    4: "\u062C\u064A\u062F",
+    5: "\u0645\u0645\u062A\u0627\u0632"
+  },
+  en: {
+    1: "Very poor",
+    2: "Dissatisfied",
+    3: "Neutral",
+    4: "Good",
+    5: "Excellent"
+  }
+};
+function getLessonRatingLabel(value, language = "ar") {
+  const lang = language === "en" ? "en" : "ar";
+  return LESSON_RATING_LABELS[lang][value] ?? LESSON_RATING_LABELS.ar[value] ?? String(value);
+}
+
 // src/lib/challengeReportPdfHtml.ts
+var L = getChallengeReportLabels("ar");
 var PALETTE = ["#7c3aed", "#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#0f766e"];
 function getReportFontBaseUrl() {
   if (typeof window !== "undefined" && window.location?.origin) {
@@ -131,12 +373,12 @@ function computeSummary(results) {
 }
 function renderMetricCards(summary) {
   const metrics = [
-    ["\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0627\u062A", summary.count],
-    ["\u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0646\u0633\u0628\u0629", `${summary.averagePercent}%`],
-    ["\u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0646\u0642\u0627\u0637", summary.averageScore],
-    ["\u0623\u0639\u0644\u0649 \u0646\u0642\u0627\u0637", summary.maxScore],
-    ["\u0623\u0639\u0636\u0627\u0621 \u0645\u0633\u062C\u0644\u0648\u0646", summary.members],
-    ["\u0632\u0648\u0627\u0631", summary.guests]
+    [L.metrics.totalAttempts, summary.count],
+    [L.metrics.avgPercent, `${summary.averagePercent}%`],
+    [L.metrics.avgPoints, summary.averageScore],
+    [L.metrics.maxPoints, summary.maxScore],
+    [L.metrics.registeredMembers, summary.members],
+    [L.metrics.guests, summary.guests]
   ];
   return `
         <section class="metric-grid">
@@ -153,21 +395,56 @@ function renderMetricCards(summary) {
 }
 function renderReportMeta(opts, generatedAt) {
   const rows = [
-    ["\u0627\u0633\u0645 \u0627\u0644\u062F\u0631\u0633", opts.lessonTitle],
-    ["\u0627\u0633\u0645 \u0627\u0644\u0635\u0641 / \u0627\u0644\u0641\u0635\u0644", opts.className],
-    ["\u0627\u0644\u0645\u0627\u062F\u0629", opts.subjectName],
-    ["\u0627\u0633\u0645 \u0627\u0644\u0645\u0639\u0644\u0645", opts.teacherName],
-    ["\u0627\u0644\u062A\u0627\u0631\u064A\u062E", opts.sessionDate],
-    ["\u0627\u0644\u0648\u0642\u062A", opts.sessionTime],
-    ["\u062A\u0645 \u0627\u0644\u0625\u0646\u0634\u0627\u0621", generatedAt]
+    [L.meta.lessonName, opts.lessonTitle],
+    [L.meta.className, opts.className],
+    [L.meta.subject, opts.subjectName],
+    [L.meta.teacherName, opts.teacherName],
+    [L.meta.date, opts.sessionDate],
+    [L.meta.time, opts.sessionTime],
+    [L.meta.generatedAt, generatedAt]
   ].filter(([, value]) => value);
   return rows.map(([label, value]) => `<span><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`).join("");
+}
+function renderLessonRatings(lessonRating) {
+  if (!lessonRating?.total) return "";
+  const rows = lessonRating.distribution.filter((row) => row.count > 0);
+  const maxCount = Math.max(...rows.map((row) => row.count), 1);
+  return `
+        <section class="section page-break-avoid">
+            <h2>${escapeHtml(L.sections.lessonRating)}</h2>
+            <p class="lesson-rating-summary">
+                ${escapeHtml(
+    formatReportLabel(L.sections.lessonRatingSummaryLine, {
+      count: lessonRating.total,
+      avg: lessonRating.average.toFixed(1)
+    })
+  )}
+            </p>
+            <div class="lesson-rating-bars">
+                ${lessonRating.distribution.map((row) => {
+    const width = row.count > 0 ? Math.max(8, Math.round(row.count / maxCount * 100)) : 0;
+    return `
+                            <div class="lesson-rating-row">
+                                <div class="lesson-rating-label">
+                                    <span class="lesson-rating-emoji">${row.emoji}</span>
+                                    <span>${escapeHtml(getLessonRatingLabel(row.value, L.lang))}</span>
+                                </div>
+                                <div class="lesson-rating-track">
+                                    <div class="lesson-rating-fill" style="width:${width}%"></div>
+                                </div>
+                                <div class="lesson-rating-meta">${row.count} (${row.percent}%)</div>
+                            </div>
+                        `;
+  }).join("")}
+            </div>
+        </section>
+    `;
 }
 function renderAnalysisRows(rows) {
   if (!rows?.length) return "";
   return `
         <section class="section">
-            <h2>\u062A\u062D\u0644\u064A\u0644 \u0625\u0636\u0627\u0641\u064A</h2>
+            <h2>${escapeHtml(L.sections.additionalAnalysis)}</h2>
             <div class="analysis-grid">
                 ${rows.map(
     (row) => `
@@ -185,7 +462,7 @@ function renderRecommendations(recommendations) {
   if (!recommendations?.length) return "";
   return `
         <section class="section">
-            <h2>\u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629</h2>
+            <h2>${escapeHtml(L.sections.educationalRecommendations)}</h2>
             <ul class="recommendations">
                 ${recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
             </ul>
@@ -207,9 +484,9 @@ function renderRecommendationReport(report, recommendations) {
   if (!report?.sections?.length) return renderRecommendations(recommendations);
   return `
         <section class="section recommendation-report">
-            <h2>\u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629</h2>
+            <h2>${escapeHtml(L.sections.educationalRecommendations)}</h2>
             <div class="recommendation-summary">
-                <div class="recommendation-kicker">\u062A\u0642\u0631\u064A\u0631 \u062A\u0648\u0635\u064A\u0627\u062A \u0645\u0647\u0646\u064A \u0645\u0648\u0644\u0651\u062F \u0645\u0646 \u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0646\u062A\u0627\u0626\u062C</div>
+                <div class="recommendation-kicker">${escapeHtml(L.sections.recommendationsKicker)}</div>
                 <h3>${escapeHtml(report.headline)}</h3>
                 <p>${escapeHtml(report.summary)}</p>
             </div>
@@ -228,14 +505,14 @@ function renderRecommendationReport(report, recommendations) {
                                     <div>
                                         <h4>${escapeHtml(section.title)}</h4>
                                         <div class="recommendation-badges">
-                                            ${section.priority ? `<span>\u0627\u0644\u0623\u0648\u0644\u0648\u064A\u0629: ${escapeHtml(section.priority)}</span>` : ""}
-                                            ${section.timeframe ? `<span>\u0627\u0644\u0632\u0645\u0646: ${escapeHtml(section.timeframe)}</span>` : ""}
+                                            ${section.priority ? `<span>${escapeHtml(L.recommendation.priority)}: ${escapeHtml(section.priority)}</span>` : ""}
+                                            ${section.timeframe ? `<span>${escapeHtml(L.recommendation.timeframe)}: ${escapeHtml(section.timeframe)}</span>` : ""}
                                         </div>
                                     </div>
                                 </div>
-                                ${renderRecommendationListBlock("\u0627\u0644\u062F\u0644\u064A\u0644 \u0645\u0646 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", section.evidence, "evidence-block")}
-                                ${renderRecommendationListBlock("\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629", actions, "actions-block")}
-                                ${renderRecommendationListBlock("\u0645\u0624\u0634\u0631\u0627\u062A \u0627\u0644\u0646\u062C\u0627\u062D", section.successIndicators, "indicators-block")}
+                                ${renderRecommendationListBlock(L.recommendation.dataEvidence, section.evidence, "evidence-block")}
+                                ${renderRecommendationListBlock(L.recommendation.suggestedActions, actions, "actions-block")}
+                                ${renderRecommendationListBlock(L.recommendation.successIndicators, section.successIndicators, "indicators-block")}
                             </article>
                         `;
   }).join("")}
@@ -268,7 +545,7 @@ function renderBarChart(title, rows, suffix = "", limit = 8) {
         <div class="chart-card">
             <div class="chart-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>\u0627\u0644\u0645\u062A\u0648\u0633\u0637 ${escapeHtml(formatChartValue(average2, suffix))}</span>
+                <span>${escapeHtml(L.charts.average)} ${escapeHtml(formatChartValue(average2, suffix))}</span>
             </div>
             <div class="bar-list">
                 ${visibleRows.map((row, index) => {
@@ -286,7 +563,7 @@ function renderBarChart(title, rows, suffix = "", limit = 8) {
                         `;
   }).join("")}
             </div>
-            ${rows.length > visibleRows.length ? `<p class="chart-note">\u064A\u0639\u0631\u0636 \u0623\u0639\u0644\u0649 ${visibleRows.length} \u0639\u0646\u0627\u0635\u0631 \u0645\u0646 \u0623\u0635\u0644 ${rows.length}.</p>` : ""}
+            ${rows.length > visibleRows.length ? `<p class="chart-note">${escapeHtml(formatReportLabel(L.charts.showsTopN, { shown: visibleRows.length, total: rows.length }))}</p>` : ""}
         </div>
     `;
 }
@@ -320,14 +597,14 @@ function renderDonutChart(title, rows) {
         <div class="chart-card">
             <div class="chart-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A ${escapeHtml(total)}</span>
+                <span>${escapeHtml(L.charts.total)} ${escapeHtml(total)}</span>
             </div>
             <div class="donut-wrap">
                 <svg class="donut" viewBox="0 0 144 144" aria-hidden="true">
                     <circle cx="72" cy="72" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="22" />
                     ${segments}
                     <text x="72" y="68" text-anchor="middle" class="donut-total">${escapeHtml(total)}</text>
-                    <text x="72" y="86" text-anchor="middle" class="donut-label">\u0625\u062C\u0645\u0627\u0644\u064A</text>
+                    <text x="72" y="86" text-anchor="middle" class="donut-label">${escapeHtml(L.charts.total)}</text>
                 </svg>
                 <div class="legend">
                     ${visibleRows.map((row, index) => {
@@ -369,8 +646,8 @@ function renderDailyTrendChart(rows) {
   return `
         <div class="chart-card chart-card-wide">
             <div class="chart-head">
-                <h3>\u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u0623\u062F\u0627\u0621 \u0627\u0644\u0623\u0633\u0628\u0648\u0639\u064A</h3>
-                <span>\u0627\u0644\u0623\u0639\u0645\u062F\u0629 = \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0627\u062A\u060C \u0627\u0644\u062E\u0637 = \u0645\u062A\u0648\u0633\u0637 \u0627\u0644\u0623\u062F\u0627\u0621</span>
+                <h3>${escapeHtml(L.charts.weeklyTrend)}</h3>
+                <span>${escapeHtml(L.charts.weeklyTrendSub)}</span>
             </div>
             <svg class="trend-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
                 ${[0, 25, 50, 75, 100].map((tick) => {
@@ -417,8 +694,8 @@ function renderScatterChart(rows) {
   return `
         <div class="chart-card chart-card-wide">
             <div class="chart-head">
-                <h3>\u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0628\u064A\u0646 \u0627\u0644\u0632\u0645\u0646 \u0648\u0627\u0644\u062F\u0631\u062C\u0629</h3>
-                <span>\u0643\u0644 \u0646\u0642\u0637\u0629 \u062A\u0645\u062B\u0644 \u0645\u062D\u0627\u0648\u0644\u0629 \u0648\u0627\u062D\u062F\u0629</span>
+                <h3>${escapeHtml(L.charts.timeVsScore)}</h3>
+                <span>${escapeHtml(L.charts.timeVsScoreSub)}</span>
             </div>
             <svg class="scatter-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
                 ${[0, 25, 50, 75, 100].map((tick) => {
@@ -437,10 +714,10 @@ function renderScatterChart(rows) {
     const y = top + plotH - score / 100 * plotH;
     return `<circle cx="${x}" cy="${y}" r="5" fill="${escapeHtml(getChartColor(row, index))}" opacity="0.78" />`;
   }).join("")}
-                <text x="${left}" y="${height - 14}" class="x-label">\u0632\u0645\u0646 \u0623\u0642\u0644</text>
-                <text x="${width - right}" y="${height - 14}" class="x-label">\u0632\u0645\u0646 \u0623\u0643\u062B\u0631</text>
+                <text x="${left}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.lessTime)}</text>
+                <text x="${width - right}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.moreTime)}</text>
             </svg>
-            ${rows.length > visibleRows.length ? `<p class="chart-note">\u064A\u0639\u0631\u0636 \u0623\u0648\u0644 ${visibleRows.length} \u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0646 \u0623\u0635\u0644 ${rows.length}.</p>` : ""}
+            ${rows.length > visibleRows.length ? `<p class="chart-note">${escapeHtml(formatReportLabel(L.charts.showsFirstN, { shown: visibleRows.length, total: rows.length }))}</p>` : ""}
         </div>
     `;
 }
@@ -448,21 +725,21 @@ function renderCharts(charts) {
   if (!charts) return "";
   const chartSections = [
     renderDailyTrendChart(charts.dailyTrend),
-    renderDonutChart("\u0646\u0648\u0639 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u064A\u0646", charts.participantTypeData),
-    renderDonutChart("\u0646\u062A\u0627\u0626\u062C \u0627\u0644\u0625\u062C\u0627\u0628\u0627\u062A", charts.answerOutcomeData),
-    renderBarChart("\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062F\u0631\u062C\u0627\u062A", charts.scoreDistribution),
-    renderBarChart("\u0623\u0641\u0636\u0644 \u0627\u0644\u0646\u062A\u0627\u0626\u062C", charts.topScoreChartData, "%", 6),
-    renderBarChart("\u062F\u0642\u0629 \u0627\u0644\u0623\u0633\u0626\u0644\u0629", charts.questionAccuracyChartData, "%", 8),
-    renderBarChart("\u0645\u062A\u0648\u0633\u0637 \u0632\u0645\u0646 \u0627\u0644\u0623\u0633\u0626\u0644\u0629", charts.questionTimeChartData, "\u062B", 8),
-    renderBarChart("\u0645\u0644\u062E\u0635 \u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062F\u0631\u062C\u0627\u062A", charts.scoreBoxData),
+    renderDonutChart(L.charts.participantType, charts.participantTypeData),
+    renderDonutChart(L.charts.answerOutcomes, charts.answerOutcomeData),
+    renderBarChart(L.charts.scoreDistribution, charts.scoreDistribution),
+    renderBarChart(L.charts.topScores, charts.topScoreChartData, "%", 6),
+    renderBarChart(L.charts.questionAccuracy, charts.questionAccuracyChartData, "%", 8),
+    renderBarChart(L.charts.avgQuestionTime, charts.questionTimeChartData, L.charts.secSuffix, 8),
+    renderBarChart(L.charts.scoreDistributionSummary, charts.scoreBoxData),
     renderScatterChart(charts.scoreTimeScatterData),
-    renderBarChart("\u0634\u0631\u0627\u0626\u062D \u0627\u0644\u0645\u062A\u0639\u0644\u0645\u064A\u0646", charts.learnerSegments),
-    renderBarChart("\u0635\u0639\u0648\u0628\u0629 \u0627\u0644\u0623\u0633\u0626\u0644\u0629", charts.questionDifficultyData)
+    renderBarChart(L.charts.learnerSegments, charts.learnerSegments),
+    renderBarChart(L.charts.questionDifficulty, charts.questionDifficultyData)
   ].filter(Boolean);
   if (!chartSections.length) return "";
   return `
         <section class="section page-break-avoid">
-            <h2>\u0627\u0644\u0631\u0633\u0648\u0645 \u0648\u0627\u0644\u0645\u0624\u0634\u0631\u0627\u062A</h2>
+            <h2>${escapeHtml(L.sections.chartsAndIndicators)}</h2>
             <div class="charts-grid">${chartSections.join("")}</div>
         </section>
     `;
@@ -471,18 +748,18 @@ function renderParticipants(results) {
   const sorted = [...results].sort((a, b) => getScorePercent(b) - getScorePercent(a));
   return `
         <section class="section">
-            <h2>\u0633\u062C\u0644 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u064A\u0646 \u0648\u0627\u0644\u0646\u062A\u0627\u0626\u062C</h2>
+            <h2>${escapeHtml(L.sections.participantsLog)}</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>\u0627\u0644\u062A\u0631\u062A\u064A\u0628</th>
-                        <th>\u0627\u0644\u0645\u0634\u0627\u0631\u0643</th>
-                        <th>\u0627\u0644\u0646\u0633\u0628\u0629</th>
-                        <th>\u0627\u0644\u0646\u0642\u0627\u0637</th>
-                        <th>\u0635\u062D\u064A\u062D</th>
-                        <th>\u062E\u0637\u0623</th>
-                        <th>\u0627\u0644\u0648\u0642\u062A</th>
-                        <th>\u0627\u0644\u0646\u0648\u0639</th>
+                        <th>${escapeHtml(L.participantsTable.rank)}</th>
+                        <th>${escapeHtml(L.participantsTable.participant)}</th>
+                        <th>${escapeHtml(L.participantsTable.percent)}</th>
+                        <th>${escapeHtml(L.participantsTable.points)}</th>
+                        <th>${escapeHtml(L.participantsTable.correct)}</th>
+                        <th>${escapeHtml(L.participantsTable.wrong)}</th>
+                        <th>${escapeHtml(L.participantsTable.time)}</th>
+                        <th>${escapeHtml(L.participantsTable.type)}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -496,10 +773,10 @@ function renderParticipants(results) {
                                             <td>${escapeHtml(row?.correct_answers ?? row?.correctAnswers ?? "\u2014")}</td>
                                             <td>${escapeHtml(row?.wrong_answers ?? row?.wrongAnswers ?? "\u2014")}</td>
                                             <td>${escapeHtml(row?.time_taken ?? row?.timeTaken ?? "\u2014")}</td>
-                                            <td>${row?.user?.id ? "\u0645\u0633\u062C\u0644" : "\u0632\u0627\u0626\u0631"}</td>
+                                            <td>${row?.user?.id ? escapeHtml(L.participantsTable.registered) : escapeHtml(L.participantsTable.guest)}</td>
                                         </tr>
                                     `
-  ).join("") : `<tr><td colspan="8" class="empty">\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C \u0645\u0633\u062C\u0644\u0629.</td></tr>`}
+  ).join("") : `<tr><td colspan="8" class="empty">${escapeHtml(L.participantsTable.empty)}</td></tr>`}
                 </tbody>
             </table>
         </section>
@@ -509,14 +786,14 @@ function renderQuestionRows(rows) {
   if (!rows?.length) return "";
   return `
         <section class="section">
-            <h2>\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0623\u0633\u0626\u0644\u0629</h2>
+            <h2>${escapeHtml(L.sections.questionAnalysis)}</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>\u0627\u0644\u0633\u0624\u0627\u0644</th>
-                        <th>\u0627\u0644\u062F\u0642\u0629</th>
-                        <th>\u0625\u062C\u0627\u0628\u0627\u062A \u0635\u062D\u064A\u062D\u0629</th>
-                        <th>\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0625\u062C\u0627\u0628\u0627\u062A</th>
+                        <th>${escapeHtml(L.questionsTable.question)}</th>
+                        <th>${escapeHtml(L.questionsTable.accuracy)}</th>
+                        <th>${escapeHtml(L.questionsTable.correct)}</th>
+                        <th>${escapeHtml(L.questionsTable.total)}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -536,18 +813,19 @@ function renderQuestionRows(rows) {
     `;
 }
 function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFaces(getReportFontBaseUrl())) {
-  const opts = options || { topicTitle: "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A" };
+  L = getChallengeReportLabels(options.language);
+  const opts = options || { topicTitle: L.defaultTitle };
   const results = Array.isArray(opts.results) ? opts.results : [];
   const summary = computeSummary(results);
-  const generatedAt = (/* @__PURE__ */ new Date()).toLocaleString("ar-SA", {
+  const generatedAt = (/* @__PURE__ */ new Date()).toLocaleString(L.locale, {
     dateStyle: "full",
     timeStyle: "short"
   });
   return `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${L.lang}" dir="${L.dir}">
 <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(opts.topicTitle || "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A")}</title>
+    <title>${escapeHtml(opts.topicTitle || L.defaultTitle)}</title>
     <style>
         ${fontFacesCss}
         @page { size: A4; margin: 12mm 10mm; }
@@ -563,10 +841,28 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
             margin: 0;
             color: #0f172a;
             background: #ffffff;
-            direction: rtl;
+            direction: ${L.dir};
+            text-align: start;
             font-family: "Cairo", "Tahoma", "Arial Unicode MS", "Segoe UI", sans-serif;
             font-size: 12px;
             line-height: 1.75;
+        }
+        h1, h2, h3, h4, p, li, th, td, span, strong {
+            text-align: inherit;
+        }
+        .metric-grid,
+        .analysis-grid,
+        .charts-grid,
+        .chart-card,
+        .chart-card-wide,
+        .donut-wrap,
+        .bar-list,
+        .bar-row,
+        .trend-chart,
+        .scatter-chart,
+        .lesson-rating-bars,
+        .lesson-rating-row {
+            direction: ltr;
         }
         .header {
             margin-bottom: 18px;
@@ -626,6 +922,48 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
             color: #4c1d95;
             font-size: 19px;
         }
+        .lesson-rating-summary {
+            margin-bottom: 12px;
+            color: #475569;
+            font-size: 12px;
+        }
+        .lesson-rating-bars {
+            display: grid;
+            gap: 8px;
+        }
+        .lesson-rating-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 72px;
+            gap: 10px;
+            align-items: center;
+        }
+        .lesson-rating-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .lesson-rating-emoji {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .lesson-rating-track {
+            height: 10px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            overflow: hidden;
+        }
+        .lesson-rating-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #a78bfa, #7c3aed);
+        }
+        .lesson-rating-meta {
+            font-size: 10px;
+            color: #64748b;
+            text-align: end;
+        }
         .section {
             margin-top: 18px;
             break-inside: avoid;
@@ -654,7 +992,7 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
         th, td {
             padding: 8px 9px;
             border-bottom: 1px solid #e2e8f0;
-            text-align: right;
+            text-align: start;
             vertical-align: top;
         }
         tbody tr:nth-child(even) td { background: #f8fafc; }
@@ -664,10 +1002,12 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
         }
         .recommendations {
             margin: 0;
-            padding: 12px 28px 12px 12px;
+            padding-block: 12px;
+            padding-inline: 28px 12px;
             border: 1px solid #fde68a;
             border-radius: 16px;
             background: #fffbeb;
+            list-style-position: outside;
         }
         .recommendations li { margin: 5px 0; }
         .recommendation-report {
@@ -792,7 +1132,9 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
         }
         .recommendation-block ul {
             margin: 0;
-            padding: 0 18px 0 0;
+            padding-inline-start: 18px;
+            padding-inline-end: 0;
+            list-style-position: outside;
         }
         .recommendation-block li {
             margin: 4px 0;
@@ -828,7 +1170,7 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
             flex-shrink: 0;
             color: #64748b;
             font-size: 9.5px;
-            text-align: left;
+            text-align: end;
         }
         .bar-row {
             display: grid;
@@ -858,7 +1200,7 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
         .bar-row strong {
             color: #0f172a;
             font-size: 10.5px;
-            text-align: left;
+            text-align: end;
         }
         .chart-note {
             margin: 8px 0 0;
@@ -913,7 +1255,37 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
         .trend-chart, .scatter-chart {
             width: 100%;
             height: auto;
+        }
+        html[dir="ltr"] .header,
+        html[dir="ltr"] .section,
+        html[dir="ltr"] .meta,
+        html[dir="ltr"] .footer,
+        html[dir="ltr"] table,
+        html[dir="ltr"] .lesson-rating-summary,
+        html[dir="ltr"] .lesson-rating-label,
+        html[dir="ltr"] .recommendation-report,
+        html[dir="ltr"] .recommendation-summary,
+        html[dir="ltr"] .recommendation-section,
+        html[dir="ltr"] .recommendation-section-head,
+        html[dir="ltr"] .recommendation-badges,
+        html[dir="ltr"] .recommendation-block,
+        html[dir="ltr"] .key-findings,
+        html[dir="ltr"] .recommendations {
             direction: ltr;
+            text-align: start;
+        }
+        html[dir="ltr"] .recommendation-block ul {
+            padding-inline-start: 18px;
+            padding-inline-end: 0;
+        }
+        html[dir="ltr"] .recommendation-section-head {
+            grid-template-columns: 34px 1fr;
+        }
+        html[dir="ltr"] .donut-wrap {
+            grid-template-columns: 132px 1fr;
+        }
+        html[dir="ltr"] .chart-head {
+            flex-direction: row;
         }
         .grid-line {
             stroke: #e2e8f0;
@@ -963,8 +1335,8 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
 </head>
 <body>
     <header class="header">
-        <p class="eyebrow">\u062A\u0642\u0631\u064A\u0631 \u0623\u062F\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A \u0627\u0644\u062A\u0639\u0644\u064A\u0645\u064A</p>
-        <h1>${escapeHtml(opts.topicTitle || "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062A\u062D\u062F\u064A")}</h1>
+        <p class="eyebrow">${escapeHtml(L.eyebrow)}</p>
+        <h1>${escapeHtml(opts.topicTitle || L.defaultTitle)}</h1>
         <div class="meta">
             ${renderReportMeta(opts, generatedAt)}
         </div>
@@ -972,6 +1344,7 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
     </header>
 
     ${renderMetricCards(summary)}
+    ${renderLessonRatings(opts.lessonRating)}
     ${renderAnalysisRows(opts.analysisRows)}
     ${renderCharts(opts.charts)}
     ${renderParticipants(results)}
@@ -979,8 +1352,8 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
     ${renderRecommendationReport(opts.recommendationReport, opts.recommendations)}
 
     <footer class="footer">
-        \u0645\u0646\u0635\u0629 lab4<br />
-        \u0627\u0644\u0645\u0645\u0644\u0643\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0633\u0639\u0648\u062F\u064A\u0629
+        ${escapeHtml(L.footerPlatform)}<br />
+        ${escapeHtml(L.footerRegion)}
     </footer>
 </body>
 </html>`;
@@ -1132,8 +1505,9 @@ function stripHtml2(value) {
 function clampText(value, maxLength) {
   return stripHtml2(value).slice(0, maxLength);
 }
-function getParticipantName2(row) {
-  return row?.user?.name || row?.name || row?.participant_display_name || row?.display_name || "\u0637\u0627\u0644\u0628";
+function getParticipantName2(row, language) {
+  const fallback = language === "en" ? "Student" : "\u0637\u0627\u0644\u0628";
+  return row?.user?.name || row?.name || row?.participant_display_name || row?.display_name || fallback;
 }
 function getScorePercent2(row) {
   const percentage = Number(row?.percentage);
@@ -1162,14 +1536,15 @@ function professionalizeFallbackSections(sections, evidence) {
   }));
 }
 function buildRecommendationInput(opts) {
+  const labels = getChallengeReportLabels(opts.language);
   const results = [...opts.results || []].sort((a, b) => getScorePercent2(b) - getScorePercent2(a)).slice(0, 80).map((row) => ({
-    name: clampText(getParticipantName2(row), 60),
+    name: clampText(getParticipantName2(row, opts.language), 60),
     percentage: getScorePercent2(row),
     score: row?.score ?? null,
     correctAnswers: row?.correct_answers ?? row?.correctAnswers ?? null,
     wrongAnswers: row?.wrong_answers ?? row?.wrongAnswers ?? null,
     timeTakenSeconds: row?.time_taken ?? row?.timeTaken ?? null,
-    participantType: row?.user?.id ? "\u0645\u0633\u062C\u0644" : "\u0632\u0627\u0626\u0631"
+    participantType: row?.user?.id ? labels.participantsTable.registered : labels.participantsTable.guest
   }));
   const questionRows = (opts.questionRows || []).slice(0, 50).map((row, index) => ({
     number: index + 1,
@@ -1180,6 +1555,7 @@ function buildRecommendationInput(opts) {
   }));
   return {
     reportMeta: {
+      outputLanguage: opts.language === "en" ? "en" : "ar",
       title: opts.topicTitle,
       lessonTitle: opts.lessonTitle,
       className: opts.className,
@@ -1197,6 +1573,9 @@ function buildRecommendationInput(opts) {
   };
 }
 function buildFallbackRecommendationReport(opts) {
+  if (opts.language === "en") {
+    return buildFallbackRecommendationReportEn(opts);
+  }
   const input = buildRecommendationInput(opts);
   const participants = input.participants;
   const questions = input.questions;
@@ -1289,6 +1668,92 @@ function buildFallbackRecommendationReport(opts) {
     ])
   };
 }
+function buildFallbackRecommendationReportEn(opts) {
+  const input = buildRecommendationInput(opts);
+  const participants = input.participants;
+  const questions = input.questions;
+  const avgScore = average(participants.map((p) => p.percentage));
+  const lowParticipants = participants.filter((p) => p.percentage < 60);
+  const nearMastery = participants.filter((p) => p.percentage >= 60 && p.percentage < 85);
+  const highParticipants = participants.filter((p) => p.percentage >= 85);
+  const weakQuestions = [...questions].sort((a, b) => a.accuracy - b.accuracy).slice(0, 4);
+  const weakestQuestion = weakQuestions[0];
+  const lessonTitle = opts.lessonTitle || opts.topicTitle || "the lesson";
+  const className = opts.className || "the class";
+  return {
+    headline: `Expanded recommendations for ${lessonTitle}`,
+    summary: `This report summarizes ${participants.length} attempts in ${className}. Overall average is ${avgScore}%, with ${lowParticipants.length} attempts needing direct support, ${nearMastery.length} near mastery, and ${highParticipants.length} advanced. Use these actions in your next lesson.`,
+    keyFindings: [
+      `Overall average: ${avgScore}%.`,
+      `Attempts needing support: ${lowParticipants.length}.`,
+      weakestQuestion ? `Weakest question accuracy: ${weakestQuestion.accuracy}%.` : "Not enough per-question detail."
+    ],
+    sections: [
+      {
+        title: "Performance diagnosis",
+        points: [
+          `Open the next lesson by sharing the class average (${avgScore}%) and one measurable goal.`,
+          `With only ${participants.length} attempts, treat conclusions as provisional until more data is collected.`,
+          `Group learners: direct support (${lowParticipants.length}), near mastery (${nearMastery.length}), advanced (${highParticipants.length}).`,
+          weakestQuestion ? `Start remediation with: "${weakestQuestion.question}" (${weakestQuestion.accuracy}% accuracy).` : "Run a quick class discussion to find the hardest step."
+        ]
+      },
+      {
+        title: "Immediate interventions",
+        points: [
+          "Spend 8\u201310 minutes re-teaching the core concept with one worked example.",
+          "Have students solve one similar item individually, then discuss one common error.",
+          "Give sub-60% students a support card: rule, worked example, quick check question.",
+          "End with an exit ticket aligned to the weakest skill."
+        ]
+      },
+      {
+        title: "Next lesson plan",
+        points: [
+          `Start with a 3-minute diagnostic tied to ${lessonTitle}.`,
+          "Model one full solution, then a partial solution for group completion.",
+          "Use short groups: remediation, practice, enrichment.",
+          "Close with two questions: remedial skill + transfer to a new context."
+        ]
+      },
+      {
+        title: "Differentiated support by learner segment",
+        points: [
+          "Below 60%: guided work with the teacher before independent practice.",
+          "60\u201384%: short error-focused practice, then two check questions.",
+          "85%+: enrichment task or peer coach role without giving away answers.",
+          "Vary time, question count, and hints by segment."
+        ]
+      },
+      {
+        title: "Suggested activities and questions",
+        points: [
+          weakestQuestion ? `Turn the weakest question into three tiered items: recall, apply, explain.` : "Build three tiered questions on the main lesson skill.",
+          "Use a short \u2018find the error\u2019 activity with one flawed solution.",
+          "Have students write one rule in simple language and swap with a partner to verify."
+        ]
+      },
+      {
+        title: "Follow-up and impact measurement",
+        points: [
+          "Run a short re-challenge 24\u201348 hours after the intervention.",
+          "Track movement from \u2018needs support\u2019 to \u2018near mastery\u2019 segments.",
+          "Keep one fixed item across checks to compare progress over time.",
+          weakestQuestion ? `If accuracy on the weakest skill stays low, change representation (visual/real-world) before re-testing.` : "If gains are flat, discuss with students to locate the blocking step."
+        ]
+      }
+    ].map((section, index) => ({
+      ...section,
+      priority: index < 2 ? "high" : index < 5 ? "medium" : "follow-up",
+      timeframe: index < 4 ? "next lesson" : "this week",
+      actions: section.points,
+      successIndicators: [
+        "Target skill accuracy improves on the next short check.",
+        "More learners move from support segment to near-mastery segment."
+      ]
+    }))
+  };
+}
 function extractText(data) {
   return data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
 }
@@ -1309,7 +1774,8 @@ function sanitizeStringList(value, maxItems, maxLength) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => clampText(item, maxLength)).filter(Boolean).slice(0, maxItems);
 }
-function sanitizeRecommendationReport(value) {
+function sanitizeRecommendationReport(value, language) {
+  const en2 = language === "en";
   const record = value && typeof value === "object" ? value : {};
   const sectionsRaw = Array.isArray(record.sections) ? record.sections : [];
   const sections = sectionsRaw.slice(0, 8).map((section) => {
@@ -1319,7 +1785,7 @@ function sanitizeRecommendationReport(value) {
     const evidence = sanitizeStringList(row.evidence, 4, 320);
     const successIndicators = sanitizeStringList(row.successIndicators, 4, 260);
     return {
-      title: clampText(row.title, 90) || "\u062A\u0648\u0635\u064A\u0629",
+      title: clampText(row.title, 90) || (en2 ? "Recommendation" : "\u062A\u0648\u0635\u064A\u0629"),
       priority: clampText(row.priority, 40),
       timeframe: clampText(row.timeframe, 60),
       evidence,
@@ -1331,13 +1797,54 @@ function sanitizeRecommendationReport(value) {
     (section) => section.points.length > 0 || section.actions.length > 0 || section.evidence.length > 0 || section.successIndicators.length > 0
   );
   return {
-    headline: clampText(record.headline, 120) || "\u062A\u0642\u0631\u064A\u0631 \u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629",
-    summary: clampText(record.summary, 1200) || "\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u062F\u0627\u0621 \u0627\u0644\u0645\u062A\u0627\u062D\u0629.",
+    headline: clampText(record.headline, 120) || (en2 ? "Teaching recommendations report" : "\u062A\u0642\u0631\u064A\u0631 \u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629"),
+    summary: clampText(record.summary, 1200) || (en2 ? "Recommendations were generated from the available performance data." : "\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u062F\u0627\u0621 \u0627\u0644\u0645\u062A\u0627\u062D\u0629."),
     keyFindings: sanitizeStringList(record.keyFindings, 6, 220),
     sections
   };
 }
-function buildPrompt(input) {
+function buildPrompt(input, language) {
+  if (language === "en") {
+    return `
+You are an educational consultant. Create a full teaching recommendations report in English from challenge data.
+
+CRITICAL: Every string in the JSON (headline, summary, keyFindings, section titles, priority, timeframe, evidence, actions, successIndicators, points) MUST be written in English only. Do not use Arabic or mixed languages.
+
+Requirements:
+- Detailed, actionable report for the teacher's next lesson.
+- Link recommendations to scores, weak questions, time, and learner segments.
+- Write 6\u20137 sections with 4\u20138 bullet points in actions or points per section.
+- Return JSON only (no Markdown).
+
+Use these section titles (in English):
+1) Performance diagnosis and gaps
+2) Urgent intervention priorities
+3) Next lesson plan
+4) Differentiated support by learner segment
+5) Suggested activities and questions
+6) Enrichment for advanced learners
+7) Follow-up and impact measurement
+
+Schema:
+{
+  "headline": "short title in English",
+  "summary": "5\u20137 sentence executive summary in English",
+  "keyFindings": ["finding with a number"],
+  "sections": [{
+    "title": "section title in English",
+    "priority": "high | medium | low",
+    "timeframe": "next lesson | this week | follow-up",
+    "evidence": ["data-backed point"],
+    "actions": ["actionable step"],
+    "successIndicators": ["measurable indicator"],
+    "points": ["optional summary"]
+  }]
+}
+
+Report data:
+${JSON.stringify(input, null, 2)}
+`;
+  }
   return `
 \u0623\u0646\u062A \u0645\u0633\u062A\u0634\u0627\u0631 \u062A\u0631\u0628\u0648\u064A \u0648\u062E\u0628\u064A\u0631 \u062A\u0642\u0648\u064A\u0645 \u062A\u0639\u0644\u064A\u0645\u064A. \u0623\u0646\u0634\u0626 \u062A\u0642\u0631\u064A\u0631 \u062A\u0648\u0635\u064A\u0627\u062A \u062A\u0639\u0644\u064A\u0645\u064A\u0629 \u0643\u0627\u0645\u0644 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u064A\u0627\u0646\u0627\u062A \u062A\u062D\u062F\u064A \u062A\u0639\u0644\u064A\u0645\u064A.
 
@@ -1386,7 +1893,28 @@ function buildPrompt(input) {
 ${JSON.stringify(input, null, 2)}
 `;
 }
-async function repairRecommendationJson(apiKey, brokenText) {
+function isArabicHeavyRecommendationReport(report) {
+  const chunks = [
+    report.headline,
+    report.summary,
+    ...report.keyFindings || [],
+    ...report.sections.flatMap((section) => [
+      section.title,
+      section.priority || "",
+      section.timeframe || "",
+      ...section.points || [],
+      ...section.actions || [],
+      ...section.evidence || [],
+      ...section.successIndicators || []
+    ])
+  ];
+  const text = chunks.join(" ");
+  const arabic = (text.match(/[\u0600-\u06FF]/g) || []).length;
+  const latin = (text.match(/[a-zA-Z]/g) || []).length;
+  return arabic > 12 && arabic >= latin;
+}
+async function repairRecommendationJson(apiKey, brokenText, language) {
+  const repairIntro = language === "en" ? "Convert the following text into valid JSON matching the required schema only. Do not add Markdown or commentary. If text is incomplete, complete it professionally. CRITICAL: All string values must remain in English.\n\n" : "\u062D\u0648\u0651\u0644 \u0627\u0644\u0646\u0635 \u0627\u0644\u062A\u0627\u0644\u064A \u0625\u0644\u0649 JSON \u0635\u0627\u0644\u062D \u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0641\u0642\u0637. \u0644\u0627 \u062A\u0636\u0641 Markdown \u0648\u0644\u0627 \u0634\u0631\u062D\u0627\u064B. \u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u0646\u0635 \u0646\u0627\u0642\u0635\u0627\u064B \u0641\u0623\u0643\u0645\u0644\u0647 \u0628\u0623\u0642\u0635\u0631 \u0635\u064A\u0627\u063A\u0629 \u0645\u0647\u0646\u064A\u0629 \u0645\u0645\u0643\u0646\u0629.\n\n";
   try {
     const data = await generateGeminiContent(
       apiKey,
@@ -1396,7 +1924,7 @@ async function repairRecommendationJson(apiKey, brokenText) {
             role: "user",
             parts: [
               {
-                text: "\u062D\u0648\u0651\u0644 \u0627\u0644\u0646\u0635 \u0627\u0644\u062A\u0627\u0644\u064A \u0625\u0644\u0649 JSON \u0635\u0627\u0644\u062D \u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0641\u0642\u0637. \u0644\u0627 \u062A\u0636\u0641 Markdown \u0648\u0644\u0627 \u0634\u0631\u062D\u0627\u064B. \u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u0646\u0635 \u0646\u0627\u0642\u0635\u0627\u064B \u0641\u0623\u0643\u0645\u0644\u0647 \u0628\u0623\u0642\u0635\u0631 \u0635\u064A\u0627\u063A\u0629 \u0645\u0647\u0646\u064A\u0629 \u0645\u0645\u0643\u0646\u0629.\n\n" + extractJsonCandidate(brokenText).slice(0, 12e3)
+                text: repairIntro + extractJsonCandidate(brokenText).slice(0, 12e3)
               }
             ]
           }
@@ -1427,7 +1955,7 @@ async function generateChallengeRecommendationReport(apiKey, opts) {
   const data = await generateGeminiContent(
     apiKey,
     {
-      contents: [{ role: "user", parts: [{ text: buildPrompt(input) }] }],
+      contents: [{ role: "user", parts: [{ text: buildPrompt(input, opts.language) }] }],
       generationConfig: {
         temperature: 0.4,
         topP: 0.9,
@@ -1445,16 +1973,22 @@ async function generateChallengeRecommendationReport(apiKey, opts) {
   );
   const text = extractText(data);
   if (!text) {
-    throw new Error("\u0644\u0645 \u064A\u0631\u062C\u0639 Gemini \u0646\u0635 \u062A\u0648\u0635\u064A\u0627\u062A \u0635\u0627\u0644\u062D\u0627\u064B.");
+    throw new Error(
+      opts.language === "en" ? "Gemini did not return valid recommendation text." : "\u0644\u0645 \u064A\u0631\u062C\u0639 Gemini \u0646\u0635 \u062A\u0648\u0635\u064A\u0627\u062A \u0635\u0627\u0644\u062D\u0627\u064B."
+    );
   }
-  const parsed = parseJsonObject(text) || await repairRecommendationJson(apiKey, text);
+  const parsed = parseJsonObject(text) || await repairRecommendationJson(apiKey, text, opts.language);
   if (!parsed) {
     const finishReason = data.candidates?.[0]?.finishReason;
     throw new Error(
-      finishReason ? `\u0631\u062C\u0639 Gemini \u062A\u0648\u0635\u064A\u0627\u062A \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644\u0629 (${finishReason}).` : "\u0631\u062C\u0639 Gemini \u062A\u0648\u0635\u064A\u0627\u062A JSON \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629."
+      opts.language === "en" ? finishReason ? `Gemini returned incomplete recommendations (${finishReason}).` : "Gemini returned invalid recommendation JSON." : finishReason ? `\u0631\u062C\u0639 Gemini \u062A\u0648\u0635\u064A\u0627\u062A \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644\u0629 (${finishReason}).` : "\u0631\u062C\u0639 Gemini \u062A\u0648\u0635\u064A\u0627\u062A JSON \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629."
     );
   }
-  return sanitizeRecommendationReport(parsed);
+  const sanitized = sanitizeRecommendationReport(parsed, opts.language);
+  if (opts.language === "en" && isArabicHeavyRecommendationReport(sanitized)) {
+    return buildFallbackRecommendationReportEn(opts);
+  }
+  return sanitized;
 }
 
 // server/challengeReportPdfHandler.ts

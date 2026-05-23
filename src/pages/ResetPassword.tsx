@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const ResetPassword = () => {
     const navigate = useNavigate();
+    const { t, dir } = useTranslation();
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +34,7 @@ const ResetPassword = () => {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session && !window.location.hash) {
                     setIsValidSession(false);
-                    setError("رابط غير صالح أو منتهي الصلاحية. يرجى طلب رابط جديد من صفحة نسيان كلمة المرور.");
+                    setError(t("reset.invalidLink"));
                 }
             };
 
@@ -58,12 +60,12 @@ const ResetPassword = () => {
         setError("");
 
         if (password !== confirmPassword) {
-            setError("كلمتا المرور غير متطابقتين");
+            setError(t("reset.passwordsNoMatch"));
             return;
         }
 
         if (password.length < 6) {
-            setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+            setError(t("reset.passwordMinLength"));
             return;
         }
 
@@ -79,7 +81,7 @@ const ResetPassword = () => {
 
                 if (rpcError || !updated) {
                     console.error("[ResetPassword] RPC Error:", rpcError);
-                    setError("حدث خطأ أثناء تحديث كلمة المرور.");
+                    setError(t("reset.errUpdate"));
                     setIsLoading(false);
                     return;
                 }
@@ -91,7 +93,7 @@ const ResetPassword = () => {
 
                 if (updateError) {
                     console.error("[ResetPassword] Error:", updateError);
-                    setError("حدث خطأ أثناء تحديث كلمة المرور.");
+                    setError(t("reset.errUpdate"));
                     setIsLoading(false);
                     return;
                 }
@@ -105,13 +107,13 @@ const ResetPassword = () => {
             }, 3000);
 
         } catch (err: any) {
-            setError(err.message || "حدث خطأ غير متوقع");
+            setError(err.message || t("reset.errGeneric"));
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir={dir}>
             <main className="flex-1 flex items-center justify-center py-12 px-4">
                 <div className="w-full max-w-md">
                     <motion.div
@@ -122,15 +124,15 @@ const ResetPassword = () => {
                         <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center mx-auto mb-4">
                             <KeyRound className="w-10 h-10 text-white" />
                         </div>
-                        <h1 className="text-3xl font-bold mb-2">إعادة تعيين كلمة المرور</h1>
+                        <h1 className="text-3xl font-bold mb-2">{t("reset.title")}</h1>
                         <p className="text-muted-foreground">
-                            أدخل كلمة المرور الجديدة لحسابك
+                            {t("reset.description")}
                         </p>
                     </motion.div>
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-center">إعداد كلمة المرور الجديدة</CardTitle>
+                            <CardTitle className="text-center">{t("reset.cardTitle")}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <AnimatePresence mode="wait">
@@ -144,9 +146,9 @@ const ResetPassword = () => {
                                         <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
                                             <CheckCircle className="w-8 h-8 text-success" />
                                         </div>
-                                        <h3 className="text-xl font-bold mb-2">تم التحديث بنجاح!</h3>
+                                        <h3 className="text-xl font-bold mb-2">{t("reset.successTitle")}</h3>
                                         <p className="text-muted-foreground mb-6">
-                                            تم تغيير كلمة المرور الخاصة بك. سيتم تحويلك لتسجيل الدخول...
+                                            {t("reset.successDesc")}
                                         </p>
                                     </motion.div>
                                 ) : (
@@ -159,18 +161,18 @@ const ResetPassword = () => {
                                     >
                                         {!isValidSession && (
                                             <div className="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400" role="alert">
-                                                <span className="font-medium">تنبيه!</span> {error}
+                                                <span className="font-medium">{t("reset.alert")}</span> {error}
                                             </div>
                                         )}
 
                                         <div>
-                                            <label className="text-sm font-medium mb-2 block">كلمة المرور الجديدة</label>
+                                            <label className="text-sm font-medium mb-2 block">{t("reset.newPassword")}</label>
                                             <div className="relative">
-                                                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                 <Input
                                                     type={showPassword ? "text" : "password"}
-                                                    placeholder="أدخل كلمة المرور الجديدة"
-                                                    className="pr-10 pl-10"
+                                                    placeholder={t("reset.newPasswordPlaceholder")}
+                                                    className={dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"}
                                                     value={password}
                                                     onChange={(e) => setPassword(e.target.value)}
                                                     required
@@ -179,7 +181,7 @@ const ResetPassword = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowPassword(!showPassword)}
-                                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                                    className={`absolute ${dir === "rtl" ? "left-3" : "right-3"} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors`}
                                                     disabled={!isValidSession}
                                                 >
                                                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -188,13 +190,13 @@ const ResetPassword = () => {
                                         </div>
 
                                         <div>
-                                            <label className="text-sm font-medium mb-2 block">تأكيد كلمة المرور</label>
+                                            <label className="text-sm font-medium mb-2 block">{t("reset.confirmPassword")}</label>
                                             <div className="relative">
-                                                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                 <Input
                                                     type={showPassword ? "text" : "password"}
-                                                    placeholder="أعد إدخال كلمة المرور"
-                                                    className="pr-10 pl-10"
+                                                    placeholder={t("reset.confirmPasswordPlaceholder")}
+                                                    className={dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"}
                                                     value={confirmPassword}
                                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                                     required
@@ -225,10 +227,10 @@ const ResetPassword = () => {
                                             {isLoading ? (
                                                 <>
                                                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                                                    جارٍ التحديث...
+                                                    {t("reset.saving")}
                                                 </>
                                             ) : (
-                                                "حفظ كلمة المرور"
+                                                t("reset.save")
                                             )}
                                         </Button>
                                     </motion.form>

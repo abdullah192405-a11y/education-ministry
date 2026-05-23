@@ -1,42 +1,47 @@
+import type { TFunction } from "@/contexts/LanguageContext";
 import type { SuperadminTabId } from "./SuperadminNav";
 
-export const SUPERADMIN_TAB_META: Record<
+export type SuperadminTabMeta = Record<
     SuperadminTabId,
     { title: string; description: string }
-> = {
-    overview: {
-        title: "نظرة عامة",
-        description: "ملخص المنصة، المؤسسات، والمهام العاجلة.",
-    },
-    create: {
-        title: "إنشاء حسابات",
-        description: "إنشاء مؤسسة أو مدرسة، حساب الأدمن، وإرسال بيانات الدخول عبر واتساب.",
-    },
-    admins: {
-        title: "أدمن المؤسسات",
-        description: "مراجعة طلبات التسجيل وإدارة حسابات مديري المؤسسات.",
-    },
-    orgs: {
-        title: "المؤسسات",
-        description: "عرض وتعديل المؤسسات المسجّلة، الباقات، وحالة التفعيل.",
-    },
-    users: {
-        title: "كل المستخدمين",
-        description: "إدارة الأدوار والمؤسسات لجميع مستخدمي المنصة.",
-    },
-    plans: {
-        title: "الباقات والاشتراكات",
-        description: "مرجع الباقات، الأسعار التقديرية، وإدارة اشتراكات المؤسسات.",
-    },
-    support: {
-        title: "تذاكر الدعم",
-        description: "متابعة تذاكر الدعم الواردة من المستخدمين.",
-    },
-    settings: {
-        title: "إعدادات المنصة",
-        description: "إعدادات عامة تؤثر على سلوك المنصة للزوار والمؤسسات.",
-    },
-};
+>;
+
+export function getSuperadminTabMeta(t: TFunction): SuperadminTabMeta {
+    return {
+        overview: {
+            title: t("dash.super.tabMeta.overview.title"),
+            description: t("dash.super.tabMeta.overview.desc"),
+        },
+        create: {
+            title: t("dash.super.tabMeta.create.title"),
+            description: t("dash.super.tabMeta.create.desc"),
+        },
+        admins: {
+            title: t("dash.super.tabMeta.admins.title"),
+            description: t("dash.super.tabMeta.admins.desc"),
+        },
+        orgs: {
+            title: t("dash.super.tabMeta.orgs.title"),
+            description: t("dash.super.tabMeta.orgs.desc"),
+        },
+        users: {
+            title: t("dash.super.tabMeta.users.title"),
+            description: t("dash.super.tabMeta.users.desc"),
+        },
+        plans: {
+            title: t("dash.super.tabMeta.plans.title"),
+            description: t("dash.super.tabMeta.plans.desc"),
+        },
+        support: {
+            title: t("dash.super.tabMeta.support.title"),
+            description: t("dash.super.tabMeta.support.desc"),
+        },
+        settings: {
+            title: t("dash.super.tabMeta.settings.title"),
+            description: t("dash.super.tabMeta.settings.desc"),
+        },
+    };
+}
 
 export const VALID_SUPERADMIN_TABS: SuperadminTabId[] = [
     "overview",

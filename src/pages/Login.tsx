@@ -14,6 +14,8 @@ import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignIn, useAuth } from "@clerk/clerk-react";
 import md5 from "js-md5";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 // Map role from DB to dashboard path
 const getDashboardPath = (role: string) => {
@@ -71,6 +73,7 @@ const Login = () => {
     const queryClient = useQueryClient();
     const { signIn, setActive, isLoaded: isClerkLoaded } = useSignIn();
     const { signOut, isSignedIn } = useAuth();
+    const { t, dir } = useTranslation();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -98,7 +101,7 @@ const Login = () => {
             });
         } catch (err: any) {
             console.error("[Login] Google sign-in error:", err);
-            setError("حدث خطأ أثناء تسجيل الدخول بحساب Google");
+            setError(t("login.errGoogle"));
             setIsGoogleLoading(false);
         }
     };
@@ -141,7 +144,7 @@ const Login = () => {
 
                         if (clerkDbUser) {
                             if (clerkDbUser.is_active === false) {
-                                setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                                setError(t("login.errAccountPending"));
                                 return;
                             }
 
@@ -211,7 +214,7 @@ const Login = () => {
                     const want = String(u.password_hash).toLowerCase();
                     if (got === want) {
                         if (u.is_active === false) {
-                            setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                            setError(t("login.errAccountPending"));
                             return;
                         }
                         console.log("[Login] Authenticated via users.password_hash");
@@ -229,14 +232,14 @@ const Login = () => {
                 }
                 if (!userSelErr && u && !u.password_hash) {
                     if (u.is_active === false) {
-                        setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                        setError(t("login.errAccountPending"));
                         return;
                     }
-                    setError("هذا الحساب يحتاج إعادة تعيين كلمة المرور أو تسجيل الدخول عبر Google.");
+                    setError(t("login.errNeedReset"));
                     return;
                 }
 
-                setError("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+                setError(t("login.errInvalidCredentials"));
                 return;
             }
 
@@ -282,7 +285,7 @@ const Login = () => {
             }
 
             if (userData.is_active === false) {
-                setError("الحساب بانتظار الموافقة من المسؤول. حاول تسجيل الدخول لاحقًا.");
+                setError(t("login.errAccountPending"));
                 return;
             }
 
@@ -307,26 +310,30 @@ const Login = () => {
             }, 1000);
 
         } catch (err: any) {
-            setError(err.message || "حدث خطأ أثناء تسجيل الدخول");
+            setError(err.message || t("login.errGeneric"));
         } finally {
             setIsLoading(false);
         }
     };
 
+    const ChevronIcon = dir === "rtl" ? ChevronRight : ChevronLeft;
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex flex-col" dir={dir}>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between h-16">
                         <Link to="/" className="flex items-center gap-3">
-                            <img src="/logo.png" alt="Lab4" className="w-10 h-10 rounded-xl object-contain bg-background" />
-                            <span className="text-xl font-bold">Lab4</span>
+                            <img src="/logo.png" alt={t("common.brand")} className="w-10 h-10 rounded-xl object-contain bg-background" />
+                            <span className="text-xl font-bold">{t("common.brand")}</span>
                         </Link>
-                        <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                            <ChevronRight className="w-4 h-4" />
-                            العودة للرئيسية
-                        </Link>
+                        <div className="flex items-center gap-2">
+                            <LanguageSwitcher />
+                            <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                                <ChevronIcon className="w-4 h-4" />
+                                {t("common.backToHome")}
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -343,10 +350,10 @@ const Login = () => {
                             <LogIn className="w-10 h-10 text-white" />
                         </div>
                         <h1 className="text-3xl md:text-4xl font-bold mb-2">
-                            تسجيل الدخول
+                            {t("login.title")}
                         </h1>
                         <p className="text-muted-foreground">
-                            Lab4 الرقمية
+                            {t("login.subtitle")}
                         </p>
                     </motion.div>
 
@@ -359,7 +366,7 @@ const Login = () => {
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-lg">
                                     <LogIn className="w-5 h-5 text-primary" />
-                                    تسجيل الدخول بحسابك
+                                    {t("login.cardTitle")}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
@@ -375,8 +382,8 @@ const Login = () => {
                                             <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
                                                 <CheckCircle className="w-10 h-10 text-success" />
                                             </div>
-                                            <h3 className="text-xl font-bold mb-2">مرحباً، {loginSuccess}!</h3>
-                                            <p className="text-muted-foreground">جارٍ التحويل إلى لوحة التحكم...</p>
+                                            <h3 className="text-xl font-bold mb-2">{t("login.welcomeBack", { name: loginSuccess })}</h3>
+                                            <p className="text-muted-foreground">{t("login.redirecting")}</p>
                                         </motion.div>
                                     ) : (
                                         <motion.div
@@ -397,12 +404,12 @@ const Login = () => {
                                                 {isGoogleLoading ? (
                                                     <>
                                                         <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                                                        جارٍ تسجيل الدخول...
+                                                        {t("login.signingIn")}
                                                     </>
                                                 ) : (
                                                     <>
                                                         <GoogleIcon />
-                                                        تسجيل الدخول بحساب Google
+                                                        {t("login.googleButton")}
                                                     </>
                                                 )}
                                             </Button>
@@ -414,7 +421,7 @@ const Login = () => {
                                                 </div>
                                                 <div className="relative flex justify-center text-xs uppercase">
                                                     <span className="bg-card px-2 text-muted-foreground">
-                                                        أو
+                                                        {t("login.or")}
                                                     </span>
                                                 </div>
                                             </div>
@@ -423,13 +430,13 @@ const Login = () => {
                                             <form onSubmit={handleLogin} className="space-y-4">
                                                 {/* Email Field */}
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">البريد الإلكتروني</label>
+                                                    <label className="text-sm font-medium mb-2 block">{t("common.email")}</label>
                                                     <div className="relative">
-                                                        <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                        <Mail className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                         <Input
                                                             type="email"
-                                                            placeholder="أدخل بريدك الإلكتروني"
-                                                            className="pr-10"
+                                                            placeholder={t("common.emailPlaceholder")}
+                                                            className={dir === "rtl" ? "pr-10" : "pl-10"}
                                                             value={email}
                                                             onChange={(e) => setEmail(e.target.value)}
                                                             required
@@ -439,13 +446,13 @@ const Login = () => {
 
                                                 {/* Password Field */}
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">كلمة المرور</label>
+                                                    <label className="text-sm font-medium mb-2 block">{t("common.password")}</label>
                                                     <div className="relative">
-                                                        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                        <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                         <Input
                                                             type={showPassword ? "text" : "password"}
-                                                            placeholder="أدخل كلمة المرور"
-                                                            className="pr-10 pl-10"
+                                                            placeholder={t("common.passwordPlaceholder")}
+                                                            className={dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"}
                                                             value={password}
                                                             onChange={(e) => setPassword(e.target.value)}
                                                             required
@@ -453,7 +460,7 @@ const Login = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => setShowPassword(!showPassword)}
-                                                            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                                            className={`absolute ${dir === "rtl" ? "left-3" : "right-3"} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors`}
                                                         >
                                                             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                                         </button>
@@ -484,12 +491,12 @@ const Login = () => {
                                                     {isLoading ? (
                                                         <>
                                                             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                            جارٍ تسجيل الدخول...
+                                                            {t("login.signingIn")}
                                                         </>
                                                     ) : (
                                                         <>
                                                             <LogIn className="w-5 h-5" />
-                                                            تسجيل الدخول
+                                                            {t("login.title")}
                                                         </>
                                                     )}
                                                 </Button>
@@ -497,13 +504,13 @@ const Login = () => {
 
                                             <div className="space-y-3 pt-4 border-t">
                                                 <Link to="/forgot-password" className="text-sm text-primary hover:underline block text-center">
-                                                    نسيت كلمة المرور؟
+                                                    {t("login.forgotPassword")}
                                                 </Link>
                                                 <div className="text-center">
                                                     <span className="text-sm text-muted-foreground">
-                                                        ليس لديك حساب؟{" "}
+                                                        {t("login.noAccount")}{" "}
                                                         <Link to="/register" className="text-primary hover:underline font-medium">
-                                                            إنشاء حساب جديد
+                                                            {t("common.registerNew")}
                                                         </Link>
                                                     </span>
                                                 </div>
@@ -520,7 +527,7 @@ const Login = () => {
             {/* Footer */}
             <footer className="py-6 border-t text-center text-sm text-muted-foreground">
                 <div className="container mx-auto px-4">
-                    جميع الحقوق محفوظة © 2024 Lab4
+                    {t("login.footerCopy")}
                 </div>
             </footer>
         </div>

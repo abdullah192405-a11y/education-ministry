@@ -4,9 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Medal, Star, Crown } from "lucide-react";
 import { useGlobalLeaderboard } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const LeaderboardSection = () => {
     const { data: results = [], isLoading } = useGlobalLeaderboard(5);
+    const { t } = useTranslation();
 
     if (isLoading) {
         return (
@@ -57,10 +59,10 @@ const LeaderboardSection = () => {
                     className="text-center mb-16"
                 >
                     <h2 className="text-3xl md:text-5xl font-black mb-4">
-                        لوحة <span className="text-primary">الشرف</span>
+                        {t("leaderboard.title")} <span className="text-primary">{t("leaderboard.titleHighlight")}</span>
                     </h2>
                     <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                        أفضل الطلاب أداءً في التحديات والأنشطة التعليمية لهذا الأسبوع
+                        {t("leaderboard.description")}
                     </p>
                 </motion.div>
 
@@ -99,12 +101,12 @@ const LeaderboardSection = () => {
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-lg md:text-xl text-foreground">
-                                                    {result.user?.name || "طالب مجتهد"}
+                                                    {result.user?.name || t("leaderboard.defaultStudent")}
                                                 </h3>
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
-                                                    <span>{result.level || "مستوى ممتاز"}</span>
+                                                    <span>{result.level || t("leaderboard.defaultLevel")}</span>
                                                     <span>•</span>
-                                                    <span>{result.accuracy || 100}% دقة</span>
+                                                    <span>{result.accuracy || 100}% {t("leaderboard.accuracy")}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -116,7 +118,7 @@ const LeaderboardSection = () => {
                                             {result.score}
                                         </div>
                                         <div className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                            نقطة
+                                            {t("leaderboard.points")}
                                         </div>
                                     </div>
                                 </CardContent>

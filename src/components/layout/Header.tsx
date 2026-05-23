@@ -5,19 +5,22 @@ import { Button } from "@/components/ui/button";
 import AnnouncementBar from "./AnnouncementBar";
 import { useUser } from "@/hooks/useDatabase";
 import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
-import { LayoutDashboard, LogIn, User, Menu, X, Trophy } from "lucide-react";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { LayoutDashboard, LogIn, User, Menu, X } from "lucide-react";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useUser();
   const { mode: visitorGradeMode } = useCatalogGradeClassMode();
+  const { t } = useTranslation();
 
   const gradesNavLabel =
     visitorGradeMode === "teaching_only"
-      ? "الصفوف التعليمية"
+      ? t("header.educationalGrades")
       : visitorGradeMode === "enrichment_only"
-        ? "القنوات الإثرائية"
-        : "الصفوف الدراسية";
+        ? t("header.enrichmentChannels")
+        : t("header.regularGrades");
 
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
@@ -31,12 +34,12 @@ const Header = () => {
   const dashboardPath = getDashboardPath();
 
   const navItems = [
-    { label: "الرئيسية", href: "/" },
+    { label: t("common.home"), href: "/" },
     { label: gradesNavLabel, href: "/grades" },
   ];
 
   if (user) {
-    navItems.push({ label: "لوحة التحكم", href: dashboardPath });
+    navItems.push({ label: t("common.dashboard"), href: dashboardPath });
   }
 
   return (
@@ -46,9 +49,9 @@ const Header = () => {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
-            <img src="/logo.png" alt="Lab4" className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-contain bg-background" />
+            <img src="/logo.png" alt={t("common.brand")} className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-contain bg-background" />
             <span className="text-xl md:text-2xl font-bold text-foreground">
-              Lab4
+              {t("common.brand")}
             </span>
           </Link>
 
@@ -67,12 +70,13 @@ const Header = () => {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-3">
+            <LanguageSwitcher />
             {user ? (
               <>
                 <Button variant="ghost" size="sm" asChild>
                   <Link to={dashboardPath}>
                     <LayoutDashboard className="w-4 h-4" />
-                    لوحة التحكم
+                    {t("common.dashboard")}
                   </Link>
                 </Button>
                 <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
@@ -87,13 +91,13 @@ const Header = () => {
                 <Button variant="ghost" size="sm" asChild>
                   <Link to="/login">
                     <LogIn className="w-4 h-4" />
-                    تسجيل الدخول
+                    {t("common.login")}
                   </Link>
                 </Button>
                 <Button size="sm" asChild>
                   <Link to="/register">
                     <User className="w-4 h-4" />
-                    إنشاء حساب
+                    {t("common.register")}
                   </Link>
                 </Button>
               </>
@@ -101,12 +105,16 @@ const Header = () => {
           </div>
 
           {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden p-2 text-foreground"
-          >
-            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          <div className="flex items-center gap-1 md:hidden">
+            <LanguageSwitcher iconOnly size="icon" />
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 text-foreground"
+              aria-label="menu"
+            >
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -135,7 +143,7 @@ const Header = () => {
                   <Button className="w-full" asChild>
                     <Link to={dashboardPath} onClick={() => setIsMenuOpen(false)}>
                       <LayoutDashboard className="w-4 h-4" />
-                      لوحة التحكم
+                      {t("common.dashboard")}
                     </Link>
                   </Button>
                 ) : (
@@ -143,13 +151,13 @@ const Header = () => {
                     <Button variant="outline" className="w-full" asChild>
                       <Link to="/login" onClick={() => setIsMenuOpen(false)}>
                         <LogIn className="w-4 h-4" />
-                        تسجيل الدخول
+                        {t("common.login")}
                       </Link>
                     </Button>
                     <Button className="w-full" asChild>
                       <Link to="/register" onClick={() => setIsMenuOpen(false)}>
                         <User className="w-4 h-4" />
-                        إنشاء حساب
+                        {t("common.register")}
                       </Link>
                     </Button>
                   </>

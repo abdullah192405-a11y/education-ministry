@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-    Upload, FileText, Sparkles, AlertCircle, CheckCircle2,
-    Loader2, X, FileUp, Wand2, Image as ImageIcon, Video, Link2
+    Upload, FileText, Sparkles, AlertCircle,
+    Loader2, X, FileUp, Wand2, Image as ImageIcon, Video, Link2, Headphones, FileType
 } from "lucide-react";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
@@ -15,6 +15,28 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
 import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { aiGenContext, buildUploadGenerationPrompt, buildAudioTranscriptionPrompt } from "@/lib/aiQuestionGenerationPrompts";
+import { cn } from "@/lib/utils";
+
+const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|m4a|aac|webm|flac|opus)$/i;
+
+const guessAudioMimeType = (fileName: string, fallback = "audio/mpeg"): string => {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".wav")) return "audio/wav";
+    if (lower.endsWith(".ogg")) return "audio/ogg";
+    if (lower.endsWith(".m4a")) return "audio/mp4";
+    if (lower.endsWith(".aac")) return "audio/aac";
+    if (lower.endsWith(".webm")) return "audio/webm";
+    if (lower.endsWith(".flac")) return "audio/flac";
+    if (lower.endsWith(".opus")) return "audio/ogg";
+    return fallback;
+};
+
+const isAudioFile = (file: File): boolean =>
+    file.type.startsWith("audio/") || AUDIO_EXTENSIONS.test(file.name);
+
+type UploadSourceType = "pdf" | "image" | "audio" | "video";
 
 interface AIQuestionGeneratorProps {
     onGenerate: (questions: ChallengeQuestion[]) => void;
@@ -22,14 +44,18 @@ interface AIQuestionGeneratorProps {
 }
 
 const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps) => {
-    const [inputType, setInputType] = useState<"file" | "video">("file");
+    const [inputType, setInputType] = useState<UploadSourceType>("pdf");
     const [videoUrl, setVideoUrl] = useState("");
     const [file, setFile] = useState<File | null>(null);
-    const [fileType, setFileType] = useState<"pdf" | "image" | null>(null);
+    const [fileType, setFileType] = useState<"pdf" | "image" | "audio" | null>(null);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const audioInputRef = useRef<HTMLInputElement>(null);
     const [prompt, setPrompt] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState("");
     const { toast } = useToast();
+    const { t, dir, language, isRtl, textAlign } = useDashboardLocale();
 
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -43,38 +69,126 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
         });
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0];
-        if (selectedFile) {
-            if (selectedFile.type === "application/pdf") {
-                setFile(selectedFile);
-                setFileType("pdf");
-                toast({
-                    title: "تم اختيار ملف PDF ✓",
-                    description: selectedFile.name,
-                });
-            } else if (selectedFile.type.startsWith("image/")) {
-                setFile(selectedFile);
-                setFileType("image");
-                toast({
-                    title: "تم اختيار صورة ✓",
-                    description: selectedFile.name,
-                });
-            } else {
-                toast({
-                    title: "خطأ في نوع الملف",
-                    description: "يرجى اختيار ملف PDF أو صورة فقط",
-                    variant: "destructive",
-                });
-            }
+    const clearSelectedFile = () => {
+        setFile(null);
+        setFileType(null);
+    };
+
+    const handleSourceTabChange = (value: string) => {
+        const next = value as UploadSourceType;
+        setInputType(next);
+        if (next === "video" || (fileType && fileType !== next)) {
+            clearSelectedFile();
         }
     };
+
+    const handleFileChange = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        expectedType: "pdf" | "image" | "audio"
+    ) => {
+        const selectedFile = e.target.files?.[0];
+        e.target.value = "";
+        if (!selectedFile) return;
+
+        const isValid =
+            expectedType === "pdf"
+                ? selectedFile.type === "application/pdf"
+                : expectedType === "image"
+                    ? selectedFile.type.startsWith("image/")
+                    : isAudioFile(selectedFile);
+
+        if (!isValid) {
+            toast({
+                title: t("dash.teacher.aiGen.upload.toast.invalidFileType"),
+                description:
+                    expectedType === "pdf"
+                        ? t("dash.teacher.aiGen.upload.toast.invalidPdfDesc")
+                        : expectedType === "image"
+                            ? t("dash.teacher.aiGen.upload.toast.invalidImageDesc")
+                            : t("dash.teacher.aiGen.upload.toast.invalidAudioDesc"),
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setFile(selectedFile);
+        setFileType(expectedType);
+        toast({
+            title:
+                expectedType === "pdf"
+                    ? t("dash.teacher.aiGen.upload.toast.pdfSelected")
+                    : expectedType === "image"
+                        ? t("dash.teacher.aiGen.upload.toast.imageSelected")
+                        : t("dash.teacher.aiGen.upload.toast.audioSelected"),
+            description: selectedFile.name,
+        });
+    };
+
+    const renderFileSelection = () => {
+        if (!file) return null;
+        const Icon =
+            fileType === "pdf" ? FileText : fileType === "audio" ? Headphones : ImageIcon;
+        return (
+            <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 font-medium">
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="truncate" title={file.name}>{file.name}</span>
+                <span className="text-muted-foreground shrink-0 tabular-nums">
+                    ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                </span>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={clearSelectedFile}
+                    disabled={isProcessing}
+                >
+                    <X className="w-4 h-4" />
+                </Button>
+            </div>
+        );
+    };
+
+    const renderFileUploadTab = (
+        kind: "pdf" | "image" | "audio",
+        inputRef: React.RefObject<HTMLInputElement | null>,
+        accept: string,
+        hintKey: "dash.teacher.aiGen.upload.pdfHint" | "dash.teacher.aiGen.upload.imageHint" | "dash.teacher.aiGen.upload.audioHint",
+        Icon: typeof FileText
+    ) => (
+        <TabsContent value={kind} className="space-y-3 mt-4">
+            <input
+                ref={inputRef}
+                type="file"
+                accept={accept}
+                className="hidden"
+                onChange={(e) => handleFileChange(e, kind)}
+                disabled={isProcessing}
+            />
+            <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 h-11"
+                onClick={() => inputRef.current?.click()}
+                disabled={isProcessing}
+            >
+                <Upload className="w-4 h-4 shrink-0" />
+                {t("dash.teacher.aiGen.upload.chooseFile")}
+            </Button>
+            {renderFileSelection()}
+            {!file && (
+                <p className={cn("text-xs text-muted-foreground flex items-start gap-2", textAlign)}>
+                    <Icon className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground/70" />
+                    {t(hintKey)}
+                </p>
+            )}
+        </TabsContent>
+    );
 
     const handleGenerate = async () => {
         if (!prompt.trim()) {
             toast({
-                title: "لم يتم إدخال التعليمات",
-                description: "يرجى إدخال تعليمات واضحة لتوليد الأسئلة",
+                title: t("dash.teacher.aiGen.toast.noPrompt"),
+                description: t("dash.teacher.aiGen.toast.noPromptDesc"),
                 variant: "destructive",
             });
             return;
@@ -86,8 +200,8 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             let extractedText = "";
             let imagePart: any = null;
 
-            if (inputType === "file" && file) {
-                setProgress("جاري تحليل الملف...");
+            if (inputType !== "video" && file) {
+                setProgress(t("dash.teacher.aiGen.upload.progress.analyzingFile"));
                 if (file.type.includes("image")) {
                     const base64Data = await fileToBase64(file);
                     imagePart = {
@@ -96,26 +210,60 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                             data: base64Data
                         }
                     };
-                    extractedText = "تم توفير صورة للتحليل. يرجى تحليل محتواها العلمي بدقة.";
+                    extractedText = aiGenContext.imageForAnalysis(language);
                 } else if (file.type === "application/pdf") {
-                    setProgress("جاري تحليل ملف PDF...");
+                    setProgress(t("dash.teacher.aiGen.upload.progress.analyzingPdf"));
                     // Try text extraction first
                     extractedText = await extractPdfText(file);
 
                     // Printed / scanned PDFs have no text layer — send page images for vision (Gemini reads them)
                     if (pdfNeedsVisualPageImages(extractedText)) {
-                        setProgress("جاري تحويل صفحات PDF إلى صور للتحليل البصري...");
+                        setProgress(t("dash.teacher.aiGen.upload.progress.convertingPdf"));
                         const pdfImages = await extractPdfAsImages(file, 10, 2);
                         if (pdfImages.length === 0) {
-                            throw new Error(
-                                "تعذّر تحويل صفحات PDF إلى صور. تأكد من أن الملف صالحاً أو جرّب ملف PDF آخر."
-                            );
+                            throw new Error(t("dash.teacher.aiGen.upload.errors.pdfConvertFailed"));
                         }
                         (window as any)._pendingPdfImages = pdfImages;
                     }
+                } else if (fileType === "audio" || isAudioFile(file)) {
+                    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+                    if (!apiKey) {
+                        throw new Error(t("dash.teacher.aiGen.errors.noGeminiKey"));
+                    }
+                    setProgress(t("dash.teacher.aiGen.resources.progress.transcribingFile", { fileName: file.name }));
+                    const base64Data = await fileToBase64(file);
+                    const mimeType = file.type || guessAudioMimeType(file.name);
+                    const transcription = (await generateGeminiContent(apiKey, {
+                        contents: [{
+                            parts: [
+                                {
+                                    inline_data: {
+                                        mime_type: mimeType,
+                                        data: base64Data,
+                                    },
+                                },
+                                { text: buildAudioTranscriptionPrompt(language) },
+                            ],
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            topK: 20,
+                            topP: 0.9,
+                            maxOutputTokens: 8192,
+                        },
+                    }, {
+                        models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+                    })) as {
+                        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+                    };
+                    const transcriptText = transcription.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+                    if (!transcriptText) {
+                        throw new Error(t("dash.teacher.aiGen.upload.errors.audioTranscribeFailed"));
+                    }
+                    extractedText = aiGenContext.audioTranscriptChunk(language, file.name, transcriptText);
                 }
             } else if (inputType === "video" && videoUrl) {
-                setProgress("جاري استخراج محتوى الفيديو...");
+                setProgress(t("dash.teacher.aiGen.upload.progress.extractingVideo"));
 
                 // Helper to get YouTube ID
                 const getYoutubeId = (url: string) => {
@@ -132,8 +280,10 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                         if (transcriptRes.ok) {
                             const transcriptData = await transcriptRes.json();
                             if (transcriptData && transcriptData.transcript) {
-                                extractedText = `[نص الفيديو الكامل من اليوتيوب - NotebookLM Mode]:\n${transcriptData.transcript.map((t: any) => t.text).join(" ")}`;
-                                setProgress("تم استخراج نص الفيديو وتحليله بنجاح ✓");
+                                extractedText =
+                                    aiGenContext.youtubeTranscriptPrefix(language) +
+                                    transcriptData.transcript.map((t: any) => t.text).join(" ");
+                                setProgress(t("dash.teacher.aiGen.upload.progress.videoExtracted"));
                             }
                         }
                     } catch (e) {
@@ -144,26 +294,31 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 if (!extractedText) {
                     // Fallback to oEmbed if transcript failed - now with more specific extraction
                     try {
-                        setProgress("جاري استجماع معلومات الفيديو البديلة...");
+                        setProgress(t("dash.teacher.aiGen.upload.progress.gatheringVideoInfo"));
                         const oEmbedRes = await fetch(`https://www.youtube.com/oembed?url=${videoUrl}&format=json`);
                         if (oEmbedRes.ok) {
                             const data = await oEmbedRes.json();
-                            extractedText = `[بيانات الفيديو للتحليل]:\nالعنوان: ${data.title}\nالمؤلف: ${data.author_name}\nالرابط: ${videoUrl}\n\nيرجى محاكاة NotebookLM واستخدام معرفتك الداخلية بهذا الفيديو أو موضوعه (Grounded Knowledge) لإنتاج أسئلة دقيقة جداً.`;
+                            extractedText = aiGenContext.youtubeMetadataBlock(
+                                language,
+                                data.title,
+                                data.author_name,
+                                videoUrl
+                            );
                         }
                     } catch (e) {
-                        extractedText = `[رابط فيديو للتحليل]: ${videoUrl}`;
+                        extractedText = aiGenContext.youtubeLinkOnly(language, videoUrl);
                     }
                 }
             }
             else {
-                setProgress("جاري التحضير...");
-                extractedText = "لم يتم توفير ملف أو رابط. سيعتمد التوليد على التعليمات المقدمة فقط.";
+                setProgress(t("dash.teacher.aiGen.upload.progress.preparing"));
+                extractedText = aiGenContext.noFileOrLink(language);
             }
 
             // Step 2: Call Gemini API
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
             if (!apiKey) {
-                throw new Error("لم يتم تكوين مفتاح Gemini API");
+                throw new Error(t("dash.teacher.aiGen.errors.noGeminiKey"));
             }
 
             const parts: any[] = [];
@@ -188,16 +343,16 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             }
 
             const sourceContextForPrompt =
-                inputType === "file" &&
+                inputType === "pdf" &&
                     file?.type === "application/pdf" &&
                     hadPdfPageImages &&
                     !extractedText.trim()
-                    ? "لا يوجد نص مستخرج من هذا PDF (ملف مطبوع أو ممسوح ضوئياً). صور الصفحات في نفس الطلب تحتوي المحتوى — اقرأها وحللها بدقة."
+                    ? aiGenContext.scannedPdfNoText(language)
                     : extractedText;
 
-            parts.push({ text: buildPrompt(sourceContextForPrompt, prompt) });
+            parts.push({ text: buildUploadGenerationPrompt(language, sourceContextForPrompt, prompt) });
 
-            setProgress("جاري توليد المحتوى عبر الذكاء الاصطناعي...");
+            setProgress(t("dash.teacher.aiGen.upload.progress.generating"));
             const data = (await generateGeminiContent(apiKey, {
                 contents: [{ parts }],
                 generationConfig: {
@@ -211,7 +366,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 onRetry: ({ attempt, delayMs, model, reason }) => {
                     const sec = Math.max(1, Math.round(delayMs / 1000));
                     setProgress(
-                        `ازدحام مؤقت — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
+                        t("dash.teacher.aiGen.progress.retryBusy", { attempt, sec, model })
                     );
                     console.warn("[Gemini retry]", { attempt, model, reason });
                 },
@@ -219,10 +374,10 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
             };
 
-            setProgress("جاري معالجة النتائج...");
+            setProgress(t("dash.teacher.aiGen.upload.progress.processing"));
             const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!generatedText) {
-                throw new Error("لم يتم توليد أي محتوى");
+                throw new Error(t("dash.teacher.aiGen.errors.noContentGenerated"));
             }
 
             const items = parseAiGeneratedChallengeItems(generatedText);
@@ -232,13 +387,13 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             })) as ChallengeQuestion[];
 
             if (questions.length === 0) {
-                throw new Error("لم يتم توليد أي أسئلة صالحة");
+                throw new Error(t("dash.teacher.aiGen.errors.noValidQuestions"));
             }
 
-            setProgress("تم التوليد بنجاح! ✓");
+            setProgress(t("dash.teacher.aiGen.upload.progress.success"));
             toast({
-                title: "تم توليد الأسئلة بنجاح! 🎉",
-                description: `تم توليد ${questions.length} سؤال ولعبة`,
+                title: t("dash.teacher.aiGen.toast.generateSuccess"),
+                description: t("dash.teacher.aiGen.toast.generateSuccessCount", { count: questions.length }),
             });
 
             // Delay to show success message
@@ -249,8 +404,8 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
         } catch (error) {
             console.error("Error generating questions:", error);
             toast({
-                title: "خطأ في التوليد",
-                description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+                title: t("dash.teacher.aiGen.toast.generateError"),
+                description: error instanceof Error ? error.message : t("dash.teacher.aiGen.toast.unexpectedError"),
                 variant: "destructive",
             });
             setProgress("");
@@ -259,183 +414,105 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
         }
     };
 
-    const buildPrompt = (fileContent: string, userPrompt: string): string => {
-        return `أنت مساعد ذكي متخصص في إنشاء أسئلة تعليمية وألعاب تفاعلية باللغة العربية.
-مهمتك الأساسية هي توليد محتوى مستنداً **حصرياً** على المصدر المقدم (صورة، PDF، أو رابط فيديو).
-
-المحتوى التعليمي من المصدر (نصوص و/أو صور لصفحات):
-${fileContent}
-
-طلب المعلم:
-${userPrompt}
-
-تنبيه هام: قم بتحليل **كامل** المحتوى المقدم (سواء كان نصاً مستخرجاً أو صوراً للصفحات). إذا كانت هناك صور لصفحات PDF، قم بإجراء تحليل بصري (OCR) دقيق لها. لا تتجاهل أي تفاصيل.
-
-يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على المعلومات المتوفرة في المصدر المقدم، مع الالتزام بالتنسيق التالي بدقة. 
-**في حال كان المصدر رابط فيديو (يوتيوب):**
-1. استخدم العنوان والبيانات المتاحة لفهم الموضوع الأساسي.
-2. قم بتحليله بناءً على معرفتك الواسعة بمحتوى الفيديو التعليمي (Grounded Knowledge) إذا كان الفيديو مشهوراً أو متاحاً في قاعدة بياناتك.
-3. التزم تماماً بمحتوى الفيديو ولا تخرج عن سياقه العلمي.
-4. إذا لم تتمكن من "مشاهدة" الفيديو مباشرة، اعتمد على العنوان والتعليمات المقدمة من المعلم لإنشاء أسئلة دقيقة جداً.
-
-أنواع الأسئلة المتاحة:
-1. اختيار متعدد (multiple_choice) - سؤال مع 2-6 خيارات
-2. صح وخطأ (true_false) - سؤال مع خيارين فقط
-3. سؤال وجواب (qa) - سؤال مفتوح
-4. أعرف/لا أعرف (know_dont_know) - تقييم ذاتي
-5. ترتيب (order_questions) - ترتيب عناصر
-
-أنواع الألعاب المتاحة:
-1. مطابقة (matching) - مطابقة عناصر مع بعضها
-2. تصويب (shooting) - تصويب على الإجابات الصحيحة
-3. عجلة الحظ (wheel_spin) - دوران عجلة تفاعلية
-4. ألغاز (puzzle) - حل لغز
-
-يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي:
-
-مثال للتنسيق:
-[
-  {
-    "type": "multiple_choice",
-    "question": "سؤال مستخرج من الملف المرفق...",
-    "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
-    "correctAnswer": 0,
-    "explanation": "الشرح...",
-    "points": 100,
-    "timeLimit": 30
-  },
-  {
-    "type": "matching",
-    "question": "طابق بين مفاهيم من الملف...",
-    "pairs": [
-      {"left": "العنصر 1", "right": "المطابق 1"},
-      {"left": "العنصر 2", "right": "المطابق 2"}
-    ],
-    "points": 150,
-    "timeLimit": 45
-  },
-  {
-      "type": "wheel_spin",
-      "question": "أدر العجلة: سؤال من الملف المرفق...",
-      "points": 0,
-      "timeLimit": 60,
-      "wheelSegments": [
-        {
-          "label": "سؤال 1",
-          "points": 100,
-          "question": "...",
-          "options": ["خيار 1", "خيار 2"],
-          "correctAnswer": 0
-        }
-      ]
-  }
-]
-
-ملاحظات مهمة:
-- التزم بنسبة 100% بالمحتوى المرفق (الصورة أو PDF). ممنوع تماماً توليد أسئلة من خارجها.
-- استخدم اللغة العربية الفصحى
-- اجعل الأسئلة واضحة ومفيدة ومستخلصة بدقة
-- نوّع بين الأسئلة والألعاب
-- اجعل النقاط مناسبة للصعوبة (50-200 نقطة)
-- الوقت المحدد يتراوح بين 15-60 ثانية
-- تأكد من صحة JSON تماماً`;
-    };
-
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             className="space-y-6"
+            dir={dir}
         >
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5">
+            <Card dir={dir} className="border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-xl">
-                        <Wand2 className="w-6 h-6 text-primary" />
-                        توليد الأسئلة والألعاب بالذكاء الاصطناعي
+                        <Wand2 className="w-6 h-6 text-primary shrink-0" />
+                        {t("dash.teacher.aiGen.upload.title")}
                     </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-2">
-                        استخدم Gemini AI لتوليد أسئلة وألعاب تفاعلية من ملف PDF أو صورة
+                    <p className={cn("text-sm text-muted-foreground mt-2", textAlign)}>
+                        {t("dash.teacher.aiGen.upload.subtitle")}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {/* Step 1: Content Source */}
                     <div className="space-y-4">
                         <Label className="text-base font-bold flex items-center gap-2">
-                            <FileUp className="w-5 h-5" />
-                            الخطوة 1: مصدر المحتوى
+                            <FileUp className="w-5 h-5 shrink-0" />
+                            {t("dash.teacher.aiGen.upload.step1")}
                         </Label>
 
-                        <Tabs value={inputType} onValueChange={(v) => setInputType(v as any)} className="w-full">
-                            <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="file" className="gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    ملف (PDF/صورة)
+                        <Tabs value={inputType} onValueChange={handleSourceTabChange} dir={dir} className="w-full">
+                            <TabsList
+                                dir={dir}
+                                className="flex w-full h-auto gap-1 p-1 flex-wrap sm:flex-nowrap"
+                            >
+                                <TabsTrigger
+                                    value="pdf"
+                                    className="flex-1 gap-1.5 text-xs sm:text-sm py-2 min-w-[calc(50%-0.25rem)] sm:min-w-0"
+                                >
+                                    <FileType className="w-4 h-4 shrink-0" />
+                                    {t("dash.teacher.topics.editor.mediaType.pdf")}
                                 </TabsTrigger>
-                                <TabsTrigger value="video" className="gap-2">
-                                    <Video className="w-4 h-4" />
-                                    رابط فيديو (YouTube)
+                                <TabsTrigger
+                                    value="image"
+                                    className="flex-1 gap-1.5 text-xs sm:text-sm py-2 min-w-[calc(50%-0.25rem)] sm:min-w-0"
+                                >
+                                    <ImageIcon className="w-4 h-4 shrink-0" />
+                                    {t("dash.teacher.topics.editor.mediaType.image")}
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="audio"
+                                    className="flex-1 gap-1.5 text-xs sm:text-sm py-2 min-w-[calc(50%-0.25rem)] sm:min-w-0"
+                                >
+                                    <Headphones className="w-4 h-4 shrink-0" />
+                                    {t("dash.teacher.topics.editor.mediaType.audio")}
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="video"
+                                    className="flex-1 gap-1.5 text-xs sm:text-sm py-2 min-w-[calc(50%-0.25rem)] sm:min-w-0"
+                                >
+                                    <Video className="w-4 h-4 shrink-0" />
+                                    {t("dash.teacher.aiGen.upload.tabVideo")}
                                 </TabsTrigger>
                             </TabsList>
 
-                            <TabsContent value="file" className="space-y-3 mt-4">
-                                <div className="flex items-center gap-3">
-                                    <Input
-                                        type="file"
-                                        accept=".pdf,image/*"
-                                        onChange={handleFileChange}
-                                        className="flex-1"
-                                        disabled={isProcessing}
-                                    />
-                                    {file && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => {
-                                                setFile(null);
-                                                setFileType(null);
-                                            }}
-                                            disabled={isProcessing}
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </Button>
-                                    )}
-                                </div>
-                                {file && (
-                                    <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 font-medium">
-                                        {fileType === "pdf" ? (
-                                            <FileText className="w-4 h-4 shrink-0" />
-                                        ) : (
-                                            <ImageIcon className="w-4 h-4 shrink-0" />
-                                        )}
-                                        <span className="truncate" title={file.name}>{file.name}</span>
-                                        <span className="text-muted-foreground shrink-0 tabular-nums">
-                                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                        </span>
-                                    </div>
-                                )}
-                                {!file && (
-                                    <p className="text-xs text-muted-foreground">
-                                        💡 ارفع ملف PDF لخطط الدروس أو صوراً لتمارين وكتب مدرسية. بعد الاختيار يظهر هنا اسم الملف والحجم.
-                                    </p>
-                                )}
-                            </TabsContent>
+                            {renderFileUploadTab(
+                                "pdf",
+                                pdfInputRef,
+                                ".pdf,application/pdf",
+                                "dash.teacher.aiGen.upload.pdfHint",
+                                FileType
+                            )}
+                            {renderFileUploadTab(
+                                "image",
+                                imageInputRef,
+                                "image/*",
+                                "dash.teacher.aiGen.upload.imageHint",
+                                ImageIcon
+                            )}
+                            {renderFileUploadTab(
+                                "audio",
+                                audioInputRef,
+                                "audio/*,.mp3,.wav,.ogg,.m4a,.aac,.webm,.flac,.opus",
+                                "dash.teacher.aiGen.upload.audioHint",
+                                Headphones
+                            )}
 
                             <TabsContent value="video" className="space-y-3 mt-4">
                                 <div className="space-y-2">
                                     <div className="relative">
-                                        <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                                        <Link2 className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                                         <Input
                                             type="url"
                                             placeholder="https://www.youtube.com/watch?v=..."
                                             value={videoUrl}
                                             onChange={(e) => setVideoUrl(e.target.value)}
-                                            className="pl-10"
+                                            className="ps-10 font-mono text-sm"
+                                            dir="ltr"
                                             disabled={isProcessing}
                                         />
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        💡 ضع رابط فيديو يوتيوب تعليمي ليقوم الذكاء الاصطناعي بتحليله
+                                    <p className={cn("text-xs text-muted-foreground", textAlign)}>
+                                        {t("dash.teacher.aiGen.upload.videoHint")}
                                     </p>
                                 </div>
                             </TabsContent>
@@ -445,19 +522,20 @@ ${userPrompt}
                     {/* Step 2: Enter Prompt */}
                     <div className="space-y-3">
                         <Label className="text-base font-bold flex items-center gap-2">
-                            <Sparkles className="w-5 h-5" />
-                            الخطوة 2: حدد ما تريد توليده
+                            <Sparkles className="w-5 h-5 shrink-0" />
+                            {t("dash.teacher.aiGen.step2Title")}
                         </Label>
                         <Textarea
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
-                            placeholder="مثال: أريد توليد 10 أسئلة متنوعة وألعاب تفاعلية عن الوحدة الأولى: الخلية ومكوناتها"
+                            placeholder={t("dash.teacher.aiGen.promptPlaceholder")}
                             rows={4}
                             disabled={isProcessing}
-                            className="resize-none"
+                            dir={dir}
+                            className={cn("resize-none", textAlign)}
                         />
-                        <div className="text-xs text-muted-foreground">
-                            💡 نصيحة: كن محدداً قدر الإمكان (مثلاً: "الوحدة 1"، "الصفحات 10-20"، "موضوع محدد")
+                        <div className={cn("text-xs text-muted-foreground", textAlign)}>
+                            {t("dash.teacher.aiGen.promptTip")}
                         </div>
                     </div>
 
@@ -466,13 +544,13 @@ ${userPrompt}
                         <Card className="border-blue-500/50 bg-blue-500/5">
                             <CardContent className="p-4">
                                 <div className="flex items-center gap-3">
-                                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                                    <div className="flex-1">
+                                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin shrink-0" />
+                                    <div className={cn("flex-1", textAlign)}>
                                         <p className="font-medium text-blue-700 dark:text-blue-300">
                                             {progress}
                                         </p>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            قد يستغرق هذا بضع ثوانٍ...
+                                            {t("dash.teacher.aiGen.progress.mayTakeSeconds")}
                                         </p>
                                     </div>
                                 </div>
@@ -485,13 +563,13 @@ ${userPrompt}
                         <CardContent className="p-4">
                             <div className="flex gap-3">
                                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                                <div className="text-sm space-y-2">
-                                    <p className="font-medium">ملاحظات هامة:</p>
-                                    <ul className="space-y-1 mr-4 list-disc text-muted-foreground">
-                                        <li>الذكاء الاصطناعي سيحلل محتوى ملفات PDF، الصور، أو روابط الفيديو</li>
-                                        <li>بالنسبة للفيديوهات، سيقوم النموذج بتحليل الرابط لاستنتاج المحتوى</li>
-                                        <li>سيتم توليد أسئلة وألعاب متنوعة حسب طلبك</li>
-                                        <li>يمكنك مراجعة وتعديل النتائج قبل الحفظ</li>
+                                <div className={cn("text-sm space-y-2 flex-1", textAlign)}>
+                                    <p className="font-medium">{t("dash.teacher.aiGen.upload.notesTitle")}</p>
+                                    <ul className="space-y-1 list-disc text-muted-foreground ps-4">
+                                        <li>{t("dash.teacher.aiGen.upload.notes1")}</li>
+                                        <li>{t("dash.teacher.aiGen.upload.notes2")}</li>
+                                        <li>{t("dash.teacher.aiGen.upload.notes3")}</li>
+                                        <li>{t("dash.teacher.aiGen.upload.notes4")}</li>
                                     </ul>
                                 </div>
                             </div>
@@ -499,32 +577,68 @@ ${userPrompt}
                     </Card>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-3 justify-end pt-4 border-t">
-                        <Button
-                            variant="outline"
-                            onClick={onCancel}
-                            disabled={isProcessing}
-                        >
-                            <X className="w-4 h-4 ml-2" />
-                            إلغاء
-                        </Button>
-                        <Button
-                            onClick={handleGenerate}
-                            disabled={!prompt.trim() || isProcessing || (inputType === 'video' && !videoUrl.trim()) || (inputType === 'file' && !file && !prompt.trim())}
-                            className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    جاري التوليد...
-                                </>
-                            ) : (
-                                <>
-                                    <Wand2 className="w-4 h-4" />
-                                    توليد بالذكاء الاصطناعي
-                                </>
-                            )}
-                        </Button>
+                    <div className={cn("flex gap-3 pt-4 border-t", isRtl ? "justify-start" : "justify-end")}>
+                        {isRtl ? (
+                            <>
+                                <Button
+                                    onClick={handleGenerate}
+                                    disabled={!prompt.trim() || isProcessing || (inputType === "video" && !videoUrl.trim())}
+                                    className={cn(
+                                        "gap-2 bg-gradient-to-l from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                    )}
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {t("dash.teacher.aiGen.btn.generating")}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-4 h-4" />
+                                            {t("dash.teacher.aiGen.btn.generate")}
+                                        </>
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={onCancel}
+                                    disabled={isProcessing}
+                                    className="gap-2"
+                                >
+                                    <X className="w-4 h-4 shrink-0" />
+                                    {t("dash.common.cancel")}
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    onClick={onCancel}
+                                    disabled={isProcessing}
+                                    className="gap-2"
+                                >
+                                    <X className="w-4 h-4 shrink-0" />
+                                    {t("dash.common.cancel")}
+                                </Button>
+                                <Button
+                                    onClick={handleGenerate}
+                                    disabled={!prompt.trim() || isProcessing || (inputType === "video" && !videoUrl.trim())}
+                                    className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {t("dash.teacher.aiGen.btn.generating")}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-4 h-4" />
+                                            {t("dash.teacher.aiGen.btn.generate")}
+                                        </>
+                                    )}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </CardContent>
             </Card>

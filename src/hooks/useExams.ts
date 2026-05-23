@@ -69,6 +69,8 @@ export const useTeacherExams = (hostId: string) => {
                                 ? (isNaN(Number(q.correct_answer)) ? q.correct_answer : Number(q.correct_answer))
                                 : q.correctAnswer,
                             imageUrl: q.image_url || q.imageUrl,
+                            videoUrl: q.video_url || q.videoUrl,
+                            audioUrl: q.audio_url || q.audioUrl,
                             orderItems: q.order_items || q.orderItems || [],
                             timeLimit: q.time_limit || q.timeLimit || 15,
                             points: q.points || 100,
@@ -171,6 +173,8 @@ export const useExamByPin = (pin: string) => {
                         ? (isNaN(Number(q.correct_answer)) ? q.correct_answer : Number(q.correct_answer))
                         : q.correctAnswer,
                     imageUrl: q.image_url || q.imageUrl,
+                    videoUrl: q.video_url || q.videoUrl,
+                    audioUrl: q.audio_url || q.audioUrl,
                     orderItems: q.order_items || q.orderItems || [],
                     timeLimit: q.time_limit || q.timeLimit || 15,
                     points: q.points || 100,

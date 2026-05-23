@@ -1,4 +1,4 @@
-/** تصدير تقرير تحدي للمعلم كملف CSV (يعمل مع Excel، UTF-8 مع BOM للعربية) */
+/** Export challenge report as CSV (UTF-8 with BOM for Excel) */
 
 function escapeCsvCell(value: unknown): string {
     const s = String(value ?? "");
@@ -65,7 +65,11 @@ export type ChallengeReportLessonRating = {
     }>;
 };
 
+import { getChallengeReportLabels, type ReportLanguage } from "./challengeReportLabels";
+import { getLessonRatingLabel } from "./lessonRatingLabels";
+
 export type ChallengeReportCsvOptions = {
+    language?: ReportLanguage;
     topicTitle: string;
     lessonTitle?: string;
     className?: string;
@@ -84,31 +88,32 @@ export type ChallengeReportCsvOptions = {
 };
 
 export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): void {
+    const L = getChallengeReportLabels(opts.language);
     const lines: string[] = [];
     const join = (cells: unknown[]) => cells.map(escapeCsvCell).join(",");
 
-    lines.push(join(["الحقل", "القيمة"]));
-    lines.push(join(["عنوان الدرس / الموضوع", opts.topicTitle]));
-    if (opts.lessonTitle) lines.push(join(["اسم الدرس", opts.lessonTitle]));
-    if (opts.className) lines.push(join(["اسم الصف / الفصل", opts.className]));
-    if (opts.subjectName) lines.push(join(["المادة", opts.subjectName]));
-    if (opts.teacherName) lines.push(join(["اسم المعلم", opts.teacherName]));
-    if (opts.sessionDate) lines.push(join(["التاريخ", opts.sessionDate]));
-    if (opts.sessionTime) lines.push(join(["الوقت", opts.sessionTime]));
-    if (opts.mergedSessionsNote) lines.push(join(["ملاحظة", opts.mergedSessionsNote]));
+    lines.push(join([L.csv.field, L.csv.value]));
+    lines.push(join([L.csv.topicTitle, opts.topicTitle]));
+    if (opts.lessonTitle) lines.push(join([L.meta.lessonName, opts.lessonTitle]));
+    if (opts.className) lines.push(join([L.meta.className, opts.className]));
+    if (opts.subjectName) lines.push(join([L.meta.subject, opts.subjectName]));
+    if (opts.teacherName) lines.push(join([L.meta.teacherName, opts.teacherName]));
+    if (opts.sessionDate) lines.push(join([L.meta.date, opts.sessionDate]));
+    if (opts.sessionTime) lines.push(join([L.meta.time, opts.sessionTime]));
+    if (opts.mergedSessionsNote) lines.push(join([L.csv.note, opts.mergedSessionsNote]));
 
     lines.push("");
-    lines.push(join(["المشاركون"]));
+    lines.push(join([L.csv.participants]));
     lines.push(
         join([
-            "الترتيب",
-            "الاسم",
-            "النسبة %",
-            "النقاط",
-            "صحيح",
-            "خطأ",
-            "الوقت (ث)",
-            "النوع",
+            L.participantsTable.rank,
+            L.participantsTable.participant,
+            `${L.participantsTable.percent} %`,
+            L.participantsTable.points,
+            L.participantsTable.correct,
+            L.participantsTable.wrong,
+            `${L.participantsTable.time} (${L.charts.secSuffix})`,
+            L.participantsTable.type,
         ])
     );
 
@@ -119,7 +124,7 @@ export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): vo
     sorted.forEach((r, i) => {
         const name =
             r.user?.name || r.name || r.participant_display_name || "";
-        const type = r.user?.id ? "عضو مسجل" : "زائر";
+        const type = r.user?.id ? L.participantsTable.registered : L.participantsTable.guest;
         lines.push(
             join([
                 i + 1,
@@ -136,27 +141,34 @@ export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): vo
 
     if (opts.lessonRating && opts.lessonRating.total > 0) {
         lines.push("");
-        lines.push(join(["تقييم الدرس"]));
+        lines.push(join([L.csv.lessonRating]));
         lines.push(
             join([
-                "إجمالي التقييمات",
+                L.csv.totalRatings,
                 opts.lessonRating.total,
-                "المتوسط / 5",
+                L.csv.avgOutOf5,
                 opts.lessonRating.average.toFixed(1),
             ])
         );
-        lines.push(join(["الإيموجي", "التسمية", "العدد", "النسبة %"]));
+        lines.push(join([L.csv.emoji, L.csv.label, L.csv.count, L.csv.percent]));
         for (const row of opts.lessonRating.distribution) {
             if (row.count <= 0) continue;
-            lines.push(join([row.emoji, row.label, row.count, row.percent]));
+            lines.push(
+                join([
+                    row.emoji,
+                    getLessonRatingLabel(row.value, opts.language),
+                    row.count,
+                    row.percent,
+                ])
+            );
         }
     }
 
     if (opts.questionRows && opts.questionRows.length > 0) {
         lines.push("");
-        lines.push(join(["تحليل الأسئلة"]));
+        lines.push(join([L.csv.questionAnalysis]));
         lines.push(
-            join(["نص السؤال (مختصر)", "الدقة %", "صحيح", "إجمالي الإجابات"])
+            join([L.csv.questionTextShort, L.csv.accuracyPct, L.participantsTable.correct, L.csv.totalAnswers])
         );
         for (const q of opts.questionRows) {
             lines.push(

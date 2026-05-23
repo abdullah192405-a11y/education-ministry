@@ -12,9 +12,11 @@ import {
     ChevronLeft, Play, Download, Share2, Calendar,
     TrendingUp, Award, Zap, Crown, CheckCircle, GraduationCap,
     BarChart3, Activity, BookMarked, MessageCircle, ChevronDown, ChevronUp,
-    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowRight, Loader2,
+    ClipboardList, CheckCircle2, XCircle, Timer, AlertTriangle, ArrowLeft, ArrowRight, Loader2,
     LifeBuoy
 } from "lucide-react";
+import { useTranslation } from "@/contexts/LanguageContext";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import {
     useUser,
     useStudentProfile,
@@ -40,6 +42,9 @@ const StudentDashboard = () => {
     const queryClient = useQueryClient();
     const { signOut: clerkSignOut } = useAuth();
     const { toast } = useToast();
+    const { t, dir } = useTranslation();
+    const locale = t("common.locale");
+    const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
     const updateUserMutation = useUpdateUser();
     const [activeTab, setActiveTab] = useState("overview");
     const [name, setName] = useState("");
@@ -92,8 +97,8 @@ const StudentDashboard = () => {
 
         if (file.size > 5 * 1024 * 1024) {
             toast({
-                title: "حجم الملف كبير",
-                description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت",
+                title: t("dash.student.toast.fileLargeTitle"),
+                description: t("dash.student.toast.fileLargeDesc"),
                 variant: "destructive"
             });
             return;
@@ -117,14 +122,14 @@ const StudentDashboard = () => {
 
             setAvatar(data.publicUrl);
             toast({
-                title: "تم رفع الصورة",
-                description: "تم تحديث صورتك الرمزية بنجاح",
+                title: t("dash.student.toast.uploaded"),
+                description: t("dash.student.toast.uploadedDesc"),
             });
         } catch (error: any) {
             console.error("Error uploading avatar:", error);
             toast({
-                title: "خطأ",
-                description: error.message || "حدث خطأ أثناء رفع الصورة. الرجاء التأكد من إعدادات Supabase Storage.",
+                title: t("dash.common.error"),
+                description: error.message || t("dash.student.toast.uploadErrFallback"),
                 variant: "destructive"
             });
         } finally {
@@ -140,14 +145,14 @@ const StudentDashboard = () => {
                 updates: { name, email, avatar }
             });
             toast({
-                title: "تم التحديث بنجاح",
-                description: "تم تحديث معلومات ملفك الشخصي بنجاح.",
+                title: t("dash.student.toast.profileUpdated"),
+                description: t("dash.student.toast.profileUpdatedDesc"),
             });
         } catch (error) {
             toast({
                 variant: "destructive",
-                title: "خطأ في التحديث",
-                description: "حدث خطأ أثناء محاولة تحديث بياناتك.",
+                title: t("dash.student.toast.profileUpdateErr"),
+                description: t("dash.student.toast.profileUpdateErrDesc"),
             });
         }
     };
@@ -168,7 +173,7 @@ const StudentDashboard = () => {
     // Derive student data from real DB
     const student = {
         id: user?.id || "",
-        name: user?.name || "طالب",
+        name: user?.name || t("dash.student.studentFallback"),
         email: user?.email || "",
         avatar: user?.avatar || "https://api.dicebear.com/7.x/fun-emoji/svg?seed=student",
         stats: {
@@ -228,7 +233,7 @@ const StudentDashboard = () => {
         return {
             subjectId: subject.id,
             gradeId: gradeDetail.id,
-            name: subject.name || "مادة",
+            name: subject.name || t("common.subject"),
             icon: subject.icon || "📚",
             completedTopics: completedCount,
             totalTopics: Math.max(Number(totalTopicsCount) || 0, completedCount, 1),
@@ -243,13 +248,13 @@ const StudentDashboard = () => {
 
         return {
             id: ta.id,
-            topicTitle: ta.topic_title || ta.topic?.title || "درس",
-            subjectName: ta.topic?.subject?.name || "مادة",
+            topicTitle: ta.topic_title || ta.topic?.title || t("common.topic"),
+            subjectName: ta.topic?.subject?.name || t("common.subject"),
             subjectIcon: ta.topic?.subject?.icon || "📚",
             gradeId: ta.topic?.subject?.grade_id || "",
             subjectId: ta.topic?.subject_id || "",
             topicId: ta.topic_id || "",
-            date: ta.date ? new Date(ta.date).toLocaleDateString("ar-SA") : "",
+            date: ta.date ? new Date(ta.date).toLocaleDateString(locale) : "",
             score: Math.round(ta.score || 0),
             completed: ta.completed || false,
             challengeDetails: cResult ? {
@@ -258,7 +263,7 @@ const StudentDashboard = () => {
                 timeTaken: cResult.time_taken || 0,
                 accuracy: Math.round(cResult.accuracy || 0),
                 longestStreak: cResult.longest_streak || 0,
-                level: cResult.level || "مبتدئ",
+                level: cResult.level || "",
                 totalQuestions: cResult.total_questions || 0
             } : null
         };
@@ -276,14 +281,14 @@ const StudentDashboard = () => {
     // If only user badges exist (no allBadges table populated yet), use user badges directly
     const displayBadges = mappedBadges.length > 0 ? mappedBadges : (userBadges || []).map((ub: any) => ({
         id: ub.badge?.id || ub.id,
-        name: ub.badge?.name || "شارة",
+        name: ub.badge?.name || t("dash.student.badgesLabel"),
         icon: ub.badge?.icon || "🏆",
         description: ub.badge?.description || "",
         earned: true
     }));
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/5" dir={dir}>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4">
@@ -294,7 +299,8 @@ const StudentDashboard = () => {
                         </Link>
 
                         <div className="flex items-center gap-4">
-                            <Button variant="ghost" size="icon" className="relative">
+                            <LanguageSwitcher iconOnly />
+                            <Button variant="ghost" size="icon" className="relative" aria-label={t("dash.common.notifications")}>
                                 <Bell className="w-5 h-5" />
                             </Button>
                             <div className="flex items-center gap-3">
@@ -313,7 +319,7 @@ const StudentDashboard = () => {
                                         <>
                                             <p className="font-medium text-sm">{student.name}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                {organizationName || currentGrade?.name || "طالب"}
+                                                {organizationName || currentGrade?.name || t("dash.student.studentFallback")}
                                             </p>
                                         </>
                                     )}
@@ -365,12 +371,12 @@ const StudentDashboard = () => {
                                             )}
                                             {student.stats.rank > 0 && (
                                                 <p className="text-[11px] text-muted-foreground mb-3">
-                                                    المرتبة #{student.stats.rank} في الصف
+                                                    {t("dash.student.rankInClass", { rank: student.stats.rank })}
                                                 </p>
                                             )}
                                             <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                                                 <Flame className="w-3 h-3 text-orange-500" />
-                                                <span>سلسلة: {student.stats.currentStreak} أيام</span>
+                                                <span>{t("dash.student.streakDays", { days: student.stats.currentStreak })}</span>
                                             </div>
                                         </>
                                     )}
@@ -383,9 +389,9 @@ const StudentDashboard = () => {
                                         {isLoading ? (
                                             <Skeleton className="h-5 w-10 mx-auto mb-1" />
                                         ) : (
-                                            <div className="text-sm font-bold">{student.stats.totalPoints.toLocaleString()}</div>
+                                            <div className="text-sm font-bold">{student.stats.totalPoints.toLocaleString(locale)}</div>
                                         )}
-                                        <div className="text-[10px] text-muted-foreground">نقطة</div>
+                                        <div className="text-[10px] text-muted-foreground">{t("dash.student.pointsLabel")}</div>
                                     </div>
                                     <div className="p-2 rounded-lg bg-gradient-to-br from-secondary/10 to-secondary/5 text-center">
                                         <Medal className="w-4 h-4 mx-auto mb-1 text-secondary" />
@@ -394,20 +400,20 @@ const StudentDashboard = () => {
                                         ) : (
                                             <div className="text-sm font-bold">{student.stats.badges}</div>
                                         )}
-                                        <div className="text-[10px] text-muted-foreground">شارة</div>
+                                        <div className="text-[10px] text-muted-foreground">{t("dash.student.badgesLabel")}</div>
                                     </div>
                                 </div>
 
                                 {/* Navigation */}
                                 <nav className="space-y-1">
                                     {[
-                                        { id: "overview", icon: BarChart3, label: "نظرة عامة" },
-                                        { id: "exams", icon: ClipboardList, label: "الاختبارات", count: pendingExamsCount },
-                                        { id: "subjects", icon: BookOpen, label: "المواد الدراسية" },
-                                        { id: "history", icon: History, label: "سجل الدروس" },
-                                        { id: "badges", icon: Award, label: "الشارات" },
-                                        { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
-                                        { id: "settings", icon: Settings, label: "الإعدادات" }
+                                        { id: "overview", icon: BarChart3, label: t("dash.student.nav.overview") },
+                                        { id: "exams", icon: ClipboardList, label: t("dash.student.nav.exams"), count: pendingExamsCount },
+                                        { id: "subjects", icon: BookOpen, label: t("dash.student.nav.subjects") },
+                                        { id: "history", icon: History, label: t("dash.student.nav.history") },
+                                        { id: "badges", icon: Award, label: t("dash.student.nav.badges") },
+                                        { id: "support", icon: LifeBuoy, label: t("dash.student.nav.support") },
+                                        { id: "settings", icon: Settings, label: t("dash.student.nav.settings") }
                                     ].map(item => (
                                         <button
                                             key={item.id}
@@ -438,7 +444,7 @@ const StudentDashboard = () => {
                                         onClick={handleLogout}
                                     >
                                         <LogOut className="w-4 h-4" />
-                                        تسجيل الخروج
+                                        {t("dash.common.logout")}
                                     </Button>
                                 </div>
                             </CardContent>
@@ -467,21 +473,21 @@ const StudentDashboard = () => {
                                         <div className="relative p-6 md:p-8 bg-gradient-to-r from-primary via-primary/90 to-secondary">
                                             <div className="relative z-10">
                                                 <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-                                                    مرحباً، {student.name.split(" ")[0]}! 👋
+                                                    {t("dash.student.welcome", { name: student.name.split(" ")[0] })} 👋
                                                 </h1>
                                                 <p className="text-white/80 mb-4">
                                                     {student.stats.currentStreak > 0
-                                                        ? `استمر في التعلم والتفوق! لديك سلسلة ${student.stats.currentStreak} أيام متتالية.`
-                                                        : "ابدأ رحلة التعلم الممتعة اليوم!"}
+                                                        ? t("dash.student.welcomeStreak", { days: student.stats.currentStreak })
+                                                        : t("dash.student.welcomeStart")}
                                                 </p>
                                                 <Button variant="secondary" size="lg" asChild className="gap-2">
                                                     <Link to="/grades">
                                                         <Play className="w-5 h-5" />
-                                                        تصفح الدروس
+                                                        {t("dash.student.browseLessons")}
                                                     </Link>
                                                 </Button>
                                             </div>
-                                            <div className="absolute left-0 top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+                                            <div className={`absolute ${dir === "rtl" ? "left-0" : "right-0"} top-0 w-40 h-40 bg-white/10 rounded-full blur-3xl`} />
                                             <div className="absolute right-10 bottom-0 w-32 h-32 bg-secondary/20 rounded-full blur-2xl" />
                                         </div>
                                     </Card>
@@ -497,7 +503,7 @@ const StudentDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{student.stats.totalTopicsCompleted}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">درس مكتمل</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.student.stats.completedLessons")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -510,7 +516,7 @@ const StudentDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-12 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{Math.round(student.stats.averageScore)}%</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">متوسط النتائج</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.student.stats.averageScore")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -523,7 +529,7 @@ const StudentDashboard = () => {
                                                     {isLoading ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{Math.round(student.stats.totalStudyHours)}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">ساعة دراسة</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.student.stats.studyHours")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -536,7 +542,7 @@ const StudentDashboard = () => {
                                                     {isLoadingUserBadges ? <Skeleton className="h-7 w-8 mb-1" /> : (
                                                         <p className="text-2xl font-bold">{student.stats.badges}</p>
                                                     )}
-                                                    <p className="text-sm text-muted-foreground">شارة محققة</p>
+                                                    <p className="text-sm text-muted-foreground">{t("dash.student.stats.badgesAchieved")}</p>
                                                 </div>
                                             </div>
                                         </Card>
@@ -547,10 +553,10 @@ const StudentDashboard = () => {
                                         <CardHeader className="flex flex-row items-center justify-between py-4">
                                             <CardTitle className="text-lg flex items-center gap-2">
                                                 <GraduationCap className="w-5 h-5 text-primary" />
-                                                المواد الدراسية
+                                                {t("dash.student.subjectsHeader")}
                                             </CardTitle>
                                             <Button variant="ghost" size="sm" onClick={() => setActiveTab("subjects")}>
-                                                عرض الكل
+                                                {t("dash.common.viewAll")}
                                             </Button>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
@@ -574,7 +580,7 @@ const StudentDashboard = () => {
                                                                 <div>
                                                                     <p className="font-medium group-hover:text-primary transition-colors">{subject.name}</p>
                                                                     <p className="text-xs text-muted-foreground">
-                                                                        {subject.completedTopics} من {subject.totalTopics} دروس
+                                                                        {t("dash.student.subjectsOf", { completed: subject.completedTopics, total: subject.totalTopics })}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -596,9 +602,9 @@ const StudentDashboard = () => {
                                             ) : (
                                                 <div className="text-center py-8 text-muted-foreground">
                                                     <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">لا يوجد تقدم بعد. ابدأ بتصفح الدروس!</p>
+                                                    <p className="text-sm">{t("dash.student.noProgress")}</p>
                                                     <Button variant="outline" size="sm" className="mt-3 gap-2" asChild>
-                                                        <Link to="/grades"><Play className="w-4 h-4" />ابدأ التعلم</Link>
+                                                        <Link to="/grades"><Play className="w-4 h-4" />{t("dash.student.startLearning")}</Link>
                                                     </Button>
                                                 </div>
                                             )}
@@ -612,10 +618,10 @@ const StudentDashboard = () => {
                                             <CardHeader className="flex flex-row items-center justify-between py-4">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <History className="w-5 h-5 text-primary" />
-                                                    آخر الدروس
+                                                    {t("dash.student.recentLessons")}
                                                 </CardTitle>
                                                 <Button variant="ghost" size="sm" onClick={() => setActiveTab("history")}>
-                                                    عرض الكل
+                                                    {t("dash.common.viewAll")}
                                                 </Button>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -647,28 +653,28 @@ const StudentDashboard = () => {
                                                                         const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
                                                                         const scoreEmoji = topic.score >= 90 ? "\u{1F3C6}" : topic.score >= 75 ? "\u{2B50}" : "\u{1F4AA}";
                                                                         const msg = [
-                                                                            `\u{1F393} *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                            `\u{1F393} *${student.name}* ${t("dash.student.share.scoreboost")} ${scoreEmoji}`,
                                                                             `━━━━━━━━━━━━━━`,
-                                                                            `\u{1F4DA} *الدرس:* ${topic.topicTitle}`,
-                                                                            `\u{1F4D6} *المادة:* ${topic.subjectName}`,
-                                                                            `\u{1F3AF} *النتيجة:* ${topic.score}%`,
-                                                                            `\u{1F4B0} *إجمالي النقاط:* ${student.stats.totalPoints.toLocaleString()} نقطة`,
-                                                                            `\u{2705} *دروس مكتملة:* ${student.stats.totalTopicsCompleted}`,
-                                                                            student.stats.badges > 0 ? `\u{1F3C5} *شارات:* ${student.stats.badges}` : ``,
+                                                                            `\u{1F4DA} *${t("dash.student.share.lesson")}:* ${topic.topicTitle}`,
+                                                                            `\u{1F4D6} *${t("dash.student.share.subject")}:* ${topic.subjectName}`,
+                                                                            `\u{1F3AF} *${t("dash.student.share.score")}:* ${topic.score}%`,
+                                                                            `\u{1F4B0} *${t("dash.student.share.totalPoints")}:* ${student.stats.totalPoints.toLocaleString(locale)} ${t("dash.student.share.pointsSuffix")}`,
+                                                                            `\u{2705} *${t("dash.student.share.completedLessons")}:* ${student.stats.totalTopicsCompleted}`,
+                                                                            student.stats.badges > 0 ? `\u{1F3C5} *${t("dash.student.share.badges")}:* ${student.stats.badges}` : ``,
                                                                             `━━━━━━━━━━━━━━`,
-                                                                            `جرّب التحدي بنفسك! \u{2B07}\u{FE0F}`,
+                                                                            `${t("dash.student.share.cta")} \u{2B07}\u{FE0F}`,
                                                                         ].filter(Boolean).join("\n");
                                                                         if (navigator.share) {
                                                                             try {
-                                                                                await navigator.share({ title: `نتيجة ${student.name} - ${topic.topicTitle}`, text: msg, url: topicLink });
+                                                                                await navigator.share({ title: t("dash.student.share.studentTitle", { name: student.name, topic: topic.topicTitle }), text: msg, url: topicLink });
                                                                             } catch (e) { /* user cancelled */ }
                                                                         } else {
                                                                             await navigator.clipboard.writeText(msg + "\n" + topicLink);
-                                                                            toast({ title: "تم النسخ", description: "تم نسخ النتيجة والرابط بنجاح" });
+                                                                            toast({ title: t("dash.student.toast.copiedTitle"), description: t("dash.student.toast.copiedDesc") });
                                                                         }
                                                                     }}
                                                                     className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-500 transition-colors"
-                                                                    title="شارك النتيجة"
+                                                                    title={t("dash.common.shareResult")}
                                                                 >
                                                                     <Share2 className="w-4 h-4" />
                                                                 </button>
@@ -678,7 +684,7 @@ const StudentDashboard = () => {
                                                 ) : (
                                                     <div className="text-center py-6 text-muted-foreground">
                                                         <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                                        <p className="text-sm">لا توجد دروس مكتملة بعد</p>
+                                                        <p className="text-sm">{t("dash.student.noHistory")}</p>
                                                     </div>
                                                 )}
                                             </CardContent>
@@ -689,12 +695,20 @@ const StudentDashboard = () => {
                                             <CardHeader className="py-4">
                                                 <CardTitle className="text-lg flex items-center gap-2">
                                                     <Activity className="w-5 h-5 text-primary" />
-                                                    نشاطك هذا الأسبوع
+                                                    {t("dash.student.weeklyActivity")}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
                                                 <div className="space-y-4">
-                                                    {["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"].map((day, i) => {
+                                                    {[
+                                                        t("dash.student.daySun"),
+                                                        t("dash.student.dayMon"),
+                                                        t("dash.student.dayTue"),
+                                                        t("dash.student.dayWed"),
+                                                        t("dash.student.dayThu"),
+                                                        t("dash.student.dayFri"),
+                                                        t("dash.student.daySat"),
+                                                    ].map((day, i) => {
                                                         // Count activities for each day of the current week
                                                         const today = new Date();
                                                         const dayOffset = today.getDay() - i;
@@ -733,10 +747,10 @@ const StudentDashboard = () => {
                                         <CardHeader className="flex flex-row items-center justify-between py-4">
                                             <CardTitle className="text-lg flex items-center gap-2">
                                                 <Award className="w-5 h-5 text-primary" />
-                                                آخر الشارات المحققة
+                                                {t("dash.student.recentBadges")}
                                             </CardTitle>
                                             <Button variant="ghost" size="sm" onClick={() => setActiveTab("badges")}>
-                                                عرض الكل
+                                                {t("dash.common.viewAll")}
                                             </Button>
                                         </CardHeader>
                                         <CardContent>
@@ -761,7 +775,7 @@ const StudentDashboard = () => {
                                             ) : (
                                                 <div className="text-center py-6 text-muted-foreground">
                                                     <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                                    <p className="text-sm">لم تحصل على شارات بعد. أكمل التحديات لتربح!</p>
+                                                    <p className="text-sm">{t("dash.student.noBadges")}</p>
                                                 </div>
                                             )}
                                         </CardContent>
@@ -781,7 +795,7 @@ const StudentDashboard = () => {
                                     <div className="flex items-center justify-between">
                                         <h2 className="text-2xl font-bold flex items-center gap-2">
                                             <ClipboardList className="w-6 h-6 text-primary" />
-                                            الاختبارات المدرسية
+                                            {t("dash.student.exams.title")}
                                         </h2>
                                     </div>
 
@@ -791,12 +805,12 @@ const StudentDashboard = () => {
                                             <Skeleton className="h-48 rounded-2xl" />
                                         </div>
                                     ) : (exams || []).length > 0 ? (
-                                        <div className="space-y-8" dir="rtl">
+                                        <div className="space-y-8" dir={dir}>
                                             {/* Pending Exams */}
                                             <section className="space-y-4">
                                                 <h3 className="text-lg font-bold flex items-center gap-2 text-primary">
                                                     <Target className="w-5 h-5" />
-                                                    اختبارات بانتظارك
+                                                    {t("dash.student.exams.pendingHeader")}
                                                 </h3>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                     {(exams || []).filter(e => !e.hasSubmitted).length > 0 ? (
@@ -813,25 +827,25 @@ const StudentDashboard = () => {
                                                                             </Badge>
                                                                             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold">
                                                                                 <Clock className="w-3.5 h-3.5" />
-                                                                                {exam.duration_minutes} دقيقة
+                                                                                {t("dash.student.exams.minutes", { n: exam.duration_minutes })}
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex-1">
                                                                             <h4 className="font-black text-lg mb-1 group-hover:text-primary transition-colors leading-tight">{exam.title}</h4>
                                                                             <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
                                                                                 <BookOpen className="w-3.5 h-3.5" />
-                                                                                {exam.topic?.title || "اختبار عام"}
+                                                                                {exam.topic?.title || t("dash.student.exams.generalExam")}
                                                                             </p>
                                                                         </div>
                                                                         <div className="flex items-center justify-between pt-4 border-t border-dashed mt-auto">
                                                                             <div className="flex items-center gap-2">
                                                                                 <img src={exam.host?.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${exam.host_id}`} alt="" className="w-7 h-7 rounded-full border bg-muted" />
-                                                                                <span className="text-[10px] font-black text-muted-foreground line-clamp-1">{exam.host?.name || "المعلم"}</span>
+                                                                                <span className="text-[10px] font-black text-muted-foreground line-clamp-1">{exam.host?.name || t("dash.student.exams.teacherFallback")}</span>
                                                                             </div>
                                                                             <Button size="sm" className="gap-2 rounded-xl text-xs px-4" asChild>
                                                                                 <Link to={`/exam/${exam.pin}`}>
-                                                                                    بدء الآن
-                                                                                    <ArrowRight className="w-4 h-4" />
+                                                                                    {t("dash.student.exams.startNow")}
+                                                                                    <ArrowForward className="w-4 h-4" />
                                                                                 </Link>
                                                                             </Button>
                                                                         </div>
@@ -842,7 +856,7 @@ const StudentDashboard = () => {
                                                     ) : (
                                                         <div className="col-span-full py-12 text-center bg-muted/10 rounded-3xl border-2 border-dashed border-muted">
                                                             <CheckCircle className="w-12 h-12 mx-auto mb-3 text-emerald-500 opacity-20" />
-                                                            <p className="text-muted-foreground font-bold">لا توجد اختبارات جديدة حالياً.. أحسنت!</p>
+                                                            <p className="text-muted-foreground font-bold">{t("dash.student.exams.noPending")}</p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -853,7 +867,7 @@ const StudentDashboard = () => {
                                                 <section className="space-y-4">
                                                     <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground">
                                                         <History className="w-5 h-5" />
-                                                        الاختبارات المنتهية
+                                                        {t("dash.student.exams.completedHeader")}
                                                     </h3>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                         {(exams || []).filter(e => e.hasSubmitted).map(exam => {
@@ -869,8 +883,8 @@ const StudentDashboard = () => {
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                                                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(res.submitted_at).toLocaleDateString("ar-SA")}</span>
-                                                                            <Link to={`/exam/${exam.pin}`} className="text-primary hover:underline font-bold">التفاصيل</Link>
+                                                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(res.submitted_at).toLocaleDateString(locale)}</span>
+                                                                            <Link to={`/exam/${exam.pin}`} className="text-primary hover:underline font-bold">{t("dash.student.exams.detailsLink")}</Link>
                                                                         </div>
                                                                     </CardContent>
                                                                 </Card>
@@ -885,8 +899,8 @@ const StudentDashboard = () => {
                                             <div className="w-24 h-24 bg-muted/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
                                                 <ClipboardList className="w-12 h-12 text-muted-foreground opacity-30" />
                                             </div>
-                                            <h3 className="text-2xl font-black mb-3">لا يوجد اختبارات بعد</h3>
-                                            <p className="text-muted-foreground max-w-sm mx-auto font-medium">سيظهر هنا الاختبارات التي ينشئها معلموك لصفك الدراسي ({currentGrade?.name || "صفك الحالي"}).</p>
+                                            <h3 className="text-2xl font-black mb-3">{t("dash.student.exams.emptyTitle")}</h3>
+                                            <p className="text-muted-foreground max-w-sm mx-auto font-medium">{t("dash.student.exams.emptyDesc", { grade: currentGrade?.name || t("dash.student.exams.currentGradeFallback") })}</p>
                                         </Card>
                                     )}
                                 </motion.div>
@@ -903,7 +917,7 @@ const StudentDashboard = () => {
                                 >
                                     <h2 className="text-2xl font-bold flex items-center gap-2">
                                         <BookOpen className="w-6 h-6 text-primary" />
-                                        المواد الدراسية {currentGrade ? `- ${currentGrade.name}` : ""}
+                                        {t("dash.student.subjects.title")} {currentGrade ? `- ${currentGrade.name}` : ""}
                                     </h2>
 
                                     {isLoadingProgress || isLoadingGradeDetail ? (
@@ -931,13 +945,13 @@ const StudentDashboard = () => {
                                                                 </div>
                                                                 <h3 className="text-xl font-bold mb-1 group-hover:text-primary transition-colors">{subject.name}</h3>
                                                                 <p className="text-sm text-muted-foreground">
-                                                                    {subject.totalTopics} دروس
+                                                                    {t("dash.student.subjects.lessonsCount", { n: subject.totalTopics })}
                                                                 </p>
                                                             </div>
 
                                                             <div className="space-y-2">
                                                                 <div className="flex items-center justify-between text-sm">
-                                                                    <span>التقدم</span>
+                                                                    <span>{t("dash.student.subjects.progress")}</span>
                                                                     <span className="font-bold" style={{ color: subject.color }}>
                                                                         {subject.totalTopics > 0 ? Math.round((subject.completedTopics / subject.totalTopics) * 100) : 0}%
                                                                     </span>
@@ -947,8 +961,8 @@ const StudentDashboard = () => {
                                                                     className="h-2"
                                                                 />
                                                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                                    <span>{subject.completedTopics} من {subject.totalTopics}</span>
-                                                                    <span>متوسط: {subject.averageScore}%</span>
+                                                                    <span>{t("dash.student.subjects.completedOf", { completed: subject.completedTopics, total: subject.totalTopics })}</span>
+                                                                    <span>{t("dash.student.subjects.average", { n: subject.averageScore })}</span>
                                                                 </div>
                                                             </div>
                                                         </CardContent>
@@ -960,9 +974,9 @@ const StudentDashboard = () => {
                                         <Card>
                                             <CardContent className="p-12 text-center text-muted-foreground">
                                                 <BookOpen className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                                                <p className="text-lg font-medium mb-2">لا يوجد مواد مسجلة بعد</p>
-                                                <p className="text-sm mb-4">ابدأ بتصفح الصفوف والمواد الدراسية</p>
-                                                <Button asChild><Link to="/grades">تصفح الصفوف</Link></Button>
+                                                <p className="text-lg font-medium mb-2">{t("dash.student.subjects.empty")}</p>
+                                                <p className="text-sm mb-4">{t("dash.student.subjects.emptyDesc")}</p>
+                                                <Button asChild><Link to="/grades">{t("dash.student.subjects.browseGrades")}</Link></Button>
                                             </CardContent>
                                         </Card>
                                     )}
@@ -981,7 +995,7 @@ const StudentDashboard = () => {
                                     <div className="flex items-center justify-between">
                                         <h2 className="text-2xl font-bold flex items-center gap-2">
                                             <History className="w-6 h-6 text-primary" />
-                                            سجل الدروس
+                                            {t("dash.student.history.title")}
                                         </h2>
                                     </div>
 
@@ -1018,7 +1032,7 @@ const StudentDashboard = () => {
                                                                                 </span>
                                                                                 {topic.completed && (
                                                                                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
-                                                                                        مكتمل
+                                                                                        {t("dash.student.history.completed")}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
@@ -1036,7 +1050,7 @@ const StudentDashboard = () => {
                                                                                     }`}>
                                                                                     {topic.score}%
                                                                                 </p>
-                                                                                <p className="text-xs text-muted-foreground">النتيجة</p>
+                                                                                <p className="text-xs text-muted-foreground">{t("dash.student.history.scoreLabel")}</p>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -1051,34 +1065,34 @@ const StudentDashboard = () => {
                                                                                     const topicLink = `${window.location.origin}/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`;
                                                                                     const scoreEmoji = topic.score >= 90 ? "\u{1F3C6}" : topic.score >= 75 ? "\u{2B50}" : "\u{1F4AA}";
                                                                                     const msg = [
-                                                                                        `\u{1F393} *${student.name}* حقق نتيجة ${scoreEmoji}`,
+                                                                                        `\u{1F393} *${student.name}* ${t("dash.student.share.scoreboost")} ${scoreEmoji}`,
                                                                                         `━━━━━━━━━━━━━━`,
-                                                                                        `\u{1F4DA} *الدرس:* ${topic.topicTitle}`,
-                                                                                        `\u{1F4D6} *المادة:* ${topic.subjectName}`,
-                                                                                        `\u{1F3AF} *النتيجة:* ${topic.score}%`,
-                                                                                        `\u{1F4C5} *التاريخ:* ${topic.date}`,
-                                                                                        topic.completed ? `\u{2705} *الحالة:* مكتمل` : `\u{23F3} *الحالة:* غير مكتمل`,
-                                                                                        `\u{1F4B0} *إجمالي النقاط:* ${student.stats.totalPoints.toLocaleString()} نقطة`,
-                                                                                        `\u{1F4CA} *متوسط النتائج:* ${Math.round(student.stats.averageScore)}%`,
-                                                                                        `\u{2705} *دروس مكتملة:* ${student.stats.totalTopicsCompleted}`,
-                                                                                        topic.challengeDetails ? `\u{1F525} *أعلى سلسلة:* ${topic.challengeDetails.longestStreak}` : ``,
-                                                                                        topic.challengeDetails ? `\u{23F1}\u{FE0F} *الوقت المستغرق:* ${Math.round(topic.challengeDetails.timeTaken)} ثانية` : ``,
-                                                                                        student.stats.badges > 0 ? `\u{1F3C5} *شارات:* ${student.stats.badges}` : ``,
+                                                                                        `\u{1F4DA} *${t("dash.student.share.lesson")}:* ${topic.topicTitle}`,
+                                                                                        `\u{1F4D6} *${t("dash.student.share.subject")}:* ${topic.subjectName}`,
+                                                                                        `\u{1F3AF} *${t("dash.student.share.score")}:* ${topic.score}%`,
+                                                                                        `\u{1F4C5} *${t("dash.student.share.date")}:* ${topic.date}`,
+                                                                                        topic.completed ? `\u{2705} *${t("dash.student.share.status")}:* ${t("dash.student.share.statusComplete")}` : `\u{23F3} *${t("dash.student.share.status")}:* ${t("dash.student.share.statusIncomplete")}`,
+                                                                                        `\u{1F4B0} *${t("dash.student.share.totalPoints")}:* ${student.stats.totalPoints.toLocaleString(locale)} ${t("dash.student.share.pointsSuffix")}`,
+                                                                                        `\u{1F4CA} *${t("dash.student.share.avgScore")}:* ${Math.round(student.stats.averageScore)}%`,
+                                                                                        `\u{2705} *${t("dash.student.share.completedLessons")}:* ${student.stats.totalTopicsCompleted}`,
+                                                                                        topic.challengeDetails ? `\u{1F525} *${t("dash.student.share.streak")}:* ${topic.challengeDetails.longestStreak}` : ``,
+                                                                                        topic.challengeDetails ? `\u{23F1}\u{FE0F} *${t("dash.student.share.time")}:* ${t("dash.student.share.timeSec", { n: Math.round(topic.challengeDetails.timeTaken) })}` : ``,
+                                                                                        student.stats.badges > 0 ? `\u{1F3C5} *${t("dash.student.share.badges")}:* ${student.stats.badges}` : ``,
                                                                                         `━━━━━━━━━━━━━━`,
-                                                                                        `جرّب التحدي بنفسك! \u{2B07}\u{FE0F}`,
+                                                                                        `${t("dash.student.share.cta")} \u{2B07}\u{FE0F}`,
                                                                                     ].filter(Boolean).join("\n");
                                                                                     if (navigator.share) {
                                                                                         try {
-                                                                                            await navigator.share({ title: `نتيجة ${student.name} - ${topic.topicTitle}`, text: msg, url: topicLink });
+                                                                                            await navigator.share({ title: t("dash.student.share.studentTitle", { name: student.name, topic: topic.topicTitle }), text: msg, url: topicLink });
                                                                                         } catch (e) { /* user cancelled */ }
                                                                                     } else {
                                                                                         await navigator.clipboard.writeText(msg + "\n" + topicLink);
-                                                                                        toast({ title: "تم النسخ", description: "تم نسخ النتيجة والرابط بنجاح" });
+                                                                                        toast({ title: t("dash.student.toast.copiedTitle"), description: t("dash.student.toast.copiedDesc") });
                                                                                     }
                                                                                 }}
                                                                             >
                                                                                 <Share2 className="w-4 h-4" />
-                                                                                مشاركة
+                                                                                {t("dash.common.share")}
                                                                             </Button>
                                                                             {topic.challengeDetails && (
                                                                                 <Button
@@ -1088,9 +1102,9 @@ const StudentDashboard = () => {
                                                                                     onClick={() => setExpandedTopicId(expandedTopicId === topic.id ? null : topic.id)}
                                                                                 >
                                                                                     {expandedTopicId === topic.id ? (
-                                                                                        <><ChevronUp className="w-4 h-4" /> إخفاء التفاصيل</>
+                                                                                        <><ChevronUp className="w-4 h-4" /> {t("dash.student.history.hideDetails")}</>
                                                                                     ) : (
-                                                                                        <><ChevronDown className="w-4 h-4" /> عرض التفاصيل</>
+                                                                                        <><ChevronDown className="w-4 h-4" /> {t("dash.student.history.showDetails")}</>
                                                                                     )}
                                                                                 </Button>
                                                                             )}
@@ -1098,7 +1112,7 @@ const StudentDashboard = () => {
                                                                         <Button variant="outline" size="sm" className="gap-1" asChild>
                                                                             <Link to={`/grade/${topic.gradeId}/subject/${topic.subjectId}/topic/${topic.topicId}`}>
                                                                                 <Play className="w-4 h-4" />
-                                                                                إعادة الدرس
+                                                                                {t("dash.student.history.replay")}
                                                                             </Link>
                                                                         </Button>
                                                                     </div>
@@ -1116,22 +1130,22 @@ const StudentDashboard = () => {
                                                                                     <div className="bg-success/10 rounded-lg p-3 text-center border border-success/20">
                                                                                         <CheckCircle className="w-5 h-5 mx-auto mb-1 text-success" />
                                                                                         <p className="text-xl font-bold text-success">{topic.challengeDetails.correctAnswers}</p>
-                                                                                        <p className="text-xs text-muted-foreground">إجابات صحيحة</p>
+                                                                                        <p className="text-xs text-muted-foreground">{t("dash.student.history.correctAnswers")}</p>
                                                                                     </div>
                                                                                     <div className="bg-destructive/10 rounded-lg p-3 text-center border border-destructive/20">
                                                                                         <Target className="w-5 h-5 mx-auto mb-1 text-destructive" />
                                                                                         <p className="text-xl font-bold text-destructive">{topic.challengeDetails.wrongAnswers}</p>
-                                                                                        <p className="text-xs text-muted-foreground">إجابات خاطئة</p>
+                                                                                        <p className="text-xs text-muted-foreground">{t("dash.student.history.wrongAnswers")}</p>
                                                                                     </div>
                                                                                     <div className="bg-amber-500/10 rounded-lg p-3 text-center border border-amber-500/20">
                                                                                         <Flame className="w-5 h-5 mx-auto mb-1 text-amber-500" />
                                                                                         <p className="text-xl font-bold text-amber-500">{topic.challengeDetails.longestStreak}</p>
-                                                                                        <p className="text-xs text-muted-foreground">أعلى سلسلة</p>
+                                                                                        <p className="text-xs text-muted-foreground">{t("dash.student.history.longestStreak")}</p>
                                                                                     </div>
                                                                                     <div className="bg-blue-500/10 rounded-lg p-3 text-center border border-blue-500/20">
                                                                                         <Clock className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-                                                                                        <p className="text-xl font-bold text-blue-500">{Math.round(topic.challengeDetails.timeTaken)}ث</p>
-                                                                                        <p className="text-xs text-muted-foreground">الوقت المستغرق</p>
+                                                                                        <p className="text-xl font-bold text-blue-500">{Math.round(topic.challengeDetails.timeTaken)}s</p>
+                                                                                        <p className="text-xs text-muted-foreground">{t("dash.student.history.timeTaken")}</p>
                                                                                     </div>
                                                                                 </div>
                                                                             </motion.div>
@@ -1148,9 +1162,9 @@ const StudentDashboard = () => {
                                         <Card>
                                             <CardContent className="p-12 text-center text-muted-foreground">
                                                 <History className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                                                <p className="text-lg font-medium mb-2">لا توجد دروس في السجل</p>
-                                                <p className="text-sm mb-4">ابدأ بمشاهدة الدروس وإكمال التحديات</p>
-                                                <Button asChild><Link to="/grades">ابدأ التعلم</Link></Button>
+                                                <p className="text-lg font-medium mb-2">{t("dash.student.history.empty")}</p>
+                                                <p className="text-sm mb-4">{t("dash.student.history.emptyDesc")}</p>
+                                                <Button asChild><Link to="/grades">{t("dash.student.startLearning")}</Link></Button>
                                             </CardContent>
                                         </Card>
                                     )}
@@ -1168,7 +1182,7 @@ const StudentDashboard = () => {
                                 >
                                     <h2 className="text-2xl font-bold flex items-center gap-2">
                                         <Award className="w-6 h-6 text-primary" />
-                                        الشارات والإنجازات
+                                        {t("dash.student.badges.title")}
                                     </h2>
 
                                     {(isLoadingAllBadges || isLoadingUserBadges) ? (
@@ -1208,8 +1222,8 @@ const StudentDashboard = () => {
                                         <Card>
                                             <CardContent className="p-12 text-center text-muted-foreground">
                                                 <Award className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                                                <p className="text-lg font-medium mb-2">لا توجد شارات متاحة حالياً</p>
-                                                <p className="text-sm">أكمل التحديات والدروس للحصول على شارات</p>
+                                                <p className="text-lg font-medium mb-2">{t("dash.student.badges.empty")}</p>
+                                                <p className="text-sm">{t("dash.student.badges.emptyDesc")}</p>
                                             </CardContent>
                                         </Card>
                                     )}
@@ -1244,12 +1258,12 @@ const StudentDashboard = () => {
                                 >
                                     <h2 className="text-2xl font-bold flex items-center gap-2">
                                         <Settings className="w-6 h-6 text-primary" />
-                                        الإعدادات
+                                        {t("dash.student.settings.title")}
                                     </h2>
 
                                     <Card>
                                         <CardHeader>
-                                            <CardTitle>معلومات الحساب</CardTitle>
+                                            <CardTitle>{t("dash.student.settings.accountInfo")}</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             <div className="flex items-center gap-4">
@@ -1270,17 +1284,17 @@ const StudentDashboard = () => {
                                                     onClick={() => fileInputRef.current?.click()}
                                                     disabled={isUploading}
                                                 >
-                                                    {isUploading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : null}
-                                                    {isUploading ? "جاري الرفع..." : "تغيير الصورة"}
+                                                    {isUploading ? <Loader2 className="w-4 h-4 mx-2 animate-spin" /> : null}
+                                                    {isUploading ? t("dash.student.settings.uploading") : t("dash.student.settings.changeAvatar")}
                                                 </Button>
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">الاسم</label>
+                                                    <label className="text-sm font-medium mb-2 block">{t("common.name")}</label>
                                                     <Input value={name} onChange={(e) => setName(e.target.value)} />
                                                 </div>
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">البريد الإلكتروني</label>
+                                                    <label className="text-sm font-medium mb-2 block">{t("common.email")}</label>
                                                     <Input value={email} onChange={(e) => setEmail(e.target.value)} />
                                                 </div>
                                             </div>
@@ -1288,25 +1302,25 @@ const StudentDashboard = () => {
                                                 onClick={handleUpdateProfile}
                                                 disabled={updateUserMutation.isPending}
                                             >
-                                                {updateUserMutation.isPending ? "جاري الحفظ..." : "حفظ التغييرات"}
+                                                {updateUserMutation.isPending ? t("dash.common.saving") : t("dash.common.save")}
                                             </Button>
                                         </CardContent>
                                     </Card>
 
                                     <Card>
                                         <CardHeader>
-                                            <CardTitle>إعدادات الإشعارات</CardTitle>
+                                            <CardTitle>{t("dash.student.settings.notifTitle")}</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             {[
-                                                "إشعارات الدروس الجديدة",
-                                                "إشعارات الشارات المحققة",
-                                                "تذكيرات السلسلة اليومية",
-                                                "تحديثات المواد الدراسية"
+                                                t("dash.student.settings.notif1"),
+                                                t("dash.student.settings.notif2"),
+                                                t("dash.student.settings.notif3"),
+                                                t("dash.student.settings.notif4")
                                             ].map((item, i) => (
                                                 <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                                                     <span>{item}</span>
-                                                    <Button variant="outline" size="sm">مفعل</Button>
+                                                    <Button variant="outline" size="sm">{t("dash.student.settings.enabled")}</Button>
                                                 </div>
                                             ))}
                                         </CardContent>

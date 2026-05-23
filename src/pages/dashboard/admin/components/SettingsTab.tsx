@@ -6,13 +6,15 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, Bell, Shield, Globe, Mail, Layers, GraduationCap, Sparkles } from "lucide-react";
+import { Save, Bell, Shield, Globe, Layers, GraduationCap, Sparkles } from "lucide-react";
 import { useUpsertPlatformSetting, useVisitorGradeClassMode } from "@/hooks/useDatabase";
 import { VISITOR_GRADE_CLASS_MODE_KEY } from "@/lib/contentVisibility";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 function VisitorContentVisibilityCard() {
     const { toast } = useToast();
+    const { t } = useTranslation();
     const { mode, isLoading } = useVisitorGradeClassMode();
     const upsert = useUpsertPlatformSetting();
 
@@ -22,15 +24,15 @@ function VisitorContentVisibilityCard() {
                 key: VISITOR_GRADE_CLASS_MODE_KEY,
                 value,
                 type: "string",
-                label: "ظهور المحتوى للزوار (تعليمي/إثرائي)",
+                label: t("settingsTab.visitorContent.upsertLabel"),
             },
             {
-                onSuccess: () => toast({ title: "تم حفظ الإعدادات" }),
+                onSuccess: () => toast({ title: t("settingsTab.visitorContent.savedTitle") }),
                 onError: (e: Error) =>
                     toast({
                         variant: "destructive",
-                        title: "تعذر الحفظ",
-                        description: e?.message || "حدث خطأ",
+                        title: t("settingsTab.visitorContent.errorTitle"),
+                        description: e?.message || t("settingsTab.visitorContent.errorDesc"),
                     }),
             },
         );
@@ -43,10 +45,9 @@ function VisitorContentVisibilityCard() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>ظهور المحتوى للزوار</CardTitle>
+                <CardTitle>{t("settingsTab.visitorContent.title")}</CardTitle>
                 <CardDescription>
-                    إخفاء أحد النوعين دفعة واحدة: عند اختيار «إثرائي فقط» تُخفى الصفوف التعليمية والعكس. لوحة
-                    الإدارة تعرض كل الصفوف للإدارة.
+                    {t("settingsTab.visitorContent.desc")}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -55,7 +56,6 @@ function VisitorContentVisibilityCard() {
                     onValueChange={onValueChange}
                     className="gap-3"
                     disabled={upsert.isPending}
-                    dir="rtl"
                 >
                     <label
                         htmlFor="vgc-all"
@@ -65,10 +65,10 @@ function VisitorContentVisibilityCard() {
                         <div className="min-w-0 flex-1 space-y-1">
                             <span className="flex items-center gap-2 font-medium">
                                 <Layers className="h-4 w-4 shrink-0 text-primary" />
-                                عرض الكل
+                                {t("settingsTab.visitorContent.all")}
                             </span>
                             <p className="text-sm text-muted-foreground">
-                                الصفوف التعليمية والقنوات الإثرائية معاً
+                                {t("settingsTab.visitorContent.allDesc")}
                             </p>
                         </div>
                     </label>
@@ -80,10 +80,10 @@ function VisitorContentVisibilityCard() {
                         <div className="min-w-0 flex-1 space-y-1">
                             <span className="flex items-center gap-2 font-medium">
                                 <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
-                                المحتوى التعليمي فقط
+                                {t("settingsTab.visitorContent.teaching")}
                             </span>
                             <p className="text-sm text-muted-foreground">
-                                إخفاء الصفوف والقنوات الإثرائية عن الزوار والمعلمين في الاختيار
+                                {t("settingsTab.visitorContent.teachingDesc")}
                             </p>
                         </div>
                     </label>
@@ -95,10 +95,10 @@ function VisitorContentVisibilityCard() {
                         <div className="min-w-0 flex-1 space-y-1">
                             <span className="flex items-center gap-2 font-medium">
                                 <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                                المحتوى الإثرائي فقط
+                                {t("settingsTab.visitorContent.enrichment")}
                             </span>
                             <p className="text-sm text-muted-foreground">
-                                إخفاء الصفوف التعليمية (الدراسية) عن الزوار والمعلمين في الاختيار
+                                {t("settingsTab.visitorContent.enrichmentDesc")}
                             </p>
                         </div>
                     </label>
@@ -109,53 +109,64 @@ function VisitorContentVisibilityCard() {
 }
 
 const SettingsTab = () => {
+    const { t, dir } = useTranslation();
+    const isRtl = dir === "rtl";
+    const textAlign = isRtl ? "text-right" : "text-left";
+
+    const notificationItems = [
+        { title: t("settingsTab.notifications.newStudents"), desc: t("settingsTab.notifications.newStudentsDesc") },
+        { title: t("settingsTab.notifications.teacherReports"), desc: t("settingsTab.notifications.teacherReportsDesc") },
+        { title: t("settingsTab.notifications.groupChallenges"), desc: t("settingsTab.notifications.groupChallengesDesc") },
+        { title: t("settingsTab.notifications.support"), desc: t("settingsTab.notifications.supportDesc") },
+    ];
+
     return (
-        <div className="w-full text-right" dir="rtl">
+        <div className={`w-full ${textAlign}`} dir={dir}>
         <Tabs defaultValue="general" className="w-full">
-            <TabsList className="flex h-auto min-h-10 w-full flex-wrap flex-row-reverse justify-start gap-2 border-b border-border bg-transparent p-0 mb-6 rounded-none">
+            <TabsList className={`flex h-auto min-h-10 w-full flex-wrap ${isRtl ? "flex-row-reverse" : "flex-row"} justify-start gap-2 border-b border-border bg-transparent p-0 mb-6 rounded-none`}>
                 <TabsTrigger
                     value="general"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    عام
+                    {t("settingsTab.tab.general")}
                 </TabsTrigger>
                 <TabsTrigger
                     value="notifications"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    الإشعارات
+                    {t("settingsTab.tab.notifications")}
                 </TabsTrigger>
                 <TabsTrigger
                     value="security"
                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
                 >
-                    الأمان والصلاحيات
+                    {t("settingsTab.tab.security")}
                 </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="general" className="space-y-6 text-right" dir="rtl">
+            <TabsContent value="general" className={`space-y-6 ${textAlign}`} dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>معلومات المنصة</CardTitle>
-                        <CardDescription>تحديث البيانات الأساسية لـ Lab4</CardDescription>
+                        <CardTitle>{t("settingsTab.platformInfo.title")}</CardTitle>
+                        <CardDescription>{t("settingsTab.platformInfo.desc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>اسم المنصة</Label>
-                                <Input defaultValue="Lab4" className="text-right" />
+                                <Label>{t("settingsTab.platformInfo.nameLabel")}</Label>
+                                <Input defaultValue="Lab4" className={textAlign} />
                             </div>
                             <div className="space-y-2">
-                                <Label>البريد الإلكتروني للدعم</Label>
-                                <Input defaultValue="support@platform.com" className="text-right" />
+                                <Label>{t("settingsTab.platformInfo.supportEmail")}</Label>
+                                <Input defaultValue="support@platform.com" className={textAlign} />
                             </div>
                             <div className="space-y-2">
-                                <Label>رقم التواصل</Label>
-                                <Input defaultValue="19996" className="text-right" />
+                                <Label>{t("settingsTab.platformInfo.contactNumber")}</Label>
+                                <Input defaultValue="19996" className={textAlign} />
                             </div>
                             <div className="space-y-2">
-                                <Label>اللغة الافتراضية</Label>
-                                <Input defaultValue="العربية (المملكة العربية السعودية)" disabled className="text-right" />
+                                <Label>{t("settingsTab.platformInfo.defaultLanguage")}</Label>
+                                <Input defaultValue={t("settingsTab.platformInfo.languageValue")} disabled className={textAlign} />
                             </div>
                         </div>
                     </CardContent>
@@ -165,26 +176,26 @@ const SettingsTab = () => {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>إعدادات النظام</CardTitle>
-                        <CardDescription>تكوين خصائص النظام العامة</CardDescription>
+                        <CardTitle>{t("settingsTab.system.title")}</CardTitle>
+                        <CardDescription>{t("settingsTab.system.desc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
-                            <div className="flex items-center gap-3 flex-row-reverse text-right">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir={dir}>
+                            <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : "flex-row"} ${textAlign}`}>
                                 <Globe className="w-5 h-5 text-muted-foreground" />
                                 <div>
-                                    <p className="font-medium">وضع الصيانة</p>
-                                    <p className="text-sm text-muted-foreground">إيقاف الموقع مؤقتاً لجميع المستخدمين عدا المسؤولين</p>
+                                    <p className="font-medium">{t("settingsTab.system.maintenanceTitle")}</p>
+                                    <p className="text-sm text-muted-foreground">{t("settingsTab.system.maintenanceDesc")}</p>
                                 </div>
                             </div>
                             <Switch />
                         </div>
-                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
-                            <div className="flex items-center gap-3 flex-row-reverse text-right">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir={dir}>
+                            <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : "flex-row"} ${textAlign}`}>
                                 <Globe className="w-5 h-5 text-muted-foreground" />
                                 <div>
-                                    <p className="font-medium">التسجيل العام</p>
-                                    <p className="text-sm text-muted-foreground">السماح بتسجيل حسابات جديدة للطلاب</p>
+                                    <p className="font-medium">{t("settingsTab.system.publicRegTitle")}</p>
+                                    <p className="text-sm text-muted-foreground">{t("settingsTab.system.publicRegDesc")}</p>
                                 </div>
                             </div>
                             <Switch defaultChecked />
@@ -193,21 +204,16 @@ const SettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-6 text-right" dir="rtl">
+            <TabsContent value="notifications" className={`space-y-6 ${textAlign}`} dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>تفضيلات الإشعارات</CardTitle>
-                        <CardDescription>التحكم في الإشعارات المرسلة عبر النظام</CardDescription>
+                        <CardTitle>{t("settingsTab.notifications.title")}</CardTitle>
+                        <CardDescription>{t("settingsTab.notifications.desc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {[
-                            { title: "تسجيل طلاب جدد", desc: "إشعار عند تسجيل طالب جديد" },
-                            { title: "تقارير المعلمين", desc: "إشعار عند رفع تقرير من معلم" },
-                            { title: "التحديات الجماعية", desc: "تنبيهات حول نشاط التحديات" },
-                            { title: "الدعم الفني", desc: "تنبيهات تذاكر الدعم الفني الجديدة" },
-                        ].map((item, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
-                                <div className="flex items-center gap-3 flex-row-reverse text-right">
+                        {notificationItems.map((item, i) => (
+                            <div key={i} className="flex items-center justify-between p-4 border rounded-lg" dir={dir}>
+                                <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : "flex-row"} ${textAlign}`}>
                                     <Bell className="w-5 h-5 text-muted-foreground" />
                                     <div>
                                         <p className="font-medium">{item.title}</p>
@@ -221,19 +227,19 @@ const SettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <TabsContent value="security" className="space-y-6 text-right" dir="rtl">
+            <TabsContent value="security" className={`space-y-6 ${textAlign}`} dir={dir}>
                 <Card>
                     <CardHeader>
-                        <CardTitle>الأمان</CardTitle>
-                        <CardDescription>إعدادات الأمان والتحقق</CardDescription>
+                        <CardTitle>{t("settingsTab.security.title")}</CardTitle>
+                        <CardDescription>{t("settingsTab.security.desc")}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg" dir="rtl">
-                            <div className="flex items-center gap-3 flex-row-reverse text-right">
+                        <div className="flex items-center justify-between p-4 border rounded-lg" dir={dir}>
+                            <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : "flex-row"} ${textAlign}`}>
                                 <Shield className="w-5 h-5 text-muted-foreground" />
                                 <div>
-                                    <p className="font-medium">المصادقة الثنائية (2FA)</p>
-                                    <p className="text-sm text-muted-foreground">فرض المصادقة الثنائية على حسابات المسؤولين</p>
+                                    <p className="font-medium">{t("settingsTab.security.twoFA")}</p>
+                                    <p className="text-sm text-muted-foreground">{t("settingsTab.security.twoFADesc")}</p>
                                 </div>
                             </div>
                             <Switch />
@@ -242,10 +248,10 @@ const SettingsTab = () => {
                 </Card>
             </TabsContent>
 
-            <div className="flex justify-end pt-4">
+            <div className={`flex ${isRtl ? "justify-end" : "justify-start"} pt-4`}>
                 <Button className="gap-2 bg-green-600 hover:bg-green-700">
                     <Save className="w-4 h-4" />
-                    حفظ التغييرات
+                    {t("settingsTab.saveChanges")}
                 </Button>
             </div>
         </Tabs>

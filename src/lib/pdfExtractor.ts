@@ -181,7 +181,7 @@ export const extractPdfFromSupabase = async (
 export const getTeacherPdfs = async (teacherId: string): Promise<Array<{
     name: string;
     size: number;
-    uploadedAt: string;
+    createdAt: string;
 }>> => {
     try {
         console.log(`Listing PDFs for teacher: ${teacherId}`);
@@ -202,7 +202,7 @@ export const getTeacherPdfs = async (teacherId: string): Promise<Array<{
             .map(file => ({
                 name: file.name,
                 size: file.metadata?.size || 0,
-                uploadedAt: new Date(file.created_at).toLocaleString("ar-SA")
+                createdAt: file.created_at,
             }));
 
         console.log(`Found ${pdfFiles.length} PDFs for teacher`);

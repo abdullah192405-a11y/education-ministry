@@ -17,6 +17,15 @@ import { useToast } from "@/components/ui/use-toast";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
 import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
+import type { TranslationKey } from "@/lib/i18n/translations";
+import {
+    aiGenContext,
+    buildAudioTranscriptionPrompt,
+    buildQuestionGenRepairPrompt,
+    buildResourcesGenerationPrompt,
+} from "@/lib/aiQuestionGenerationPrompts";
 
 interface AIQuestionGeneratorFromResourcesProps {
     media: ContentMedia[];
@@ -46,16 +55,16 @@ const GAME_TYPES: GameType[] = [
 
 const ALL_CHALLENGE_TYPES: ChallengeType[] = [...QUESTION_TYPES, ...GAME_TYPES];
 
-const CHALLENGE_TYPE_LABELS: Record<ChallengeType, string> = {
-    multiple_choice: "اختيار متعدد",
-    true_false: "صح وخطأ",
-    qa: "سؤال وجواب",
-    know_dont_know: "أعرف / لا أعرف",
-    order_questions: "ترتيب",
-    matching: "مطابقة",
-    shooting: "تصويب",
-    wheel_spin: "عجلة الحظ",
-    puzzle: "ألغاز",
+const CHALLENGE_TYPE_KEYS: Record<ChallengeType, TranslationKey> = {
+    multiple_choice: "dash.teacher.topics.qe.multipleChoice",
+    true_false: "dash.teacher.topics.qe.trueFalse",
+    qa: "dash.teacher.topics.qe.qa",
+    know_dont_know: "dash.teacher.topics.qe.knowDontKnow",
+    order_questions: "dash.teacher.topics.qe.orderQuestions",
+    matching: "dash.teacher.topics.editor.type.matching",
+    shooting: "dash.teacher.topics.qe.shooting",
+    wheel_spin: "dash.teacher.topics.qe.wheelSpin",
+    puzzle: "dash.teacher.topics.qe.puzzle",
 };
 
 const AIQuestionGeneratorFromResources = ({
@@ -72,6 +81,9 @@ const AIQuestionGeneratorFromResources = ({
     const [targetCount, setTargetCount] = useState(10);
     const [selectedChallengeTypes, setSelectedChallengeTypes] = useState<ChallengeType[]>([]);
     const { toast } = useToast();
+    const { t, dir, language, isRtl, textAlign } = useDashboardLocale();
+
+    const getChallengeTypeLabel = (type: ChallengeType) => t(CHALLENGE_TYPE_KEYS[type]);
 
     const getGeminiApiKey = (): string => {
         const key = (import.meta.env.VITE_GEMINI_API_KEY || "").trim();
@@ -80,9 +92,7 @@ const AIQuestionGeneratorFromResources = ({
             key === "your_gemini_api_key_here" ||
             key.toLowerCase().includes("replace_me");
         if (looksLikePlaceholder) {
-            throw new Error(
-                "مفتاح Gemini API غير مهيأ بشكل صحيح. أضف قيمة صالحة في VITE_GEMINI_API_KEY ثم أعد المحاولة."
-            );
+            throw new Error(t("dash.teacher.aiGen.resources.errors.geminiKeyInvalid"));
         }
         return key;
     };
@@ -137,12 +147,12 @@ const AIQuestionGeneratorFromResources = ({
 
     const getMediaLabel = (type: ContentMedia["type"]) => {
         switch (type) {
-            case "video": return "فيديو";
-            case "image": return "صورة";
-            case "text": return "نص";
-            case "pdf": return "PDF";
-            case "audio": return "صوت";
-            case "link": return "رابط";
+            case "video": return t("dash.teacher.aiGen.resources.media.video");
+            case "image": return t("dash.teacher.aiGen.resources.media.image");
+            case "text": return t("dash.teacher.aiGen.resources.media.text");
+            case "pdf": return t("dash.teacher.aiGen.resources.media.pdf");
+            case "audio": return t("dash.teacher.aiGen.resources.media.audio");
+            case "link": return t("dash.teacher.aiGen.resources.media.link");
             default: return type;
         }
     };
@@ -169,10 +179,10 @@ const AIQuestionGeneratorFromResources = ({
             reader.onloadend = () => {
                 const result = reader.result?.toString() || "";
                 const base64 = result.split(",")[1] || "";
-                if (!base64) reject(new Error("فشل تحويل الملف إلى Base64"));
+                if (!base64) reject(new Error(t("dash.teacher.aiGen.resources.errors.base64Failed")));
                 else resolve(base64);
             };
-            reader.onerror = () => reject(new Error("فشل قراءة الملف"));
+            reader.onerror = () => reject(new Error(t("dash.teacher.aiGen.resources.errors.readFailed")));
             reader.readAsDataURL(blob);
         });
 
@@ -185,31 +195,40 @@ const AIQuestionGeneratorFromResources = ({
             switch (resource.type) {
                 case "text":
                     if (resource.content) {
-                        contentParts.push(`📝 [نص تعليمي]: ${resource.caption || 'بدون عنوان'}\n${resource.content}`);
+                        contentParts.push(
+                            aiGenContext.resourceText(language, resource.caption || "", resource.content)
+                        );
                     }
                     break;
 
                 case "video":
-                    const videoInfo = resource.caption
-                        ? `🎬 [فيديو]: ${resource.caption}\nرابط: ${resource.url}`
-                        : `🎬 [فيديو]: ${resource.url || 'فيديو تعليمي'}`;
-                    contentParts.push(videoInfo);
+                    contentParts.push(
+                        aiGenContext.resourceVideo(language, resource.caption, resource.url || "")
+                    );
                     break;
 
                 case "image":
-                    const imageInfo = resource.caption
-                        ? `🖼️ [صورة]: ${resource.caption}\nرابط: ${resource.url}`
-                        : `🖼️ [صورة]: ${resource.url || 'صورة تعليمية'}`;
-                    contentParts.push(imageInfo);
+                    contentParts.push(
+                        aiGenContext.resourceImage(language, resource.caption, resource.url || "")
+                    );
                     break;
                 case "audio":
                     contentParts.push(
-                        `🎧 [ملف صوتي]: ${resource.caption || resource.fileName || "مقطع صوتي"}\nرابط: ${resource.url || "غير متاح"}`
+                        aiGenContext.resourceAudio(
+                            language,
+                            resource.caption,
+                            resource.fileName,
+                            resource.url || ""
+                        )
                     );
                     break;
                 case "link":
                     contentParts.push(
-                        `🔗 [رابط خارجي]: ${resource.caption || "مرجع خارجي"}\nرابط: ${normalizeExternalUrl(resource.url)}`
+                        aiGenContext.resourceLink(
+                            language,
+                            resource.caption || aiGenContext.externalLinkDefaultCaption(language),
+                            normalizeExternalUrl(resource.url)
+                        )
                     );
                     break;
             }
@@ -330,7 +349,7 @@ const AIQuestionGeneratorFromResources = ({
         const chunks: string[] = [];
         for (const link of links) {
             const normalizedUrl = normalizeExternalUrl(link.url);
-            const caption = link.caption?.trim() || "مرجع خارجي";
+            const caption = link.caption?.trim() || aiGenContext.externalLinkDefaultCaption(language);
             let extractedText = "";
             try {
                 const proxyUrl = `https://r.jina.ai/http://${normalizedUrl.replace(/^https?:\/\//i, "")}`;
@@ -344,9 +363,9 @@ const AIQuestionGeneratorFromResources = ({
             }
 
             if (extractedText) {
-                chunks.push(`🔗 [محتوى رابط خارجي]: ${caption}\nالرابط: ${normalizedUrl}\nالنص المستخرج:\n${extractedText}`);
+                chunks.push(aiGenContext.externalLinkExtracted(language, caption, normalizedUrl, extractedText));
             } else {
-                chunks.push(`🔗 [رابط خارجي]: ${caption}\nالرابط: ${normalizedUrl}\nتعذّر استخراج النص مباشرة، استخدم العنوان/الوصف فقط دون افتراضات زائدة.`);
+                chunks.push(aiGenContext.externalLinkFallback(language, caption, normalizedUrl));
             }
         }
 
@@ -362,28 +381,9 @@ const AIQuestionGeneratorFromResources = ({
             return parseAiGeneratedChallengeItems(generatedText);
         } catch (firstErr) {
             console.warn("Initial parse failed, trying JSON repair", firstErr);
-            setProgress("جاري إصلاح تنسيق النتائج تلقائياً...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.repairing"));
 
-            const typeHint =
-                generateType === "questions"
-                    ? "أسئلة فقط"
-                    : generateType === "games"
-                        ? "ألعاب فقط"
-                        : "أسئلة وألعاب";
-
-            const repairPrompt = `حوّل النص التالي إلى JSON array صالح فقط وبدون أي نص إضافي.
-المطلوب: ${typeHint}
-قواعد الإصلاح:
-- لا تستخدم markdown أو شرح.
-- كل عنصر يجب أن يحتوي type وquestion وpoints وtimeLimit.
-- matching يجب أن يحتوي pairs.
-- wheel_spin يجب أن يحتوي wheelSegments من 4 إلى 6 عناصر مع question وخيارات وإجابة.
-- shooting يجب أن يحتوي options (4) وcorrectAnswer.
-- puzzle يجب أن يحتوي options وcorrectAnswer.
-- اجعل correctAnswer مناسباً لنوع السؤال.
-
-النص المراد إصلاحه:
-${generatedText}`;
+            const repairPrompt = buildQuestionGenRepairPrompt(language, generateType, generatedText);
 
             const repaired = (await generateGeminiContent(apiKey, {
                 contents: [{ parts: [{ text: repairPrompt }] }],
@@ -402,7 +402,7 @@ ${generatedText}`;
 
             const repairedText = repaired.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!repairedText) {
-                throw new Error("تعذّر إصلاح تنسيق مخرجات الذكاء الاصطناعي");
+                throw new Error(t("dash.teacher.aiGen.resources.errors.repairFailed"));
             }
 
             return parseAiGeneratedChallengeItems(repairedText);
@@ -425,14 +425,11 @@ ${generatedText}`;
 
             if (type === "qa" || type === "know_dont_know") {
                 const fallbackAnswer =
-                    explanation ||
-                    (question ? `الإجابة المتوقعة: ${question}` : "أجب باختصار اعتماداً على محتوى المورد.");
+                    explanation || aiGenContext.qaFallbackAnswer(language, question);
                 return {
                     ...item,
                     correctAnswer: answerAsText || fallbackAnswer,
-                    explanation:
-                        explanation ||
-                        "هذه الإجابة مستخلصة مباشرة من مورد الدرس المختار، ويمكن اعتمادها كمرجع للتقييم.",
+                    explanation: explanation || aiGenContext.qaFallbackExplanation(language),
                 };
             }
 
@@ -444,14 +441,18 @@ ${generatedText}`;
                     normalizedAnswer = rawAnswer ? 0 : 1; // true => صح
                 } else if (typeof rawAnswer === "string") {
                     const low = rawAnswer.trim().toLowerCase();
-                    normalizedAnswer =
-                        low === "1" || low.includes("خطأ") || low === "false"
-                            ? 1
-                            : 0;
+                    const isFalse =
+                        low === "1" ||
+                        low === "false" ||
+                        low.includes("false") ||
+                        low.includes("incorrect") ||
+                        low.includes("wrong") ||
+                        low.includes("خطأ");
+                    normalizedAnswer = isFalse ? 1 : 0;
                 }
                 return {
                     ...item,
-                    options: options.length >= 2 ? options.slice(0, 2) : ["صح ✓", "خطأ ✗"],
+                    options: options.length >= 2 ? options.slice(0, 2) : [t("dash.teacher.topics.qe.trueLabel"), t("dash.teacher.topics.qe.falseLabel")],
                     correctAnswer: normalizedAnswer,
                 };
             }
@@ -487,7 +488,7 @@ ${generatedText}`;
         const transcripts: string[] = [];
         for (const audio of audioParts) {
             try {
-                setProgress(`جاري تفريغ الملف الصوتي: ${audio.fileName}...`);
+                setProgress(t("dash.teacher.aiGen.resources.progress.transcribingFile", { fileName: audio.fileName }));
                 const transcription = (await generateGeminiContent(apiKey, {
                     contents: [{
                         parts: [
@@ -497,12 +498,7 @@ ${generatedText}`;
                                     data: audio.base64,
                                 }
                             },
-                            {
-                                text:
-                                    "استخرج النص المنطوق من هذا الملف الصوتي بدقة. " +
-                                    "أعد الناتج كنص خام فقط بدون تنسيق أو JSON أو شروحات إضافية. " +
-                                    "إذا كان الصوت تعليميًا، حافظ على المصطلحات العلمية كما هي."
-                            }
+                            { text: buildAudioTranscriptionPrompt(language) }
                         ]
                     }],
                     generationConfig: {
@@ -519,7 +515,7 @@ ${generatedText}`;
 
                 const transcriptText = transcription.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
                 if (transcriptText) {
-                    transcripts.push(`🎧 [تفريغ صوتي: ${audio.fileName}]\n${transcriptText}`);
+                    transcripts.push(aiGenContext.audioTranscriptChunk(language, audio.fileName, transcriptText));
                 }
             } catch (err) {
                 console.warn("Audio transcription failed for:", audio.fileName, err);
@@ -532,8 +528,8 @@ ${generatedText}`;
     const handleGenerate = async () => {
         if (selectedMedia.length === 0) {
             toast({
-                title: "لم يتم اختيار أي موارد",
-                description: "يرجى اختيار مورد واحد على الأقل للتحليل",
+                title: t("dash.teacher.aiGen.resources.toast.noResources"),
+                description: t("dash.teacher.aiGen.resources.toast.noResourcesDesc"),
                 variant: "destructive",
             });
             return;
@@ -541,8 +537,8 @@ ${generatedText}`;
 
         if (!prompt.trim()) {
             toast({
-                title: "لم يتم إدخال التعليمات",
-                description: "يرجى إدخال تعليمات واضحة لتوليد الأسئلة",
+                title: t("dash.teacher.aiGen.toast.noPrompt"),
+                description: t("dash.teacher.aiGen.toast.noPromptDesc"),
                 variant: "destructive",
             });
             return;
@@ -551,8 +547,8 @@ ${generatedText}`;
         const allowedTypes = getAllowedTypesForMode(generateType, selectedChallengeTypes);
         if (allowedTypes.length === 0) {
             toast({
-                title: "حدد نوعاً واحداً على الأقل",
-                description: "اختر نوع سؤال/لعبة مناسباً لنمط التوليد الحالي قبل المتابعة.",
+                title: t("dash.teacher.aiGen.resources.toast.selectType"),
+                description: t("dash.teacher.aiGen.resources.toast.selectTypeDesc"),
                 variant: "destructive",
             });
             return;
@@ -563,19 +559,19 @@ ${generatedText}`;
 
         try {
             // Gather content
-            setProgress("جاري تحضير المحتوى...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.preparing"));
             const textContent = gatherTextContent();
 
-            setProgress("جاري جلب ملفات PDF المحددة...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.fetchingPdfs"));
             const pdfParts = await getPdfParts();
 
-            setProgress("جاري جلب الصور المحددة...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.fetchingImages"));
             const imageParts = await getImageParts();
 
-            setProgress("جاري جلب الملفات الصوتية المحددة...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.fetchingAudio"));
             const audioParts = await getAudioParts();
 
-            setProgress("جاري استخراج محتوى الروابط الخارجية...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.fetchingLinks"));
             const externalLinksContext = await getExternalLinksContext();
 
             console.log("Text content:", textContent);
@@ -585,15 +581,15 @@ ${generatedText}`;
 
             // Check if we have any content
             if (!textContent.trim() && !externalLinksContext.trim() && pdfParts.length === 0 && imageParts.length === 0 && audioParts.length === 0) {
-                throw new Error("لم يتم العثور على محتوى قابل للتحليل. تأكد من أن الموارد تحتوي على نص أو صورة أو PDF أو صوت أو رابط صالح.");
+                throw new Error(t("dash.teacher.aiGen.resources.errors.noAnalyzableContent"));
             }
 
             setProcessingPhase("analyzing");
-            setProgress("جاري تحليل المحتوى بالذكاء الاصطناعي...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.analyzing"));
 
             const apiKey = getGeminiApiKey();
 
-            setProgress("جاري تفريغ المحتوى الصوتي إلى نص...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.transcribing"));
             const audioTranscriptContext = await transcribeAudioParts(audioParts, apiKey);
 
             // Fetch metadata or transcripts for videos if any
@@ -607,7 +603,7 @@ ${generatedText}`;
             const videoResources = selectedMedia.map(idx => media[idx]).filter(m => m.type === "video");
 
             if (videoResources.length > 0) {
-                setProgress("جاري استخراج نصوص الفيديوهات...");
+                setProgress(t("dash.teacher.aiGen.resources.progress.extractingVideos"));
                 for (const video of videoResources) {
                     const videoId = getYoutubeId(video.url || "");
                     let transcriptText = "";
@@ -619,7 +615,11 @@ ${generatedText}`;
                                 const transcriptData = await transcriptRes.json();
                                 if (transcriptData && transcriptData.transcript) {
                                     transcriptText = transcriptData.transcript.map((t: any) => t.text).join(" ");
-                                    videoResourceMetadata += `📄 نص الفيديو "${video.url}":\n${transcriptText}\n\n`;
+                                    videoResourceMetadata += aiGenContext.videoTranscriptBlock(
+                                        language,
+                                        video.url || "",
+                                        transcriptText
+                                    );
                                 }
                             }
                         } catch (e) {
@@ -633,7 +633,12 @@ ${generatedText}`;
                             const res = await fetch(`https://www.youtube.com/oembed?url=${video.url}&format=json`);
                             if (res.ok) {
                                 const data = await res.json();
-                                videoResourceMetadata += `🎬 فيديو: "${data.title}" من قناة "${data.author_name}"\nالرابط: ${video.url}\n(يرجى تحليل محتوى هذا الفيديو بناءً على عنوانه)\n`;
+                                videoResourceMetadata += aiGenContext.videoOEmbedBlock(
+                                    language,
+                                    data.title,
+                                    data.author_name,
+                                    video.url || ""
+                                );
                             }
                         } catch (e) {
                             console.warn("Failed fetch meta for", video.url);
@@ -649,7 +654,7 @@ ${generatedText}`;
             if (pdfParts.length > 0) {
                 for (const pdf of pdfParts) {
                     try {
-                        setProgress(`جاري تحليل ملف PDF: ${pdf.fileName}...`);
+                        setProgress(t("dash.teacher.aiGen.resources.progress.analyzingPdf", { fileName: pdf.fileName }));
 
                         // Convert base64 to ArrayBuffer
                         const binaryStr = atob(pdf.base64);
@@ -666,19 +671,17 @@ ${generatedText}`;
                         // If we have meaningful text, add it
                         if (extractedText.trim().length > 100) {
                             parts.push({
-                                text: `📄 محتوى نصي من ملف PDF "${pdf.fileName}":\n${extractedText}`
+                                text: aiGenContext.pdfTextBlock(language, pdf.fileName, extractedText),
                             });
                             console.log(`Extracted ${extractedText.length} chars from: ${pdf.fileName}`);
                         }
 
                         // Printed / scanned PDFs: render pages so the vision model can read them
                         if (pdfNeedsVisualPageImages(extractedText)) {
-                            setProgress(`جاري تحويل صفحات PDF "${pdf.fileName}" لصور للتحليل البصري...`);
+                            setProgress(t("dash.teacher.aiGen.resources.progress.convertingPdf", { fileName: pdf.fileName }));
                             const images = await extractPdfAsImages(pdfBlob, 15, 2);
                             if (images.length === 0) {
-                                throw new Error(
-                                    `تعذّر تحويل "${pdf.fileName}" إلى صور. الملف قد يكون تالفاً أو محمياً.`
-                                );
+                                throw new Error(t("dash.teacher.aiGen.resources.errors.pdfConvertFailed", { fileName: pdf.fileName }));
                             }
                             images.forEach((img) => {
                                 parts.push({
@@ -693,8 +696,8 @@ ${generatedText}`;
                     } catch (extractError) {
                         console.error("Error extracting PDF:", extractError);
                         toast({
-                            title: "تنبيه في تحليل PDF",
-                            description: `فشل استخراج النص من ${pdf.fileName}، سيتم المحاولة بالتحليل البصري...`,
+                            title: t("dash.teacher.aiGen.resources.toast.pdfWarning"),
+                            description: t("dash.teacher.aiGen.resources.toast.pdfWarningDesc", { fileName: pdf.fileName }),
                             variant: "default",
                         });
                     }
@@ -715,7 +718,7 @@ ${generatedText}`;
             // Using transcript text is more stable and reduces malformed responses.
 
             setProcessingPhase("generating");
-            setProgress("جاري توليد الأسئلة والألعاب...");
+            setProgress(t("dash.teacher.aiGen.resources.progress.generating"));
 
             // Build comprehensive prompt
             const fullContent = `${textContent}\n\n${videoResourceMetadata}\n\n${externalLinksContext}\n\n${audioTranscriptContext}`;
@@ -730,20 +733,22 @@ ${generatedText}`;
             for (let batch = 1; batch <= maxCycles && questions.length < targetCount; batch++) {
                 const remaining = targetCount - questions.length;
                 const currentBatchCount = Math.min(batchSize, remaining);
-                setProgress(`جاري توليد الدفعة ${batch} (${currentBatchCount} عنصر)...`);
+                setProgress(t("dash.teacher.aiGen.resources.progress.batch", { batch, count: currentBatchCount }));
 
                 const batchParts = [...parts];
-                const promptText = buildPrompt(
-                    fullContent,
-                    prompt,
-                    pdfParts.length,
-                    imageParts.length,
-                    audioParts.length,
-                    generateType,
-                    uniqueAllowedTypes,
-                    currentBatchCount,
-                    targetCount
-                );
+                const promptText = buildResourcesGenerationPrompt({
+                    language,
+                    textContent: fullContent,
+                    userPrompt: prompt,
+                    pdfCount: pdfParts.length,
+                    imageCount: imageParts.length,
+                    audioCount: audioParts.length,
+                    genType: generateType,
+                    allowedTypes: uniqueAllowedTypes,
+                    allowedTypeLabels: uniqueAllowedTypes.map((type) => getChallengeTypeLabel(type)),
+                    batchCount: currentBatchCount,
+                    totalRequestedCount: targetCount,
+                });
                 batchParts.push({ text: promptText });
 
                 const data = (await generateGeminiContent(apiKey, {
@@ -760,7 +765,7 @@ ${generatedText}`;
                     onRetry: ({ attempt, delayMs, model, reason }) => {
                         const sec = Math.max(1, Math.round(delayMs / 1000));
                         setProgress(
-                            `ازدحام مؤقت على الخادم — إعادة المحاولة ${attempt} بعد ~${sec}ث (${model})…`
+                            t("dash.teacher.aiGen.progress.retryBusyServer", { attempt, sec, model })
                         );
                         console.warn("[Gemini retry]", { attempt, model, reason });
                     },
@@ -802,17 +807,23 @@ ${generatedText}`;
             }
 
             if (questions.length === 0) {
-                throw new Error("لم يتم توليد عناصر صالحة حسب الأنواع المحددة. جرّب توسيع الأنواع أو تقليل العدد.");
+                throw new Error(t("dash.teacher.aiGen.resources.errors.noValidItems"));
             }
 
             if (questions.length < targetCount) {
-                throw new Error(`تم توليد ${questions.length} فقط من أصل ${targetCount}. وسّع الأنواع المسموحة أو قلّل العدد المطلوب ثم أعد المحاولة.`);
+                throw new Error(t("dash.teacher.aiGen.resources.errors.partialCount", {
+                    generated: questions.length,
+                    target: targetCount,
+                }));
             }
 
-            setProgress("تم التوليد بنجاح! ✓");
+            setProgress(t("dash.teacher.aiGen.resources.progress.success"));
             toast({
-                title: "تم توليد الأسئلة بنجاح! 🎉",
-                description: `تم توليد ${questions.length} عنصر من ${selectedMedia.length} مورد`,
+                title: t("dash.teacher.aiGen.toast.generateSuccess"),
+                description: t("dash.teacher.aiGen.resources.toast.successDesc", {
+                    count: questions.length,
+                    resources: selectedMedia.length,
+                }),
             });
 
             setTimeout(() => {
@@ -821,7 +832,7 @@ ${generatedText}`;
 
         } catch (error) {
             console.error("Error generating questions:", error);
-            const errorMessage = error instanceof Error ? error.message : "حدث خطأ غير متوقع";
+            const errorMessage = error instanceof Error ? error.message : t("dash.teacher.aiGen.toast.unexpectedError");
             const normalizedErrorMessage = errorMessage.toLowerCase();
             const apiKeyError =
                 normalizedErrorMessage.includes("api key") ||
@@ -830,9 +841,9 @@ ${generatedText}`;
                 normalizedErrorMessage.includes("permission denied") ||
                 normalizedErrorMessage.includes("invalid key");
             toast({
-                title: "خطأ في التوليد",
+                title: t("dash.teacher.aiGen.toast.generateError"),
                 description: apiKeyError
-                    ? "مفتاح Gemini غير صالح أو غير مفعّل. حدّث VITE_GEMINI_API_KEY ثم أعد تشغيل التطبيق."
+                    ? t("dash.teacher.aiGen.resources.toast.invalidApiKey")
                     : errorMessage,
                 variant: "destructive",
             });
@@ -841,159 +852,6 @@ ${generatedText}`;
         } finally {
             setIsProcessing(false);
         }
-    };
-
-    const buildPrompt = (
-        textContent: string,
-        userPrompt: string,
-        pdfCount: number = 0,
-        imageCount: number = 0,
-        audioCount: number = 0,
-        genType: GenerateMode = "both",
-        allowedTypes: ChallengeType[] = ALL_CHALLENGE_TYPES,
-        batchCount = 10,
-        totalRequestedCount = 10
-    ): string => {
-        const hasRichFiles = pdfCount > 0 || imageCount > 0 || audioCount > 0;
-        const fileNote = hasRichFiles
-            ? `\n\nتنبيه هام جداً: لقد تم تزويدك بـ ${pdfCount > 0 ? `${pdfCount} ملف PDF` : ''}${pdfCount > 0 && (imageCount > 0 || audioCount > 0) ? ' و ' : ''}${imageCount > 0 ? `${imageCount} صورة` : ''}${imageCount > 0 && audioCount > 0 ? ' و ' : ''}${audioCount > 0 ? `${audioCount} ملف صوتي` : ''}. 
-يجب عليك تحليل **كامل الصفحات** المرفقة (سواء كانت نصوصاً مستخرجة أو صوراً للصفحات). قم بإجراء OCR ذاتي للصور إذا لزم الأمر.
-حلّل الصوت لاستخراج الأفكار والمفاهيم التعليمية الأساسية قبل بناء الأسئلة.
-يجب أن تكون جميع الأسئلة والألعاب مستخرجة حصرياً من المعلومات الموجودة داخل هذه الموارد. لا تتجاهل أي مورد ولا تستخدم معلومات خارجية.`
-            : '';
-
-        const contentSection = textContent.trim()
-            ? `\nالمحتوى النصي المرجعي:\n${textContent}`
-            : '';
-
-        // Customize based on generation type
-        let typeInstruction = "";
-        let availableTypes = "";
-
-        if (genType === "questions") {
-            typeInstruction = "يرجى إنشاء أسئلة تعليمية فقط (بدون ألعاب)";
-            availableTypes = `
-أنواع الأسئلة المتاحة:
-1. اختيار متعدد (multiple_choice) - سؤال مع 2-6 خيارات
-2. صح وخطأ (true_false) - سؤال مع خيارين فقط
-3. سؤال وجواب (qa) - سؤال مفتوح
-4. أعرف/لا أعرف (know_dont_know) - تقييم ذاتي
-5. ترتيب (order_questions) - ترتيب عناصر`;
-        } else if (genType === "games") {
-            typeInstruction = "يرجى إنشاء ألعاب تفاعلية فقط (بدون أسئلة تقليدية)";
-            availableTypes = `
-أنواع الألعاب المتاحة:
-1. مطابقة (matching) - مطابقة عناصر مع بعضها
-2. تصويب (shooting) - تصويب على الإجابات الصحيحة
-3. عجلة الحظ (wheel_spin) - دوران عجلة تفاعلية
-4. ألغاز (puzzle) - حل لغز`;
-        } else {
-            typeInstruction = "يرجى إنشاء مزيج من الأسئلة التعليمية والألعاب التفاعلية";
-            availableTypes = `
-أنواع الأسئلة المتاحة:
-1. اختيار متعدد (multiple_choice) - سؤال مع 2-6 خيارات
-2. صح وخطأ (true_false) - سؤال مع خيارين فقط
-3. سؤال وجواب (qa) - سؤال مفتوح
-4. أعرف/لا أعرف (know_dont_know) - تقييم ذاتي
-5. ترتيب (order_questions) - ترتيب عناصر
-
-أنواع الألعاب المتاحة:
-1. مطابقة (matching) - مطابقة عناصر مع بعضها
-2. تصويب (shooting) - تصويب على الإجابات الصحيحة
-3. عجلة الحظ (wheel_spin) - دوران عجلة تفاعلية
-4. ألغاز (puzzle) - حل لغز`;
-        }
-
-        const allowedTypesArabic = allowedTypes.map((type) => CHALLENGE_TYPE_LABELS[type]).join("، ");
-        const allowedTypesJson = allowedTypes.join(", ");
-
-        return `أنت مساعد ذكي متخصص في إنشاء محتوى تعليمي تفاعلي باللغة العربية.
-مهمتك: توليد محتوى مستنداً **حصرياً** على الموارد التي قام المعلم باختيارها من القائمة المرفقة أدناه.
-في حال وجود روابط فيديو (يوتيوب)، استخدم العنوان والبيانات المتاحة للبحث في قاعدة بياناتك عن محتوى الفيديو وتحليله بدقة.
-${fileNote}${contentSection}
-
-طلب المعلم:
-${userPrompt}
-
-${typeInstruction} بناءً **فقط** على المعلومات المستخرجة من الصور أو ملفات PDF أو الملفات الصوتية أو النصوص أو الروابط المختارة، مع الالتزام بالتنسيق التالي بدقة. لا تولد أي سؤال من خارج المحتوى المختار.
-عدد العناصر المطلوب في هذه الدفعة: ${batchCount}
-العدد النهائي المستهدف في العملية كلها: ${totalRequestedCount}
-الأنواع المسموح بها فقط في هذه الدفعة: ${allowedTypesArabic}
-لا تستخدم أي نوع خارج القائمة التالية (type): ${allowedTypesJson}
-${availableTypes}
-
-يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي:
-
-مثال للتنسيق:
-[
-  {
-    "type": "multiple_choice",
-    "question": "ما هو...",
-    "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
-    "correctAnswer": 0,
-    "explanation": "الشرح...",
-    "points": 100,
-    "timeLimit": 30
-  },
-  {
-    "type": "matching",
-    "question": "طابق بين...",
-    "pairs": [
-      {"left": "العنصر 1", "right": "المطابق 1"},
-      {"left": "العنصر 2", "right": "المطابق 2"}
-    ],
-    "points": 150,
-    "timeLimit": 45
-  },
-  {
-    "type": "wheel_spin",
-    "question": "أدر العجلة لتحديد سؤالك...",
-    "points": 0,
-    "timeLimit": 60,
-    "wheelSegments": [
-      {
-        "label": "سؤال سهل",
-        "points": 100,
-        "question": "سؤال مستخرج من الصورة...",
-        "options": ["خيار 1", "خيار 2", "خيار 3"],
-        "correctAnswer": 0
-      }
-    ]
-  },
-  {
-    "type": "shooting",
-    "question": "أطلق النار على الإجابة الصحيحة: سؤال مستخرج من الصورة...",
-    "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
-    "correctAnswer": 0,
-    "points": 150,
-    "timeLimit": 15
-  },
-  {
-    "type": "puzzle",
-    "question": "ركب الكلمات لتكوين الجملة الصحيحة",
-    "correctAnswer": "جملة من المحتوى المرفق",
-    "options": ["الكلمة 1", "الكلمة 2", "الكلمة 3"],
-    "points": 200,
-    "timeLimit": 45
-  }
-]
-
-ملاحظات مهمة:
-- التزم بنسبة 100% بالمحتوى المرفق (الصور وPDF والنصوص والصوت والروابط). ممنوع تماماً توليد أسئلة من خارجها.
-- أخرج بالضبط ${batchCount} عناصر في هذه الدفعة (لا أقل ولا أكثر)، وكل عنصر type يجب أن يكون من: ${allowedTypesJson}.
-- صِغ الأسئلة كجمل مستقلة مباشرة، وممنوع استخدام عبارات إحالية مثل: "كما ترى في الصورة" أو "في الفيديو المعروض" أو "في الرابط أعلاه".
-- إذا كان المصدر صورة أو PDF بصري، استخرج الحقائق أولاً ثم حوّلها مباشرة إلى أسئلة/ألعاب بدون وصف للمصدر نفسه.
-- احرص أن كل عنصر يطابق قالب نوعه تماماً (مثال: matching يحتوي pairs، وwheel_spin يحتوي wheelSegments كاملة، وpuzzle يحتوي correctAnswer + options مناسبة).
-- في نوع qa وknow_dont_know يجب دائماً تعبئة correctAnswer كنص واضح ومباشر، ويُفضّل إضافة explanation موجز يدعم التقييم.
-- لا تترك حقولاً أساسية فارغة، ولا تضف مفاتيح غير لازمة، وتأكد من توافق نوع correctAnswer مع النوع المطلوب.
-- استخدم اللغة العربية الفصحى
-- اجعل المحتوى واضحاً ومفيداً ومستنداً إلى المحتوى المقدم
-- بالنسبة لعجلة الحظ (wheel_spin): يجب أن تحتوي العجلة على 4-6 شرائح (segments) مع أسئلة كاملة
-- بالنسبة للتصويب (shooting): ضع 4 خيارات، واحد فقط صحيح، والهدف هو إصابة الصحيح بسرعة
-- بالنسبة للألغاز (puzzle): الهدف هو ترتيب الكلمات أو الأحرف (options) لتكوين الإجابة الصحيحة (correctAnswer)
-- اجعل النقاط مناسبة للصعوبة (50-200 نقطة)
-- الوقت المحدد يتراوح بين 15-60 ثانية
-- تأكد من صحة JSON وعدم وجود أخطاء في التنسيق`;
     };
 
     const selectedResourcesCount = selectedMedia.length;
@@ -1010,30 +868,30 @@ ${availableTypes}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             className="space-y-6"
+            dir={dir}
         >
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5">
+            <Card dir={dir} className="border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-xl">
-                        <Brain className="w-6 h-6 text-primary" />
-                        توليد الأسئلة من موارد الدرس
+                        <Brain className="w-6 h-6 text-primary shrink-0" />
+                        {t("dash.teacher.aiGen.resources.title")}
                     </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-2">
-                        اختر الموارد التي يجب على الذكاء الاصطناعي تحليلها لتوليد الأسئلة والألعاب
+                    <p className={cn("text-sm text-muted-foreground mt-2", textAlign)}>
+                        {t("dash.teacher.aiGen.resources.subtitle")}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Step 1: Select Resources */}
                     <div className="space-y-3">
                         <Label className="text-base font-bold flex items-center gap-2">
-                            <Database className="w-5 h-5" />
-                            الخطوة 1: اختر الموارد للتحليل
+                            <Database className="w-5 h-5 shrink-0" />
+                            {t("dash.teacher.aiGen.resources.step1")}
                         </Label>
 
                         {media.length === 0 ? (
                             <Card className="border-dashed border-2 p-8 text-center">
                                 <FileText className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
                                 <p className="text-muted-foreground">
-                                    لا توجد موارد متاحة. أضف موارد (PDFs، نصوص، فيديوهات) أولاً في تبويب الوسائط.
+                                    {t("dash.teacher.aiGen.resources.noResources")}
                                 </p>
                             </Card>
                         ) : (
@@ -1054,11 +912,11 @@ ${availableTypes}
                                         <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
                                             {getMediaIcon(item.type)}
                                         </div>
-                                        <div className="flex-1">
+                                        <div className={cn("flex-1 min-w-0", textAlign)}>
                                             <div className="font-medium text-sm">
                                                 {item.caption || item.fileName || getMediaLabel(item.type)}
                                             </div>
-                                            <div className="text-xs text-muted-foreground">
+                                            <div className="text-xs text-muted-foreground truncate">
                                                 {item.type === "text" && item.content &&
                                                     `${item.content.substring(0, 50)}...`}
                                                 {item.type === "pdf" && item.fileName}
@@ -1077,41 +935,41 @@ ${availableTypes}
                         {/* Selection Summary */}
                         {media.length > 0 && (
                             <div className="flex flex-wrap gap-2 text-xs">
-                                <span className="text-muted-foreground">المختار:</span>
+                                <span className="text-muted-foreground">{t("dash.teacher.aiGen.resources.selected")}</span>
                                 {pdfCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <FileType className="w-3 h-3" />
-                                        {pdfCount} PDF
+                                        {t("dash.teacher.aiGen.resources.countPdf", { n: pdfCount })}
                                     </Badge>
                                 )}
                                 {textCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <FileText className="w-3 h-3" />
-                                        {textCount} نص
+                                        {t("dash.teacher.aiGen.resources.countText", { n: textCount })}
                                     </Badge>
                                 )}
                                 {videoCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <Video className="w-3 h-3" />
-                                        {videoCount} فيديو
+                                        {t("dash.teacher.aiGen.resources.countVideo", { n: videoCount })}
                                     </Badge>
                                 )}
                                 {imageCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <Image className="w-3 h-3" />
-                                        {imageCount} صورة
+                                        {t("dash.teacher.aiGen.resources.countImage", { n: imageCount })}
                                     </Badge>
                                 )}
                                 {audioCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <Headphones className="w-3 h-3" />
-                                        {audioCount} صوت
+                                        {t("dash.teacher.aiGen.resources.countAudio", { n: audioCount })}
                                     </Badge>
                                 )}
                                 {linkCount > 0 && (
                                     <Badge variant="outline" className="gap-1">
                                         <Link2 className="w-3 h-3" />
-                                        {linkCount} رابط
+                                        {t("dash.teacher.aiGen.resources.countLink", { n: linkCount })}
                                     </Badge>
                                 )}
                             </div>
@@ -1121,20 +979,21 @@ ${availableTypes}
                     {/* Step 2: Enter Prompt */}
                     <div className="space-y-3">
                         <Label className="text-base font-bold flex items-center gap-2">
-                            <Sparkles className="w-5 h-5" />
-                            الخطوة 2: حدد ما تريد توليده
+                            <Sparkles className="w-5 h-5 shrink-0" />
+                            {t("dash.teacher.aiGen.step2Title")}
                         </Label>
                         <Textarea
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
-                            placeholder="مثال: أريد توليد 10 أسئلة متنوعة تغطي جميع المفاهيم الأساسية في الموارد المختارة"
+                            placeholder={t("dash.teacher.aiGen.resources.promptPlaceholder")}
                             rows={3}
                             disabled={isProcessing}
-                            className="resize-none"
+                            dir={dir}
+                            className={cn("resize-none", textAlign)}
                         />
 
                         <div className="space-y-2">
-                            <Label className="text-sm text-muted-foreground">عدد العناصر المطلوب توليدها:</Label>
+                            <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.targetCount")}</Label>
                             <Input
                                 type="number"
                                 min={1}
@@ -1147,14 +1006,13 @@ ${availableTypes}
                                 }}
                                 disabled={isProcessing}
                             />
-                            <p className="text-xs text-muted-foreground">
-                                يدعم التوليد على دفعات تلقائياً لتحسين الثبات عند الأعداد الكبيرة (مثل 50).
+                            <p className={cn("text-xs text-muted-foreground", textAlign)}>
+                                {t("dash.teacher.aiGen.resources.targetCountHint")}
                             </p>
                         </div>
 
-                        {/* Generation Type Selector */}
                         <div className="space-y-2">
-                            <Label className="text-sm text-muted-foreground">نوع المحتوى المراد توليده:</Label>
+                            <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.generateType")}</Label>
                             <div className="flex gap-2 flex-wrap">
                                 <Button
                                     type="button"
@@ -1165,7 +1023,7 @@ ${availableTypes}
                                     className="gap-2"
                                 >
                                     <FileText className="w-4 h-4" />
-                                    أسئلة تفاعلية
+                                    {t("dash.teacher.aiGen.resources.typeQuestions")}
                                 </Button>
                                 <Button
                                     type="button"
@@ -1176,7 +1034,7 @@ ${availableTypes}
                                     className="gap-2"
                                 >
                                     <Zap className="w-4 h-4" />
-                                    أسئلة تلعيبية
+                                    {t("dash.teacher.aiGen.resources.typeGames")}
                                 </Button>
                                 <Button
                                     type="button"
@@ -1187,13 +1045,13 @@ ${availableTypes}
                                     className="gap-2"
                                 >
                                     <Wand2 className="w-4 h-4" />
-                                    كلاهما
+                                    {t("dash.teacher.aiGen.resources.typeBoth")}
                                 </Button>
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-sm text-muted-foreground">اختر أنواع الأسئلة/الألعاب المسموح بها:</Label>
+                            <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.allowedTypes")}</Label>
                             <div className="flex gap-2 flex-wrap">
                                 {getVisibleTypesForMode(generateType).map((type) => (
                                     <Button
@@ -1205,14 +1063,14 @@ ${availableTypes}
                                         disabled={isProcessing}
                                         className="gap-1"
                                     >
-                                        {CHALLENGE_TYPE_LABELS[type]}
+                                        {getChallengeTypeLabel(type)}
                                     </Button>
                                 ))}
                             </div>
                         </div>
 
-                        <div className="text-xs text-muted-foreground">
-                            💡 نصيحة: كن محدداً قدر الإمكان (مثلاً: "ركز على الفصل الأول"، "أسئلة سهلة للمبتدئين")
+                        <div className={cn("text-xs text-muted-foreground", textAlign)}>
+                            {t("dash.teacher.aiGen.resources.tip")}
                         </div>
                     </div>
 
@@ -1233,7 +1091,7 @@ ${availableTypes}
                                             <Zap className="w-4 h-4 text-blue-500 absolute inset-0 m-auto" />
                                         )}
                                     </div>
-                                    <div className="flex-1">
+                                    <div className={cn("flex-1", textAlign)}>
                                         <p className="font-medium text-blue-700 dark:text-blue-300">
                                             {progress}
                                         </p>
@@ -1243,9 +1101,9 @@ ${availableTypes}
                                             <div className={`h-1 flex-1 rounded-full ${processingPhase === "generating" ? "bg-blue-500" : "bg-blue-200"}`} />
                                         </div>
                                         <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                            <span>استخراج</span>
-                                            <span>تحليل</span>
-                                            <span>توليد</span>
+                                            <span>{t("dash.teacher.aiGen.resources.phaseExtract")}</span>
+                                            <span>{t("dash.teacher.aiGen.resources.phaseAnalyze")}</span>
+                                            <span>{t("dash.teacher.aiGen.resources.phaseGenerate")}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1258,13 +1116,13 @@ ${availableTypes}
                         <CardContent className="p-4">
                             <div className="flex gap-3">
                                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                                <div className="text-sm space-y-2">
-                                    <p className="font-medium">كيف يعمل التوليد من الموارد:</p>
-                                    <ul className="space-y-1 mr-4 list-disc text-muted-foreground">
-                                        <li>سيقوم الذكاء الاصطناعي بقراءة وفهم محتوى ملفات PDF والنصوص</li>
-                                        <li>سيقوم بتحليل الصور مباشرة لاستخراج الأسئلة منها (Visual Analysis)</li>
-                                        <li>سيولد أسئلة وألعاب مبنية على المحتوى الفعلي للموارد</li>
-                                        <li>يمكنك مراجعة وتعديل الأسئلة المولدة قبل الحفظ</li>
+                                <div className={cn("text-sm space-y-2 flex-1", textAlign)}>
+                                    <p className="font-medium">{t("dash.teacher.aiGen.resources.infoTitle")}</p>
+                                    <ul className="space-y-1 ps-4 list-disc text-muted-foreground">
+                                        <li>{t("dash.teacher.aiGen.resources.info1")}</li>
+                                        <li>{t("dash.teacher.aiGen.resources.info2")}</li>
+                                        <li>{t("dash.teacher.aiGen.resources.info3")}</li>
+                                        <li>{t("dash.teacher.aiGen.resources.info4")}</li>
                                     </ul>
                                 </div>
                             </div>
@@ -1272,32 +1130,56 @@ ${availableTypes}
                     </Card>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-3 justify-end pt-4 border-t">
-                        <Button
-                            variant="outline"
-                            onClick={onCancel}
-                            disabled={isProcessing}
-                        >
-                            <X className="w-4 h-4 ml-2" />
-                            إلغاء
-                        </Button>
-                        <Button
-                            onClick={handleGenerate}
-                            disabled={!prompt.trim() || selectedMedia.length === 0 || isProcessing}
-                            className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    جاري التوليد...
-                                </>
-                            ) : (
-                                <>
-                                    <Wand2 className="w-4 h-4" />
-                                    توليد من {selectedResourcesCount} مورد
-                                </>
-                            )}
-                        </Button>
+                    <div className={cn("flex gap-3 pt-4 border-t", isRtl ? "justify-start" : "justify-end")}>
+                        {isRtl ? (
+                            <>
+                                <Button
+                                    onClick={handleGenerate}
+                                    disabled={!prompt.trim() || selectedMedia.length === 0 || isProcessing}
+                                    className="gap-2 bg-gradient-to-l from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {t("dash.teacher.aiGen.btn.generating")}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-4 h-4" />
+                                            {t("dash.teacher.aiGen.resources.btnGenerate", { count: selectedResourcesCount })}
+                                        </>
+                                    )}
+                                </Button>
+                                <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="gap-2">
+                                    <X className="w-4 h-4 shrink-0" />
+                                    {t("dash.common.cancel")}
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="gap-2">
+                                    <X className="w-4 h-4 shrink-0" />
+                                    {t("dash.common.cancel")}
+                                </Button>
+                                <Button
+                                    onClick={handleGenerate}
+                                    disabled={!prompt.trim() || selectedMedia.length === 0 || isProcessing}
+                                    className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {t("dash.teacher.aiGen.btn.generating")}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-4 h-4" />
+                                            {t("dash.teacher.aiGen.resources.btnGenerate", { count: selectedResourcesCount })}
+                                        </>
+                                    )}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </CardContent>
             </Card>

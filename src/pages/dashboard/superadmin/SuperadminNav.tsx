@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CardContent } from "@/components/ui/card";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 export type SuperadminTabId =
     | "overview"
@@ -35,30 +36,6 @@ type NavGroup = {
     items: NavItem[];
 };
 
-const NAV_GROUPS: NavGroup[] = [
-    {
-        label: "الرئيسية",
-        items: [{ id: "overview", icon: LayoutDashboard, label: "نظرة عامة" }],
-    },
-    {
-        label: "التشغيل",
-        items: [
-            { id: "create", icon: Sparkles, label: "إنشاء حسابات" },
-            { id: "admins", icon: UserCheck, label: "أدمن المؤسسات" },
-            { id: "orgs", icon: Building2, label: "المؤسسات" },
-            { id: "users", icon: Users, label: "كل المستخدمين" },
-        ],
-    },
-    {
-        label: "المنصة",
-        items: [
-            { id: "plans", icon: Package, label: "الباقات والاشتراكات" },
-            { id: "support", icon: LifeBuoy, label: "تذاكر الدعم" },
-            { id: "settings", icon: Settings, label: "إعدادات المنصة" },
-        ],
-    },
-];
-
 type SuperadminNavProps = {
     userName: string;
     activeTab: SuperadminTabId;
@@ -72,6 +49,32 @@ export function SuperadminNav({
     onTabChange,
     pendingRequestsCount = 0,
 }: SuperadminNavProps) {
+    const { t, dir } = useTranslation();
+
+    const NAV_GROUPS: NavGroup[] = [
+        {
+            label: t("dash.super.navGroup.main"),
+            items: [{ id: "overview", icon: LayoutDashboard, label: t("dash.super.nav.overview") }],
+        },
+        {
+            label: t("dash.super.navGroup.operations"),
+            items: [
+                { id: "create", icon: Sparkles, label: t("dash.super.nav.create") },
+                { id: "admins", icon: UserCheck, label: t("dash.super.nav.admins") },
+                { id: "orgs", icon: Building2, label: t("dash.super.nav.orgs") },
+                { id: "users", icon: Users, label: t("dash.super.nav.users") },
+            ],
+        },
+        {
+            label: t("dash.super.navGroup.platform"),
+            items: [
+                { id: "plans", icon: Package, label: t("dash.super.nav.plans") },
+                { id: "support", icon: LifeBuoy, label: t("dash.super.nav.support") },
+                { id: "settings", icon: Settings, label: t("dash.super.nav.settings") },
+            ],
+        },
+    ];
+
     const groups = NAV_GROUPS.map((group) => ({
         ...group,
         items: group.items.map((item) =>
@@ -82,15 +85,15 @@ export function SuperadminNav({
     }));
 
     return (
-        <CardContent className="p-4">
+        <CardContent className="p-4" dir={dir}>
             <div className="text-center mb-4 pb-4 border-b">
                 <div className="w-16 h-16 rounded-xl mx-auto mb-3 bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
                     <Crown className="w-8 h-8 text-white" />
                 </div>
                 <h2 className="font-bold text-sm mb-1">{userName}</h2>
-                <p className="text-xs text-muted-foreground">منصة متعددة المؤسسات</p>
+                <p className="text-xs text-muted-foreground">{t("dash.super.platformLabel")}</p>
                 <div className="flex justify-center mt-2">
-                    <Badge className="text-[10px]">SUPERADMIN</Badge>
+                    <Badge className="text-[10px]">{t("dash.super.roleLabel")}</Badge>
                 </div>
             </div>
 
@@ -112,7 +115,7 @@ export function SuperadminNav({
                                 }`}
                             >
                                 <item.icon className="w-4 h-4 shrink-0" />
-                                <span className="flex-1 text-right">{item.label}</span>
+                                <span className={`flex-1 ${dir === "rtl" ? "text-right" : "text-left"}`}>{item.label}</span>
                                 {item.badge != null && item.badge > 0 && (
                                     <Badge
                                         variant={activeTab === item.id ? "secondary" : "destructive"}

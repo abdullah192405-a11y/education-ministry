@@ -22,6 +22,7 @@ export interface EducationalContent {
     correctSoundUrl?: string;
     wrongSoundUrl?: string;
     answeringBackgroundSoundUrl?: string;
+    wheelSpinSoundUrl?: string;
     discussionsEnabled?: boolean;
     /** When true, guests must enter a name (and optional details) before the single challenge; results are stored for the teacher. */
     collectSingleChallengeParticipantData?: boolean;
@@ -59,6 +60,8 @@ export interface ChallengeQuestion {
     options?: string[];
     correctAnswer?: number | string | number[];
     imageUrl?: string;
+    videoUrl?: string;
+    audioUrl?: string;
     pairs?: { left: string; right: string }[]; // For matching
     orderItems?: string[]; // For ordering (in correct order)
     explanation?: string;

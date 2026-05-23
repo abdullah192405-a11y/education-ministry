@@ -54,11 +54,70 @@ import { generatePin } from "@/data/challengeTypes";
 import AIQuestionGenerator from "./AIQuestionGenerator";
 import QuestionGameEditor from "./QuestionGameEditor";
 import { ChallengeQuestion } from "@/data/challengeTypes";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/translations";
+import { exclusiveQuestionAttachmentFields } from "@/lib/questionAttachments";
+
+const EXAM_CATEGORY_KEYS: Record<string, TranslationKey> = {
+    WEEKLY: "dash.teacher.exams.category.WEEKLY",
+    MONTHLY: "dash.teacher.exams.category.MONTHLY",
+    MID_SEMESTER: "dash.teacher.exams.category.MID_SEMESTER",
+    FINAL_SEMESTER: "dash.teacher.exams.category.FINAL_SEMESTER",
+};
+
+const EXAM_STATUS_KEYS: Record<string, TranslationKey> = {
+    DRAFT: "dash.teacher.exams.status.DRAFT",
+    SCHEDULED: "dash.teacher.exams.status.SCHEDULED",
+    ACTIVE: "dash.teacher.exams.status.ACTIVE",
+    ENDED: "dash.teacher.exams.status.ENDED",
+};
+
+function useExamI18n() {
+    const { t, dir, locale, isRtl } = useDashboardLocale();
+
+    const getCategoryLabel = (key: string) => {
+        const tk = EXAM_CATEGORY_KEYS[key];
+        return tk ? t(tk) : examCategoryLabels[key]?.label ?? key;
+    };
+
+    const getStatusLabel = (key: string) => {
+        const tk = EXAM_STATUS_KEYS[key];
+        return tk ? t(tk) : examStatusLabels[key]?.label ?? key;
+    };
+
+    const formatDateTime = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
+        if (!value) return "—";
+        return new Date(value).toLocaleString(locale, options);
+    };
+
+    const formatTimeRemaining = (liveStatus: string, start: Date, end: Date, now: Date) => {
+        if (liveStatus === "SCHEDULED") {
+            const diff = start.getTime() - now.getTime();
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return hours > 0
+                ? t("dash.teacher.exams.startsInHoursMinutes", { hours, mins })
+                : t("dash.teacher.exams.startsInMinutes", { mins });
+        }
+        if (liveStatus === "ACTIVE") {
+            const diff = end.getTime() - now.getTime();
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return hours > 0
+                ? t("dash.teacher.exams.endsInHoursMinutes", { hours, mins })
+                : t("dash.teacher.exams.endsInMinutes", { mins });
+        }
+        return "";
+    };
+
+    return { t, dir, locale, isRtl, getCategoryLabel, getStatusLabel, formatDateTime, formatTimeRemaining };
+}
 
 // ============================================================================
 // Exam Details Dialog Content
 // ============================================================================
 const ExamDetailsContent = ({ exam }: { exam: any }) => {
+    const { t, getCategoryLabel, formatDateTime } = useExamI18n();
     const results = exam?.exam_results || [];
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -94,11 +153,11 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                 <TabsList className="bg-transparent h-12 gap-6 p-0 border-none">
                     <TabsTrigger value="grades" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none h-full px-1">
                         <BarChart3 className="w-4 h-4 me-2" />
-                        الدرجات
+                        {t("dash.teacher.exams.tabGrades")}
                     </TabsTrigger>
                     <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none h-full px-1">
                         <Eye className="w-4 h-4 me-2" />
-                        نظرة عامة
+                        {t("dash.teacher.nav.overview")}
                     </TabsTrigger>
                 </TabsList>
             </div>
@@ -110,25 +169,25 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                         <Card className="bg-primary/5 border-none shadow-none">
                             <CardContent className="p-4 text-center">
                                 <div className="text-3xl font-black text-primary mb-1">{stats?.avgPercentage || 0}%</div>
-                                <div className="text-xs font-bold text-muted-foreground uppercase">المتوسط العام</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.avgOverall")}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-emerald-50 border-none shadow-none">
                             <CardContent className="p-4 text-center">
                                 <div className="text-3xl font-black text-emerald-600 mb-1">{results.length}</div>
-                                <div className="text-xs font-bold text-muted-foreground uppercase">عدد المشاركين</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.participantsCountLabel")}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-green-50 border-none shadow-none">
                             <CardContent className="p-4 text-center">
                                 <div className="text-3xl font-black text-green-600 mb-1">{stats?.passed || 0}</div>
-                                <div className="text-xs font-bold text-muted-foreground uppercase">ناجح</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.passed")}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-red-50 border-none shadow-none">
                             <CardContent className="p-4 text-center">
                                 <div className="text-3xl font-black text-red-600 mb-1">{stats?.failed || 0}</div>
-                                <div className="text-xs font-bold text-muted-foreground uppercase">راسب</div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.failed")}</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -136,35 +195,35 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                     {/* Exam Info */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 font-bold text-lg border-r-4 border-primary pr-3 py-1">
-                            تفاصيل الاختبار
+                            {t("dash.teacher.exams.examDetails")}
                         </div>
                         <div className="grid grid-cols-2 gap-y-6 text-sm bg-muted/20 p-6 rounded-2xl border border-border/50">
                             <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">الموضوع</span>
+                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.topicLabel")}</span>
                                 <span className="font-bold flex items-center gap-2 text-base"><BookOpen className="w-4 h-4 text-primary" /> {exam?.topic?.title || "—"}</span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">التصنيف</span>
+                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.categoryField")}</span>
                                 <span className="font-bold flex items-center gap-2 text-base">
                                     <span>{examCategoryLabels[exam?.category]?.icon}</span>
-                                    {examCategoryLabels[exam?.category]?.label || exam?.category}
+                                    {getCategoryLabel(exam?.category)}
                                 </span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">البداية</span>
-                                <span className="font-bold flex items-center gap-2 text-base"><Calendar className="w-4 h-4 text-primary" /> {exam?.start_time ? new Date(exam.start_time).toLocaleString("ar-SA") : "—"}</span>
+                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.startLabel")}</span>
+                                <span className="font-bold flex items-center gap-2 text-base"><Calendar className="w-4 h-4 text-primary" /> {formatDateTime(exam?.start_time)}</span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">النهاية</span>
-                                <span className="font-bold flex items-center gap-2 text-base"><Calendar className="w-4 h-4 text-primary" /> {exam?.end_time ? new Date(exam.end_time).toLocaleString("ar-SA") : "—"}</span>
+                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.endLabel")}</span>
+                                <span className="font-bold flex items-center gap-2 text-base"><Calendar className="w-4 h-4 text-primary" /> {formatDateTime(exam?.end_time)}</span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">المدة المسموحة</span>
-                                <span className="font-bold flex items-center gap-2 text-base"><Timer className="w-4 h-4 text-primary" /> {exam?.duration_minutes || 60} دقيقة</span>
+                                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.allowedDuration")}</span>
+                                <span className="font-bold flex items-center gap-2 text-base"><Timer className="w-4 h-4 text-primary" /> {t("dash.teacher.exams.minutesShort", { n: exam?.duration_minutes || 60 })}</span>
                             </div>
                             {stats?.topStudent && (
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">الأعلى درجة</span>
+                                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{t("dash.teacher.exams.topScore")}</span>
                                     <span className="font-bold flex items-center gap-2 text-base text-amber-600"><Trophy className="w-4 h-4" /> {stats.topStudent.user?.name || stats.topStudent.student_name || "—"} ({Math.round(stats.topStudent.percentage)}%)</span>
                                 </div>
                             )}
@@ -177,7 +236,7 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                     <div className="relative">
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
-                            placeholder="بحث عن طالب..."
+                            placeholder={t("dash.teacher.exams.searchStudent")}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pr-10 h-11"
@@ -190,11 +249,11 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                             {/* Header */}
                             <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                                 <div className="col-span-1">#</div>
-                                <div className="col-span-3">الطالب</div>
-                                <div className="col-span-2 text-center">الدرجة</div>
-                                <div className="col-span-2 text-center">صحيح / خطأ</div>
-                                <div className="col-span-2 text-center">الوقت</div>
-                                <div className="col-span-2 text-center">النسبة</div>
+                                <div className="col-span-3">{t("dash.teacher.exams.colStudent")}</div>
+                                <div className="col-span-2 text-center">{t("dash.teacher.exams.colScore")}</div>
+                                <div className="col-span-2 text-center">{t("dash.teacher.exams.colCorrectWrong")}</div>
+                                <div className="col-span-2 text-center">{t("dash.teacher.exams.colTime")}</div>
+                                <div className="col-span-2 text-center">{t("dash.teacher.exams.colPercentage")}</div>
                             </div>
 
                             {[...filteredResults]
@@ -216,7 +275,7 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                                                 <img src={res.user.avatar} alt="" className="w-8 h-8 rounded-full shrink-0" />
                                             )}
                                             <div className="min-w-0">
-                                                <div className="font-bold text-sm truncate">{res.user?.name || res.student_name || "طالب"}</div>
+                                                <div className="font-bold text-sm truncate">{res.user?.name || res.student_name || t("dash.common.role.student")}</div>
                                                 <div className="text-[10px] text-muted-foreground truncate">{res.user?.email || ""}</div>
                                             </div>
                                         </div>
@@ -237,7 +296,7 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                                         <div className="col-span-2 text-center">
                                             <span className="text-sm font-bold flex items-center justify-center gap-1">
                                                 <Clock className="w-3 h-3 text-primary" />
-                                                {Math.round(res.time_taken || 0)}ث
+                                                {t("dash.teacher.exams.secondsSuffix", { n: Math.round(res.time_taken || 0) })}
                                             </span>
                                         </div>
                                         <div className="col-span-2 text-center">
@@ -263,7 +322,7 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                     ) : (
                         <div className="text-center py-24 text-muted-foreground bg-muted/10 rounded-3xl border-2 border-dashed">
                             <Users className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                            <p className="font-bold">{searchQuery ? "لا توجد نتائج للبحث" : "لم يشارك أي طالب بعد"}</p>
+                            <p className="font-bold">{searchQuery ? t("dash.teacher.exams.noSearchResults") : t("dash.teacher.exams.noParticipantsYet")}</p>
                         </div>
                     )}
                 </TabsContent>
@@ -285,6 +344,7 @@ const CreateExamDialog = ({
     onCreated: (exam: any) => void;
 }) => {
     const { toast } = useToast();
+    const { t, dir, getCategoryLabel } = useExamI18n();
     const { data: user } = useUser();
     const { data: profile } = useTeacherProfile(user?.id || "");
     const { data: topics, isLoading: loadingTopics } = useTeacherAllTopics(profile?.id || "");
@@ -315,36 +375,36 @@ const CreateExamDialog = ({
 
     const handleCreate = async () => {
         if (!title.trim()) {
-            toast({ title: "خطأ", description: "يرجى إدخال عنوان الاختبار", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.titleRequired"), variant: "destructive" });
             return;
         }
         if (!gradeId) {
-            toast({ title: "خطأ", description: "يرجى اختيار الصف الدراسي", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.gradeRequired"), variant: "destructive" });
             return;
         }
         if (!topicId) {
-            toast({ title: "خطأ", description: "يرجى اختيار الدرس أو إنشاء اختبار مخصص", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.topicRequired"), variant: "destructive" });
             return;
         }
         if (topicId === "CUSTOM" && !customTopic.trim()) {
-            toast({ title: "خطأ", description: "يرجى إدخال اسم الدرس المخصص", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.customTopicRequired"), variant: "destructive" });
             return;
         }
         
         const finalTopicId = topicId === "CUSTOM" ? null : topicId;
         if (!startTime || !endTime) {
-            toast({ title: "خطأ", description: "يرجى تحديد وقت البداية والنهاية", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.timesRequired"), variant: "destructive" });
             return;
         }
         if (new Date(endTime) <= new Date(startTime)) {
-            toast({ title: "خطأ", description: "وقت النهاية يجب أن يكون بعد وقت البداية", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.endAfterStart"), variant: "destructive" });
             return;
         }
 
         setIsCreating(true);
         try {
             const finalDescription = topicId === "CUSTOM" 
-                ? `الدرس: ${customTopic}${description ? ` - ${description}` : ''}`
+                ? `${t("dash.teacher.exams.customTopicPrefix", { topic: customTopic })}${description ? ` - ${description}` : ''}`
                 : description;
 
             const pin = generatePin();
@@ -362,8 +422,8 @@ const CreateExamDialog = ({
             });
 
             toast({
-                title: "تم إنشاء الاختبار بنجاح ✅",
-                description: `رمز الاختبار: ${pin}`,
+                title: t("dash.teacher.exams.toast.createSuccess"),
+                description: t("dash.teacher.exams.toast.createSuccessPin", { pin }),
             });
 
             onCreated({ ...exam, pin });
@@ -371,8 +431,8 @@ const CreateExamDialog = ({
             onOpenChange(false);
         } catch (error: any) {
             toast({
-                title: "خطأ في إنشاء الاختبار",
-                description: error?.message || "تعذر إنشاء الاختبار",
+                title: t("dash.teacher.exams.toast.createFailed"),
+                description: error?.message || t("dash.teacher.exams.toast.createFailedDefault"),
                 variant: "destructive",
             });
         } finally {
@@ -400,23 +460,23 @@ const CreateExamDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={dir}>
                 <DialogHeader>
                     <div className="mx-auto w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl flex items-center justify-center mb-4 shadow-lg">
                         <ClipboardList className="w-7 h-7" />
                     </div>
-                    <DialogTitle className="text-center text-xl">إنشاء اختبار جديد</DialogTitle>
+                    <DialogTitle className="text-center text-xl">{t("dash.teacher.exams.createTitle")}</DialogTitle>
                     <DialogDescription className="text-center">
-                        أنشئ اختبارًا بوقت محدد وشاركه مع طلابك عبر الرابط
+                        {t("dash.teacher.exams.createDesc")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-5 py-4">
                     {/* Title */}
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">عنوان الاختبار *</label>
+                        <label className="text-sm font-bold">{t("dash.teacher.exams.examTitleLabel")}</label>
                         <Input
-                            placeholder="مثال: اختبار الأسبوع الثالث - الرياضيات"
+                            placeholder={t("dash.teacher.exams.titlePlaceholder")}
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             className="h-12"
@@ -425,9 +485,9 @@ const CreateExamDialog = ({
 
                     {/* Description */}
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">وصف الاختبار (اختياري)</label>
+                        <label className="text-sm font-bold">{t("dash.teacher.exams.descriptionLabel")}</label>
                         <Input
-                            placeholder="وصف مختصر للاختبار..."
+                            placeholder={t("dash.teacher.exams.descriptionPlaceholder")}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         />
@@ -435,13 +495,13 @@ const CreateExamDialog = ({
 
                     {/* Grade Selection */}
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">الصف الدراسي (المستهدف) *</label>
+                        <label className="text-sm font-bold">{t("dash.teacher.exams.gradeLabel")}</label>
                         {loadingTopics ? (
                             <Skeleton className="h-10 w-full" />
                         ) : (
                             <Select value={gradeId} onValueChange={(val) => { setGradeId(val); setTopicId(""); }}>
                                 <SelectTrigger className="h-12">
-                                    <SelectValue placeholder="اختر الصف الدراسي..." />
+                                    <SelectValue placeholder={t("dash.teacher.exams.gradePlaceholder")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {availableGrades.map((grade: any) => (
@@ -459,19 +519,19 @@ const CreateExamDialog = ({
 
                     {/* Topic Selection */}
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">الدرس (مصدر الأسئلة) *</label>
+                        <label className="text-sm font-bold">{t("dash.teacher.exams.lessonLabel")}</label>
                         {loadingTopics ? (
                             <Skeleton className="h-10 w-full" />
                         ) : (
                             <Select value={topicId} onValueChange={setTopicId} disabled={!gradeId}>
                                 <SelectTrigger className="h-12">
-                                    <SelectValue placeholder={!gradeId ? "اختر الصف الدراسي أولاً..." : "اختر الدرس أو إنشاء مخصص..."} />
+                                    <SelectValue placeholder={!gradeId ? t("dash.teacher.exams.selectGradeFirst") : t("dash.teacher.exams.lessonPlaceholder")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="CUSTOM">
                                         <div className="flex items-center gap-2">
                                             <ClipboardList className="w-4 h-4 text-purple-500 shrink-0" />
-                                            <span className="font-bold text-purple-600">اختبار مخصص (بدون درس محدد)</span>
+                                            <span className="font-bold text-purple-600">{t("dash.teacher.exams.customExam")}</span>
                                         </div>
                                     </SelectItem>
                                     {availableTopics.map((topic: any) => (
@@ -493,9 +553,9 @@ const CreateExamDialog = ({
                     {/* Custom Topic Input (Visible only if CUSTOM is selected) */}
                     {topicId === "CUSTOM" && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                            <label className="text-sm font-bold text-purple-600">اسم الدرس المخصص *</label>
+                            <label className="text-sm font-bold text-purple-600">{t("dash.teacher.exams.customLessonName")}</label>
                             <Input
-                                placeholder="مثال: مراجعة الوحدة الأولى - القسم الأول"
+                                placeholder={t("dash.teacher.exams.customLessonPlaceholder")}
                                 value={customTopic}
                                 onChange={(e) => setCustomTopic(e.target.value)}
                                 className="h-12 border-purple-200 focus-visible:ring-purple-500"
@@ -505,7 +565,7 @@ const CreateExamDialog = ({
 
                     {/* Category */}
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">تصنيف الاختبار *</label>
+                        <label className="text-sm font-bold">{t("dash.teacher.exams.examCategoryLabel")}</label>
                         <Select value={category} onValueChange={setCategory}>
                             <SelectTrigger className="h-12">
                                 <SelectValue />
@@ -515,7 +575,7 @@ const CreateExamDialog = ({
                                     <SelectItem key={key} value={key}>
                                         <div className="flex items-center gap-2">
                                             <span>{val.icon}</span>
-                                            <span>{val.label}</span>
+                                            <span>{getCategoryLabel(key)}</span>
                                         </div>
                                     </SelectItem>
                                 ))}
@@ -528,7 +588,7 @@ const CreateExamDialog = ({
                         <div className="space-y-2">
                             <label className="text-sm font-bold flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-primary" />
-                                وقت البداية *
+                                {t("dash.teacher.exams.startTimeLabel")}
                             </label>
                             <Input
                                 type="datetime-local"
@@ -540,7 +600,7 @@ const CreateExamDialog = ({
                         <div className="space-y-2">
                             <label className="text-sm font-bold flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-red-500" />
-                                وقت النهاية *
+                                {t("dash.teacher.exams.endTimeLabel")}
                             </label>
                             <Input
                                 type="datetime-local"
@@ -555,7 +615,7 @@ const CreateExamDialog = ({
                     <div className="space-y-2">
                         <label className="text-sm font-bold flex items-center gap-2">
                             <Timer className="w-4 h-4 text-primary" />
-                            المدة المسموحة للحل (بالدقائق)
+                            {t("dash.teacher.exams.durationLabel")}
                         </label>
                         <Input
                             type="number"
@@ -578,7 +638,7 @@ const CreateExamDialog = ({
                         ) : (
                             <ClipboardList className="w-5 h-5" />
                         )}
-                        {isCreating ? "جاري الإنشاء..." : "إنشاء الاختبار"}
+                        {isCreating ? t("dash.teacher.exams.creating") : t("dash.teacher.exams.createButton")}
                     </Button>
                 </div>
             </DialogContent>
@@ -597,29 +657,30 @@ const ShareExamDialog = ({
     onClose: () => void;
 }) => {
     const { toast } = useToast();
+    const { t, dir } = useExamI18n();
 
     if (!exam) return null;
 
     const examLink = `${window.location.origin}/exam/${exam.pin}`;
-    const shareText = `📝 اختبار "${exam.title}"\n\nالرابط: ${examLink}\n\nرمز الاختبار: ${exam.pin}`;
+    const shareText = t("dash.teacher.exams.shareText", { title: exam.title, link: examLink, pin: exam.pin });
 
     return (
         <Dialog open={!!exam} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogContent className="sm:max-w-md" dir={dir}>
                 <DialogHeader>
                     <div className="mx-auto w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-full flex items-center justify-center mb-4">
                         <Link2 className="w-6 h-6" />
                     </div>
-                    <DialogTitle className="text-center text-xl">شارك رابط الاختبار</DialogTitle>
+                    <DialogTitle className="text-center text-xl">{t("dash.teacher.exams.shareTitle")}</DialogTitle>
                     <DialogDescription className="text-center">
-                        شارك هذا الرابط مع طلابك. الاختبار متاح فقط خلال الوقت المحدد.
+                        {t("dash.teacher.exams.shareDesc")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
                     {/* PIN Display */}
                     <div className="flex flex-col items-center justify-center bg-muted/50 p-6 rounded-2xl border-2 border-dashed">
-                        <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">رمز الاختبار</span>
+                        <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-2">{t("dash.teacher.exams.pinLabel")}</span>
                         <span className="text-5xl font-mono font-black text-primary tracking-widest">{exam.pin}</span>
                     </div>
 
@@ -636,7 +697,7 @@ const ShareExamDialog = ({
                             variant="outline"
                             onClick={() => {
                                 navigator.clipboard.writeText(examLink);
-                                toast({ title: "تم النسخ", description: "تم نسخ رابط الاختبار" });
+                                toast({ title: t("dash.common.copied"), description: t("dash.teacher.exams.copiedLinkDesc") });
                             }}
                         >
                             <Copy className="w-4 h-4" />
@@ -650,32 +711,32 @@ const ShareExamDialog = ({
                             onClick={() => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`)}
                         >
                             <MessageCircle className="w-5 h-5" />
-                            واتس اب
+                            {t("dash.teacher.share.whatsapp")}
                         </Button>
                         <Button
                             className="h-12 bg-[#1DA1F2] hover:bg-[#1DA1F2]/90 text-white gap-2"
                             onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, '_blank')}
                         >
                             <Twitter className="w-5 h-5" />
-                            تويتر / X
+                            {t("dash.teacher.share.twitter")}
                         </Button>
                         <Button
                             className="h-12 bg-[#0088cc] hover:bg-[#0088cc]/90 text-white gap-2"
                             onClick={() => window.open(`https://t.me/share/url?url=${encodeURIComponent(examLink)}&text=${encodeURIComponent(shareText)}`, '_blank')}
                         >
                             <Send className="w-5 h-5" />
-                            تيليجرام
+                            {t("dash.teacher.share.telegram")}
                         </Button>
                         <Button
                             variant="outline"
                             className="h-12 border-primary/20 text-primary hover:bg-primary/5 gap-2"
                             onClick={() => {
                                 navigator.clipboard.writeText(examLink);
-                                toast({ title: "تم النسخ", description: "تم نسخ رابط الاختبار" });
+                                toast({ title: t("dash.common.copied"), description: t("dash.teacher.exams.copiedLinkDesc") });
                             }}
                         >
                             <Copy className="w-5 h-5" />
-                            نسخ الرابط
+                            {t("dash.common.copyLink")}
                         </Button>
                     </div>
                 </div>
@@ -695,6 +756,7 @@ const ManageQuestionsDialog = ({
     onClose: () => void;
 }) => {
     const { toast } = useToast();
+    const { t, dir } = useExamI18n();
     const upsertQuestionsMutation = useBulkUpsertExamQuestions();
     const deleteQuestionMutation = useDeleteExamQuestion();
 
@@ -722,7 +784,7 @@ const ManageQuestionsDialog = ({
                     question: q.question,
                     options: q.options || [],
                     correct_answer: String(q.correctAnswer ?? 0),
-                    image_url: q.imageUrl || null,
+                    ...exclusiveQuestionAttachmentFields(q),
                     pairs: q.pairs || null,
                     order_items: q.orderItems || [],
                     explanation: q.explanation || null,
@@ -745,10 +807,10 @@ const ManageQuestionsDialog = ({
                 questions: questionsToUpsert
             });
 
-            toast({ title: "تم الحفظ", description: "تم تحديث أسئلة الاختبار بنجاح ✅" });
+            toast({ title: t("dash.teacher.exams.toast.saved"), description: t("dash.teacher.exams.toast.questionsSaved") });
             onClose();
         } catch (error) {
-            toast({ title: "خطأ", description: "تعذر حفظ الأسئلة", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.saveQuestionsFailed"), variant: "destructive" });
         }
     };
 
@@ -756,7 +818,7 @@ const ManageQuestionsDialog = ({
 
     return (
         <Dialog open={!!exam} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto p-4 md:p-8 bg-muted/10 border-none rounded-[2rem] shadow-2xl" dir="rtl">
+            <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto p-4 md:p-8 bg-muted/10 border-none rounded-[2rem] shadow-2xl" dir={dir}>
                 <QuestionGameEditor
                     items={mappedQuestions}
                     onSave={handleSave}
@@ -773,6 +835,7 @@ const ManageQuestionsDialog = ({
 // ============================================================================
 const TeacherExamsTab = () => {
     const { toast } = useToast();
+    const { t, dir, locale, isRtl } = useDashboardLocale();
     const { data: user } = useUser();
     const { data: exams, isLoading } = useTeacherExams(user?.id || "");
     const deleteExamMutation = useDeleteExam();
@@ -783,6 +846,41 @@ const TeacherExamsTab = () => {
     const [shareExam, setShareExam] = useState<{ pin: string; title: string } | null>(null);
     const [filterCategory, setFilterCategory] = useState<string>("all");
     const [searchQuery, setSearchQuery] = useState("");
+
+    const getCategoryLabel = (key: string) => {
+        const tk = EXAM_CATEGORY_KEYS[key];
+        return tk ? t(tk) : examCategoryLabels[key]?.label ?? key;
+    };
+
+    const getStatusLabel = (key: string) => {
+        const tk = EXAM_STATUS_KEYS[key];
+        return tk ? t(tk) : examStatusLabels[key]?.label ?? key;
+    };
+
+    const formatExamDateTime = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
+        if (!value) return "—";
+        return new Date(value).toLocaleString(locale, options);
+    };
+
+    const formatTimeRemaining = (liveStatus: string, start: Date, end: Date, now: Date) => {
+        if (liveStatus === "SCHEDULED") {
+            const diff = start.getTime() - now.getTime();
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return hours > 0
+                ? t("dash.teacher.exams.startsInHoursMinutes", { hours, mins })
+                : t("dash.teacher.exams.startsInMinutes", { mins });
+        }
+        if (liveStatus === "ACTIVE") {
+            const diff = end.getTime() - now.getTime();
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return hours > 0
+                ? t("dash.teacher.exams.endsInHoursMinutes", { hours, mins })
+                : t("dash.teacher.exams.endsInMinutes", { mins });
+        }
+        return "";
+    };
 
     // Compute exam status dynamically based on time
     const getExamLiveStatus = (exam: any) => {
@@ -817,9 +915,9 @@ const TeacherExamsTab = () => {
     const handleDeleteExam = async (id: string) => {
         try {
             await deleteExamMutation.mutateAsync(id);
-            toast({ title: "تم الحذف", description: "تم حذف الاختبار بنجاح" });
+            toast({ title: t("dash.teacher.exams.toast.deleted"), description: t("dash.teacher.exams.toast.deletedDesc") });
         } catch {
-            toast({ title: "خطأ", description: "تعذر حذف الاختبار", variant: "destructive" });
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.deleteFailed"), variant: "destructive" });
         }
     };
 
@@ -837,7 +935,7 @@ const TeacherExamsTab = () => {
     }, [exams]);
 
     return (
-        <div className="space-y-6" dir="rtl">
+        <div className="space-y-6" dir={dir}>
             {/* Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
@@ -845,16 +943,16 @@ const TeacherExamsTab = () => {
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
                             <ClipboardList className="w-5 h-5" />
                         </div>
-                        الاختبارات
+                        {t("dash.teacher.exams.title")}
                     </h2>
-                    <p className="text-muted-foreground text-sm mt-1">إدارة الاختبارات المحددة بوقت ومتابعة درجات الطلاب</p>
+                    <p className="text-muted-foreground text-sm mt-1">{t("dash.teacher.exams.subtitle")}</p>
                 </div>
                 <Button
                     className="gap-2 h-12 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-lg"
                     onClick={() => setShowCreateDialog(true)}
                 >
                     <Plus className="w-5 h-5" />
-                    إنشاء اختبار جديد
+                    {t("dash.teacher.exams.createNew")}
                 </Button>
             </div>
 
@@ -867,7 +965,7 @@ const TeacherExamsTab = () => {
                         </div>
                         <div>
                             <p className="text-xl font-black">{stats.total}</p>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">إجمالي</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.stats.total")}</p>
                         </div>
                     </div>
                 </Card>
@@ -878,7 +976,7 @@ const TeacherExamsTab = () => {
                         </div>
                         <div>
                             <p className="text-xl font-black text-emerald-600">{stats.active}</p>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">نشط</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.stats.active")}</p>
                         </div>
                     </div>
                 </Card>
@@ -889,7 +987,7 @@ const TeacherExamsTab = () => {
                         </div>
                         <div>
                             <p className="text-xl font-black text-blue-600">{stats.scheduled}</p>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">مجدول</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.stats.scheduled")}</p>
                         </div>
                     </div>
                 </Card>
@@ -900,7 +998,7 @@ const TeacherExamsTab = () => {
                         </div>
                         <div>
                             <p className="text-xl font-black text-gray-600">{stats.ended}</p>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">منتهي</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.stats.ended")}</p>
                         </div>
                     </div>
                 </Card>
@@ -911,7 +1009,7 @@ const TeacherExamsTab = () => {
                         </div>
                         <div>
                             <p className="text-xl font-black text-amber-600">{stats.totalStudents}</p>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">مشارك</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{t("dash.teacher.exams.participant")}</p>
                         </div>
                     </div>
                 </Card>
@@ -922,7 +1020,7 @@ const TeacherExamsTab = () => {
                 <div className="relative flex-1">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                        placeholder="بحث بالعنوان أو الرمز..."
+                        placeholder={t("dash.teacher.exams.searchPlaceholder")}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pr-10 h-11"
@@ -934,11 +1032,11 @@ const TeacherExamsTab = () => {
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">جميع التصنيفات</SelectItem>
+                        <SelectItem value="all">{t("dash.teacher.exams.allCategories")}</SelectItem>
                         {Object.entries(examCategoryLabels).map(([key, val]) => (
                             <SelectItem key={key} value={key}>
                                 <div className="flex items-center gap-2">
-                                    <span>{val.icon}</span> {val.label}
+                                    <span>{val.icon}</span> {getCategoryLabel(key)}
                                 </div>
                             </SelectItem>
                         ))}
@@ -968,18 +1066,7 @@ const TeacherExamsTab = () => {
                         const now = new Date();
                         const start = new Date(exam.start_time);
                         const end = new Date(exam.end_time);
-                        let timeInfo = "";
-                        if (liveStatus === "SCHEDULED") {
-                            const diff = start.getTime() - now.getTime();
-                            const hours = Math.floor(diff / (1000 * 60 * 60));
-                            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                            timeInfo = `يبدأ بعد ${hours > 0 ? hours + " ساعة و " : ""}${mins} دقيقة`;
-                        } else if (liveStatus === "ACTIVE") {
-                            const diff = end.getTime() - now.getTime();
-                            const hours = Math.floor(diff / (1000 * 60 * 60));
-                            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                            timeInfo = `ينتهي بعد ${hours > 0 ? hours + " ساعة و " : ""}${mins} دقيقة`;
-                        }
+                        const timeInfo = formatTimeRemaining(liveStatus, start, end, now);
 
                         return (
                             <Card
@@ -999,10 +1086,10 @@ const TeacherExamsTab = () => {
                                                 <div className="flex items-center gap-2 flex-wrap mb-2">
                                                     <h3 className="font-bold text-lg group-hover:text-primary transition-colors">{exam.title}</h3>
                                                     <Badge className={`text-white text-[10px] ${statusStyle.color}`}>
-                                                        {statusStyle.label}
+                                                        {getStatusLabel(liveStatus)}
                                                     </Badge>
                                                     <Badge variant="outline" className="text-[10px] gap-1">
-                                                        {catLabel.icon} {catLabel.label}
+                                                        {catLabel.icon} {getCategoryLabel(exam.category)}
                                                     </Badge>
                                                 </div>
                                                 {exam.topic && (
@@ -1030,14 +1117,14 @@ const TeacherExamsTab = () => {
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     navigator.clipboard.writeText(exam.pin);
-                                                    toast({ title: "تم النسخ", description: `رمز الاختبار: ${exam.pin}` });
+                                                    toast({ title: t("dash.common.copied"), description: t("dash.teacher.exams.toast.copiedPin", { pin: exam.pin }) });
                                                 }}
                                             >
-                                                <span className="block text-[10px] text-muted-foreground uppercase font-bold tracking-wider">الرمز</span>
+                                                <span className="block text-[10px] text-muted-foreground uppercase font-bold tracking-wider">{t("dash.teacher.exams.pinShort")}</span>
                                                 <span className="block text-2xl font-mono font-black tracking-widest text-indigo-600" dir="ltr">{exam.pin}</span>
                                                 <span className="block text-[9px] text-muted-foreground mt-0.5">
                                                     <Copy className="w-2.5 h-2.5 inline me-1" />
-                                                    انقر للنسخ
+                                                    {t("dash.teacher.exams.clickToCopy")}
                                                 </span>
                                             </div>
                                         </div>
@@ -1046,15 +1133,15 @@ const TeacherExamsTab = () => {
                                         <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground mb-4">
                                             <span className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg">
                                                 <Calendar className="w-3 h-3 text-primary" />
-                                                من: {new Date(exam.start_time).toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" })}
+                                                {t("dash.teacher.exams.from")} {formatExamDateTime(exam.start_time, { dateStyle: "short", timeStyle: "short" })}
                                             </span>
                                             <span className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg">
                                                 <Calendar className="w-3 h-3 text-red-500" />
-                                                إلى: {new Date(exam.end_time).toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" })}
+                                                {t("dash.teacher.exams.to")} {formatExamDateTime(exam.end_time, { dateStyle: "short", timeStyle: "short" })}
                                             </span>
                                             <span className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg">
                                                 <Timer className="w-3 h-3 text-primary" />
-                                                {exam.duration_minutes || 60} دقيقة
+                                                {t("dash.teacher.exams.minutesShort", { n: exam.duration_minutes || 60 })}
                                             </span>
                                         </div>
 
@@ -1064,13 +1151,13 @@ const TeacherExamsTab = () => {
                                                 <div className="flex items-center gap-1.5">
                                                     <Users className="w-4 h-4 text-blue-500" />
                                                     <span className="font-bold text-sm">{resultsCount}</span>
-                                                    <span className="text-[10px] text-muted-foreground">مشارك</span>
+                                                    <span className="text-[10px] text-muted-foreground">{t("dash.teacher.exams.participant")}</span>
                                                 </div>
                                                 {resultsCount > 0 && (
                                                     <div className="flex items-center gap-1.5">
                                                         <Award className="w-4 h-4 text-amber-500" />
                                                         <span className="font-bold text-sm">{avgScore}%</span>
-                                                        <span className="text-[10px] text-muted-foreground">متوسط</span>
+                                                        <span className="text-[10px] text-muted-foreground">{t("dash.teacher.students.averageLabel")}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -1084,7 +1171,7 @@ const TeacherExamsTab = () => {
                                                     onClick={() => setShareExam({ pin: exam.pin, title: exam.title })}
                                                 >
                                                     <Share2 className="w-3.5 h-3.5" />
-                                                    مشاركة
+                                                    {t("dash.common.share")}
                                                 </Button>
 
                                                 <Button
@@ -1094,7 +1181,7 @@ const TeacherExamsTab = () => {
                                                     onClick={() => setManageQuestionsExam(exam)}
                                                 >
                                                     <ClipboardList className="w-3.5 h-3.5" />
-                                                    الأسئلة
+                                                    {t("dash.teacher.exams.questions")}
                                                 </Button>
 
                                                 <AlertDialog>
@@ -1107,11 +1194,11 @@ const TeacherExamsTab = () => {
                                                             <Trash2 className="w-3.5 h-3.5" />
                                                         </Button>
                                                     </AlertDialogTrigger>
-                                                    <AlertDialogContent dir="rtl">
+                                                    <AlertDialogContent dir={dir}>
                                                         <AlertDialogHeader>
-                                                            <AlertDialogTitle>حذف الاختبار؟</AlertDialogTitle>
+                                                            <AlertDialogTitle>{t("dash.teacher.exams.deleteTitle")}</AlertDialogTitle>
                                                             <AlertDialogDescription>
-                                                                سيتم حذف الاختبار "{exam.title}" وجميع نتائجه نهائياً. هذا الإجراء لا يمكن التراجع عنه.
+                                                                {t("dash.teacher.exams.deleteDesc", { title: exam.title })}
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter className="flex-row-reverse gap-2">
@@ -1119,9 +1206,9 @@ const TeacherExamsTab = () => {
                                                                 className="bg-destructive hover:bg-destructive/90"
                                                                 onClick={() => handleDeleteExam(exam.id)}
                                                             >
-                                                                حذف نهائي
+                                                                {t("dash.teacher.exams.deleteConfirm")}
                                                             </AlertDialogAction>
-                                                            <AlertDialogCancel>تراجع</AlertDialogCancel>
+                                                            <AlertDialogCancel>{t("dash.common.cancel")}</AlertDialogCancel>
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
@@ -1137,12 +1224,12 @@ const TeacherExamsTab = () => {
                 <div className="text-center py-24 bg-muted/20 rounded-3xl border-2 border-dashed">
                     <ClipboardList className="w-20 h-20 mx-auto mb-6 text-muted-foreground/20" />
                     <h3 className="text-xl font-bold mb-2">
-                        {searchQuery || filterCategory !== "all" ? "لا توجد اختبارات مطابقة" : "لم يتم إنشاء اختبارات بعد"}
+                        {searchQuery || filterCategory !== "all" ? t("dash.teacher.exams.emptyFiltered") : t("dash.teacher.exams.emptyNone")}
                     </h3>
                     <p className="text-muted-foreground mb-6">
                         {searchQuery || filterCategory !== "all"
-                            ? "جرب تغيير معايير البحث أو التصفية"
-                            : "أنشئ اختبارًا جديدًا وشاركه مع طلابك عبر الرابط"}
+                            ? t("dash.teacher.exams.emptyFilteredHint")
+                            : t("dash.teacher.exams.emptyNoneHint")}
                     </p>
                     {!searchQuery && filterCategory === "all" && (
                         <Button
@@ -1150,7 +1237,7 @@ const TeacherExamsTab = () => {
                             onClick={() => setShowCreateDialog(true)}
                         >
                             <Plus className="w-4 h-4" />
-                            إنشاء أول اختبار
+                            {t("dash.teacher.exams.createFirst")}
                         </Button>
                     )}
                 </div>
@@ -1174,7 +1261,7 @@ const TeacherExamsTab = () => {
 
             {/* Exam Details Dialog */}
             <Dialog open={!!selectedExam} onOpenChange={(open) => !open && setSelectedExam(null)}>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 border-none rounded-[2rem] shadow-2xl" dir="rtl">
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 border-none rounded-[2rem] shadow-2xl" dir={dir}>
                     <DialogHeader className="p-8 bg-gradient-to-bl from-indigo-500/10 via-transparent to-transparent border-b relative shrink-0">
                         <div className="flex items-center gap-6">
                             <div className="w-16 h-16 rounded-[1.25rem] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/20">
@@ -1188,14 +1275,14 @@ const TeacherExamsTab = () => {
                                     <div className="flex flex-wrap gap-4 pt-1">
                                         <span className="flex items-center gap-2">
                                             <span>{examCategoryLabels[selectedExam?.category]?.icon}</span>
-                                            {examCategoryLabels[selectedExam?.category]?.label}
+                                            {getCategoryLabel(selectedExam?.category)}
                                         </span>
                                         <Badge className={`${examStatusLabels[getExamLiveStatus(selectedExam)]?.color} text-white text-[10px]`}>
-                                            {examStatusLabels[getExamLiveStatus(selectedExam)]?.label}
+                                            {getStatusLabel(getExamLiveStatus(selectedExam))}
                                         </Badge>
                                         <span className="flex items-center gap-2">
                                             <Users className="w-4 h-4 text-primary" />
-                                            {selectedExam?.exam_results?.length || 0} مشارك
+                                            {t("dash.teacher.exams.participantsShort", { n: selectedExam?.exam_results?.length || 0 })}
                                         </span>
                                     </div>
                                 </DialogDescription>

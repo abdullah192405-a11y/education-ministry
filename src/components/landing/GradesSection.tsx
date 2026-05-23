@@ -8,6 +8,8 @@ import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
 import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
+import { useTranslation } from "@/contexts/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
 const SHOW_COUNT = 4;
 
@@ -24,16 +26,16 @@ const getLevelColor = (level: string) => {
     }
 };
 
-const getLevelLabel = (level: string) => {
+const getLevelLabelKey = (level: string): TranslationKey | null => {
     switch (level) {
         case "PRIMARY":
-            return "ابتدائي";
+            return "level.primary";
         case "MIDDLE":
-            return "متوسط";
+            return "level.middle";
         case "SECONDARY":
-            return "ثانوي";
+            return "level.secondary";
         default:
-            return level;
+            return null;
     }
 };
 
@@ -64,6 +66,10 @@ function getGradeOrganizationName(grade: GradeRow): string | null {
 }
 
 function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }) {
+    const { t } = useTranslation();
+    const localeId = t("common.locale");
+    const levelKey = getLevelLabelKey(grade.level);
+    const levelLabel = levelKey ? t(levelKey) : grade.level;
     return (
         <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -89,7 +95,7 @@ function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }
 
                         <div className="absolute top-3 left-3">
                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${getLevelColor(grade.level)}`}>
-                                {getLevelLabel(grade.level)}
+                                {levelLabel}
                             </span>
                         </div>
                     </div>
@@ -105,18 +111,18 @@ function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }
                         <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{grade.description}</p>
                         {getGradeOrganizationName(grade) && (
                             <p className="text-xs text-muted-foreground mb-3">
-                                المؤسسة: {getGradeOrganizationName(grade)}
+                                {t("gradesSection.institutionLabel")}: {getGradeOrganizationName(grade)}
                             </p>
                         )}
 
                         <div className="flex items-center justify-between text-xs pt-3 border-t">
                             <div className="flex items-center gap-1 text-muted-foreground">
                                 <Users className="w-3 h-3" />
-                                <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")}</span>
+                                <span>{(grade.students_count || grade.studentsCount || 0).toLocaleString(localeId)}</span>
                             </div>
                             <div className="flex items-center gap-1 text-primary">
                                 <BookOpen className="w-3 h-3" />
-                                <span>{grade.subjects?.length || 0} مواد</span>
+                                <span>{grade.subjects?.length || 0} {t("gradesSection.subjectsSuffix")}</span>
                             </div>
                         </div>
                     </CardContent>
@@ -181,6 +187,7 @@ function SectionBlock({
 const GradesSection = () => {
     const { data: gradesData = [], isLoading } = useGrades();
     const { mode: visitorGradeMode } = useCatalogGradeClassMode();
+    const { t } = useTranslation();
 
     const visible = filterGradesForPublicCatalog(gradesData as GradeRow[], visitorGradeMode);
     const educational = visible.filter(
@@ -213,24 +220,24 @@ const GradesSection = () => {
         <div>
             {visitorGradeMode !== "enrichment_only" && (
                 <SectionBlock
-                    title="الصفوف"
-                    titleHighlight="التعليمية"
-                    description="تعرّف على الصفوف الدراسية الرسمية واستكشف المواد والمواضيع لكل مرحلة"
-                    ctaLabel="عرض جميع الصفوف التعليمية"
+                    title={t("gradesSection.educationalTitle")}
+                    titleHighlight={t("gradesSection.educationalHighlight")}
+                    description={t("gradesSection.educationalDescription")}
+                    ctaLabel={t("gradesSection.educationalCta")}
                     ctaHref="/grades?kind=teaching"
                     grades={educational}
-                    emptyMessage="لا توجد صفوف تعليمية منشورة حالياً."
+                    emptyMessage={t("gradesSection.educationalEmpty")}
                 />
             )}
             {visitorGradeMode !== "teaching_only" && (
                 <SectionBlock
-                    title="القنوات"
-                    titleHighlight="الإثرائية"
-                    description="اختر محتواك الإثرائي واستكشف المواد التعليمية المتنوعة"
-                    ctaLabel="عرض القنوات الإثرائية"
+                    title={t("gradesSection.enrichmentTitle")}
+                    titleHighlight={t("gradesSection.enrichmentHighlight")}
+                    description={t("gradesSection.enrichmentDescription")}
+                    ctaLabel={t("gradesSection.enrichmentCta")}
                     ctaHref="/grades?kind=enrichment"
                     grades={enrichment}
-                    emptyMessage="لا توجد قنوات إثرائية منشورة حالياً."
+                    emptyMessage={t("gradesSection.enrichmentEmpty")}
                 />
             )}
         </div>

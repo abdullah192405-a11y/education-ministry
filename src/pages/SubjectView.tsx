@@ -5,21 +5,26 @@ import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Eye, Clock, ArrowRight, PlayCircle, ArrowLeft, User } from "lucide-react";
+import { BookOpen, Eye, Clock, PlayCircle, ArrowLeft, ArrowRight, User } from "lucide-react";
 import { useSubject } from "@/hooks/useDatabase";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const SubjectView = () => {
     const { subjectId } = useParams();
     const { data: subject, isLoading, error } = useSubject(subjectId || "");
     const grade = subject?.grade;
     const orderedTopics = sortTopicsByOrder(subject?.topics || []);
+    const { t, dir, language } = useTranslation();
+    const localeId = t("common.locale");
+    const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
+    const dateLocale = language === "ar" ? "ar-SA" : "en-US";
 
     if (isLoading) {
         return (
-            <div className="min-h-screen font-cairo" dir="rtl">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4">
@@ -39,7 +44,7 @@ const SubjectView = () => {
     }
 
     return (
-        <div className="min-h-screen font-cairo" dir="rtl">
+        <div className="min-h-screen font-cairo" dir={dir}>
             <Header />
             <main className="pt-24 pb-16">
                 <div className="container mx-auto px-4">
@@ -52,7 +57,7 @@ const SubjectView = () => {
                         {/* Breadcrumb */}
                         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
                             <Link to="/grades" className="hover:text-primary transition-colors">
-                                الصفوف
+                                {t("subjectView.breadcrumbGrades")}
                             </Link>
                             <span>/</span>
                             <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors">
@@ -82,7 +87,7 @@ const SubjectView = () => {
                                         <div className="flex items-center gap-4">
                                             <Badge variant="secondary" className="gap-1">
                                                 <BookOpen className="w-3 h-3" />
-                                                {orderedTopics.length} موضوع
+                                                {orderedTopics.length} {t("subjectView.topicSuffix")}
                                             </Badge>
                                             <Badge variant="outline">
                                                 {grade.name}
@@ -103,10 +108,10 @@ const SubjectView = () => {
                         <div className="mb-6">
                             <h2 className="text-2xl font-bold flex items-center gap-2">
                                 <BookOpen className="w-6 h-6 text-primary" />
-                                المواضيع التعليمية
+                                {t("subjectView.topicsHeader")}
                             </h2>
                             <p className="text-muted-foreground mt-2">
-                                اختر موضوعاً لبدء التعلم ومشاهدة المحتوى والانضمام للتحديات
+                                {t("subjectView.topicsSubheader")}
                             </p>
                         </div>
 
@@ -148,7 +153,7 @@ const SubjectView = () => {
                                                                     {topic.description}
                                                                 </p>
                                                             </div>
-                                                            <div className="mr-4 flex flex-col gap-2 items-end">
+                                                            <div className={`${dir === "rtl" ? "mr-4" : "ml-4"} flex flex-col gap-2 items-end`}>
                                                                 <Badge
                                                                     className="text-xs"
                                                                     style={{
@@ -171,7 +176,7 @@ const SubjectView = () => {
                                                         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-4">
                                                             <div className="flex items-center gap-1">
                                                                 <Eye className="w-4 h-4" />
-                                                                <span>{((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString("ar-SA")} مشاهدة</span>
+                                                                <span>{((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString(localeId)} {t("subjectView.viewsSuffix")}</span>
                                                             </div>
                                                             {topic.duration && (
                                                                 <div className="flex items-center gap-1">
@@ -181,22 +186,22 @@ const SubjectView = () => {
                                                             )}
                                                             <div className="flex items-center gap-1">
                                                                 <BookOpen className="w-4 h-4" />
-                                                                <span>{topic.mediaItems?.length || 0} محتوى</span>
+                                                                <span>{topic.mediaItems?.length || 0} {t("subjectView.contentSuffix")}</span>
                                                             </div>
                                                             <div className="flex items-center gap-1">
                                                                 <span>❓</span>
-                                                                <span>{((topic.quizQuestions?.length || 0) + (topic.challengeItems?.length || 0)).toLocaleString("ar-SA")} سؤال</span>
+                                                                <span>{((topic.quizQuestions?.length || 0) + (topic.challengeItems?.length || 0)).toLocaleString(localeId)} {t("subjectView.questionsSuffix")}</span>
                                                             </div>
                                                         </div>
 
                                                         {/* Action Button */}
                                                         <div className="mt-4 pt-4 border-t flex items-center justify-between">
                                                             <span className="text-xs text-muted-foreground">
-                                                                {new Date(topic.created_at || topic.createdAt).toLocaleDateString("ar-SA")}
+                                                                {new Date(topic.created_at || topic.createdAt).toLocaleDateString(dateLocale)}
                                                             </span>
                                                             <Button className="gap-2 group-hover:gap-3 transition-all">
-                                                                شاهد المحتوى
-                                                                <ArrowLeft className="w-4 h-4" />
+                                                                {t("subjectView.viewContent")}
+                                                                <ArrowIcon className="w-4 h-4" />
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -211,7 +216,7 @@ const SubjectView = () => {
                         {orderedTopics.length === 0 && (
                             <div className="text-center py-16">
                                 <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                                <p className="text-muted-foreground text-lg">لا توجد مواضيع متاحة حالياً</p>
+                                <p className="text-muted-foreground text-lg">{t("subjectView.noTopics")}</p>
                             </div>
                         )}
                     </motion.div>

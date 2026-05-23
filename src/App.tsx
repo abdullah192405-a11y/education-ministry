@@ -29,8 +29,18 @@ import ClerkSSOCallback from "./components/ClerkSSOCallback";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
 import ScrollToTop from "./components/ScrollToTop";
 import { FloatingChromeProvider } from "./contexts/FloatingChromeContext";
+import { LanguageProvider, useLanguage } from "./contexts/LanguageContext";
 
 const queryClient = new QueryClient();
+
+const AppShell = ({ children }: { children: React.ReactNode }) => {
+  const { dir, language } = useLanguage();
+  return (
+    <div dir={dir} lang={language}>
+      {children}
+    </div>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -38,91 +48,93 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <FloatingChromeProvider>
-        <div dir="rtl">
-          <ScrollToTop />
-          <Routes>
-          <Route path="/" element={<Index />} />
+        <LanguageProvider>
+          <FloatingChromeProvider>
+            <AppShell>
+              <ScrollToTop />
+              <Routes>
+                <Route path="/" element={<Index />} />
 
-          {/* Education Routes - Grades > Subjects > Topics */}
-          <Route path="/grades" element={<Grades />} />
-          <Route path="/schools" element={<Schools />} />
-          <Route path="/organizations" element={<Organizations />} />
-          <Route path="/org/:orgSlug" element={<OrganizationProfile />} />
-          <Route path="/grade/:gradeId" element={<GradeDetail />} />
-          <Route path="/grade/:gradeId/subject/:subjectId" element={<SubjectView />} />
-          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId" element={<TopicView />} />
+                {/* Education Routes - Grades > Subjects > Topics */}
+                <Route path="/grades" element={<Grades />} />
+                <Route path="/schools" element={<Schools />} />
+                <Route path="/organizations" element={<Organizations />} />
+                <Route path="/org/:orgSlug" element={<OrganizationProfile />} />
+                <Route path="/grade/:gradeId" element={<GradeDetail />} />
+                <Route path="/grade/:gradeId/subject/:subjectId" element={<SubjectView />} />
+                <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId" element={<TopicView />} />
 
-          {/* Challenge Routes */}
-          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge" element={<ChallengeModeSelect />} />
-          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category/:pin" element={<SingleChallenge />} />
-          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category" element={<SingleChallenge />} />
-          <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/group/:category/:pin" element={<GroupChallenge />} />
+                {/* Challenge Routes */}
+                <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge" element={<ChallengeModeSelect />} />
+                <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category/:pin" element={<SingleChallenge />} />
+                <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/single/:category" element={<SingleChallenge />} />
+                <Route path="/grade/:gradeId/subject/:subjectId/topic/:topicId/challenge/group/:category/:pin" element={<GroupChallenge />} />
 
-          {/* Join Challenge */}
-          <Route path="/join" element={<JoinChallenge />} />
-          <Route path="/join/:pin" element={<JoinChallenge />} />
+                {/* Join Challenge */}
+                <Route path="/join" element={<JoinChallenge />} />
+                <Route path="/join/:pin" element={<JoinChallenge />} />
 
-          {/* Dashboard Routes */}
-          <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
-          <Route
-            path="/dashboard/student"
-            element={
-              <ProtectedRoute allowedRoles={["STUDENT", "طالب", "ADMIN", "مسؤول"]}>
-                <StudentDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/teacher"
-            element={
-              <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
-                <TeacherDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/admin"
-            element={
-              <ProtectedRoute allowedRoles={["ADMIN", "مسؤول"]}>
-                <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/superadmin"
-            element={
-              <ProtectedRoute allowedRoles={["SUPERADMIN"]}>
-                <SuperadminDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/analytics/:challengeId"
-            element={
-              <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
-                <ChallengeAnalytics />
-              </ProtectedRoute>
-            }
-          />
+                {/* Dashboard Routes */}
+                <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
+                <Route
+                  path="/dashboard/student"
+                  element={
+                    <ProtectedRoute allowedRoles={["STUDENT", "طالب", "ADMIN", "مسؤول"]}>
+                      <StudentDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/teacher"
+                  element={
+                    <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
+                      <TeacherDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/admin"
+                  element={
+                    <ProtectedRoute allowedRoles={["ADMIN", "مسؤول"]}>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/superadmin"
+                  element={
+                    <ProtectedRoute allowedRoles={["SUPERADMIN"]}>
+                      <SuperadminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/analytics/:challengeId"
+                  element={
+                    <ProtectedRoute allowedRoles={["TEACHER", "معلم", "معلمة", "ADMIN", "مسؤول"]}>
+                      <ChallengeAnalytics />
+                    </ProtectedRoute>
+                  }
+                />
 
 
-          {/* Auth Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/sso-callback" element={<ClerkSSOCallback />} />
+                {/* Auth Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/sso-callback" element={<ClerkSSOCallback />} />
 
-          {/* Exam Route - accessible by link only */}
-          <Route path="/exam/:pin" element={<ExamPage />} />
+                {/* Exam Route - accessible by link only */}
+                <Route path="/exam/:pin" element={<ExamPage />} />
 
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-          </Routes>
-        </div>
-        <WhatsAppButton />
-        </FloatingChromeProvider>
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              <WhatsAppButton />
+            </AppShell>
+          </FloatingChromeProvider>
+        </LanguageProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

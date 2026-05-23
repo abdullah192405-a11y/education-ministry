@@ -10,12 +10,14 @@ import {
     useStudentTopicActivities,
     useUserBadges
 } from "@/hooks/useDatabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
 
 interface StudentDetailsContentProps {
     student: any;
 }
 
 export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) => {
+    const { t, dir, locale } = useDashboardLocale();
     const { data: subjectProgress, isLoading: isLoadingProgress } = useStudentSubjectProgress(student.id);
     const { data: activities, isLoading: isLoadingActivities } = useStudentTopicActivities(student.id, 20);
     const { data: badges, isLoading: isLoadingBadges } = useUserBadges(student.userId);
@@ -46,11 +48,11 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
             <div className="flex items-center gap-4">
                 <Avatar className="w-16 h-16 border-2 border-primary/20">
                     <AvatarImage src={student.avatar} />
-                    <AvatarFallback>{student.name?.[0] || 'ط'}</AvatarFallback>
+                    <AvatarFallback>{student.name?.[0] || "S"}</AvatarFallback>
                 </Avatar>
                 <div>
                     <h3 className="text-xl font-bold">{student.name}</h3>
-                    <p className="text-muted-foreground" dir="ltr">{student.email || 'لا يوجد بريد إلكتروني'}</p>
+                    <p className="text-muted-foreground" dir="ltr">{student.email || t("dash.teacher.students.details.noEmail")}</p>
                 </div>
             </div>
 
@@ -60,7 +62,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                         <div className={`text-3xl font-bold ${student.avgScore >= 80 ? "text-emerald-600" : student.avgScore >= 60 ? "text-amber-600" : "text-destructive"}`}>
                             {student.avgScore}%
                         </div>
-                        <div className="text-sm font-medium text-emerald-800/70 mt-1 dark:text-emerald-400">متوسط الدرجات</div>
+                        <div className="text-sm font-medium text-emerald-800/70 mt-1 dark:text-emerald-400">{t("dash.teacher.students.details.avgScore")}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-amber-500/5 border-amber-500/20">
@@ -69,16 +71,16 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                             <Trophy className="w-6 h-6" />
                             {student.totalChallenges}
                         </div>
-                        <div className="text-sm font-medium text-amber-800/70 mt-1 dark:text-amber-400">تحديات منجزة</div>
+                        <div className="text-sm font-medium text-amber-800/70 mt-1 dark:text-amber-400">{t("dash.teacher.students.details.challenges")}</div>
                     </CardContent>
                 </Card>
             </div>
 
-            <Tabs defaultValue="activities" className="w-full" dir="rtl">
+            <Tabs defaultValue="activities" className="w-full" dir={dir}>
                 <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="activities">النشاط الأخير</TabsTrigger>
-                    <TabsTrigger value="progress">التقدم بالمواد</TabsTrigger>
-                    <TabsTrigger value="badges">الأوسمة</TabsTrigger>
+                    <TabsTrigger value="activities">{t("dash.teacher.students.details.tabActivities")}</TabsTrigger>
+                    <TabsTrigger value="progress">{t("dash.teacher.students.details.tabProgress")}</TabsTrigger>
+                    <TabsTrigger value="badges">{t("dash.teacher.students.details.tabBadges")}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="activities" className="mt-4">
@@ -86,7 +88,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                         <CardHeader className="py-3 px-4 bg-muted/30">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Activity className="w-4 h-4 text-blue-500" />
-                                سجل دروس الطالب
+                                {t("dash.teacher.students.details.lessonHistory")}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -98,19 +100,21 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                                 <div className="space-y-1">
                                                     <p className="font-medium text-primary flex items-center gap-2">
                                                         <BookOpen className="w-3.5 h-3.5" />
-                                                        {activity.topic?.title || 'درس غير معروف'}
+                                                        {activity.topic?.title || t("dash.teacher.students.details.unknownLesson")}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {activity.topic?.subject?.name || 'مادة غير معروفة'}
+                                                        {activity.topic?.subject?.name || t("dash.teacher.students.details.unknownSubject")}
                                                     </p>
                                                 </div>
-                                                <div className="text-left">
+                                                <div className="text-start">
                                                     <Badge variant={activity.status === 'COMPLETED' ? 'default' : 'secondary'} className="mb-1">
-                                                        {activity.status === 'COMPLETED' ? 'مكتمل' : 'قيد التقدم'}
+                                                        {activity.status === 'COMPLETED'
+                                                            ? t("dash.teacher.students.details.statusCompleted")
+                                                            : t("dash.teacher.students.details.statusInProgress")}
                                                     </Badge>
                                                     <div className="text-[10px] text-muted-foreground flex items-center justify-end gap-1">
                                                         <Clock className="w-3 h-3" />
-                                                        {new Date(activity.date).toLocaleDateString('ar-SA')}
+                                                        {new Date(activity.date).toLocaleDateString(locale)}
                                                     </div>
                                                 </div>
                                             </div>
@@ -119,7 +123,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                 ) : (
                                     <div className="p-8 text-center text-muted-foreground">
                                         <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                        <p>لا يوجد نشاط مسجل للدروس</p>
+                                        <p>{t("dash.teacher.students.details.noLessonActivity")}</p>
                                     </div>
                                 )}
                             </ScrollArea>
@@ -132,7 +136,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                         <CardHeader className="py-3 px-4 bg-muted/30">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Star className="w-4 h-4 text-amber-500" />
-                                تقدم الطالب في المواد
+                                {t("dash.teacher.students.details.subjectProgress")}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -141,17 +145,17 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                     <div className="divide-y text-sm">
                                         {subjectProgress.map((sp: any) => (
                                             <div key={sp.id} className="p-4 flex items-center justify-between">
-                                                <span className="font-medium">{sp.subject?.name || 'مادة'}</span>
+                                                <span className="font-medium">{sp.subject?.name || t("dash.teacher.students.details.subjectFallback")}</span>
                                                 <div className="flex items-center gap-4">
                                                     <div className="text-center">
                                                         <span className="block font-bold text-amber-600">{sp.points || 0}</span>
-                                                        <span className="text-[10px] text-muted-foreground">نقطة</span>
+                                                        <span className="text-[10px] text-muted-foreground">{t("dash.teacher.students.details.points")}</span>
                                                     </div>
                                                     <div className="text-center">
                                                         <span className={`block font-bold ${(sp.average_score || 0) >= 80 ? "text-emerald-600" : "text-amber-600"}`}>
                                                             {Math.round(sp.average_score || 0)}%
                                                         </span>
-                                                        <span className="text-[10px] text-muted-foreground">المتوسط</span>
+                                                        <span className="text-[10px] text-muted-foreground">{t("dash.teacher.students.averageLabel")}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -159,7 +163,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                     </div>
                                 ) : (
                                     <div className="p-8 text-center text-muted-foreground">
-                                        <p>لا يوجد تقدم مسجل</p>
+                                        <p>{t("dash.teacher.students.details.noProgress")}</p>
                                     </div>
                                 )}
                             </ScrollArea>
@@ -172,7 +176,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                         <CardHeader className="py-3 px-4 bg-muted/30">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Medal className="w-4 h-4 text-purple-500" />
-                                الأوسمة المكتسبة
+                                {t("dash.teacher.students.details.badgesTitle")}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -190,7 +194,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                                 </div>
                                                 <div className="overflow-hidden">
                                                     <p className="text-xs font-semibold truncate">{userBadge.badge?.name}</p>
-                                                    <p className="text-[10px] text-muted-foreground truncate">{new Date(userBadge.earned_at).toLocaleDateString('ar-SA')}</p>
+                                                    <p className="text-[10px] text-muted-foreground truncate">{new Date(userBadge.earned_at).toLocaleDateString(locale)}</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -198,7 +202,7 @@ export const StudentDetailsContent = ({ student }: StudentDetailsContentProps) =
                                 ) : (
                                     <div className="p-8 text-center text-muted-foreground">
                                         <Medal className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                        <p>لم يكتسب أي أوسمة بعد</p>
+                                        <p>{t("dash.teacher.students.details.noBadges")}</p>
                                     </div>
                                 )}
                             </ScrollArea>

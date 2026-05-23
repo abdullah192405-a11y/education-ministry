@@ -17,49 +17,25 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    SUPPORT_TICKET_TYPES,
+    SUPPORT_TICKET_TYPE_VALUES,
     getSupportTicketTypeLabel,
     type SupportTicketTypeValue,
 } from "@/lib/supportTicketTypes";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["image/jpeg", "image/jpg", "image/png"]);
 
-const requiredMark = <span className="text-destructive">*</span>;
-
-const statusMeta: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    OPEN: { label: "مفتوحة", variant: "default" },
-    IN_PROGRESS: { label: "قيد المعالجة", variant: "secondary" },
-    RESOLVED: { label: "تم الحل", variant: "outline" },
-    ESCALATED: { label: "أُرسلت للإدارة", variant: "destructive" },
-};
-
-function validateImageFiles(
-    current: File[],
-    adding: FileList | File[]
-): { ok: true; next: File[] } | { ok: false; message: string } {
-    const toAdd = Array.from(adding);
-    if (current.length + toAdd.length > MAX_ATTACHMENTS) {
-        return { ok: false, message: `يمكنك رفع ${MAX_ATTACHMENTS} صور كحد أقصى.` };
-    }
-    for (const f of toAdd) {
-        if (!ALLOWED_MIME.has(f.type.toLowerCase())) {
-            return { ok: false, message: "يُسمح فقط بملفات JPG أو JPEG أو PNG." };
-        }
-        if (f.size > MAX_BYTES) {
-            return { ok: false, message: "حجم كل ملف يجب ألا يتجاوز 5 ميجابايت." };
-        }
-    }
-    return { ok: true, next: [...current, ...toAdd] };
-}
-
 function AttachmentPreviewGrid({
     files,
     onRemove,
+    removeLabel,
 }: {
     files: File[];
     onRemove: (index: number) => void;
+    removeLabel: string;
 }) {
     const [objectUrls, setObjectUrls] = useState<string[]>([]);
 
@@ -83,7 +59,7 @@ function AttachmentPreviewGrid({
                         type="button"
                         className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-90 hover:opacity-100"
                         onClick={() => onRemove(i)}
-                        aria-label="إزالة الصورة"
+                        aria-label={removeLabel}
                     >
                         <X className="w-3.5 h-3.5" />
                     </button>
@@ -110,12 +86,12 @@ type Props = {
     userId: string;
     gradeId: string | null | undefined;
     gradeName?: string | null;
-    /** Stored on the ticket so teachers/admins see the name without querying `users` (RLS). */
     authorName?: string | null;
 };
 
 const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) => {
     const { toast } = useToast();
+    const { t, dir, language, locale, isRtl, textAlign } = useDashboardLocale();
     const { data: tickets, isLoading } = useMyStudentSupportTickets(userId);
     const createMutation = useCreateStudentSupportTicket();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +99,32 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
     const [ticketType, setTicketType] = useState<SupportTicketTypeValue>("TECHNICAL");
     const [body, setBody] = useState("");
     const [files, setFiles] = useState<File[]>([]);
+
+    const statusMeta: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+        OPEN: { label: t("supportTab.status.OPEN"), variant: "default" },
+        IN_PROGRESS: { label: t("supportTab.status.IN_PROGRESS"), variant: "secondary" },
+        RESOLVED: { label: t("supportTab.status.RESOLVED"), variant: "outline" },
+        ESCALATED: { label: t("dash.student.support.statusEscalated"), variant: "destructive" },
+    };
+
+    const validateImageFiles = (
+        current: File[],
+        adding: FileList | File[],
+    ): { ok: true; next: File[] } | { ok: false; message: string } => {
+        const toAdd = Array.from(adding);
+        if (current.length + toAdd.length > MAX_ATTACHMENTS) {
+            return { ok: false, message: t("dash.student.support.maxImages", { n: MAX_ATTACHMENTS }) };
+        }
+        for (const f of toAdd) {
+            if (!ALLOWED_MIME.has(f.type.toLowerCase())) {
+                return { ok: false, message: t("dash.student.support.invalidType") };
+            }
+            if (f.size > MAX_BYTES) {
+                return { ok: false, message: t("dash.student.support.maxSize") };
+            }
+        }
+        return { ok: true, next: [...current, ...toAdd] };
+    };
 
     const resetForm = () => {
         setTicketType("TECHNICAL");
@@ -135,7 +137,7 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
         if (!list?.length) return;
         const v = validateImageFiles(files, list);
         if (!v.ok) {
-            toast({ title: "المرفقات", description: v.message, variant: "destructive" });
+            toast({ title: t("dash.student.support.attachmentsToast"), description: v.message, variant: "destructive" });
             return;
         }
         setFiles(v.next);
@@ -145,16 +147,16 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
         e.preventDefault();
         if (!gradeId) {
             toast({
-                title: "لم يُحدد الصف",
-                description: "حدّث ملفك الشخصي لاختيار صفك الدراسي قبل إنشاء تذكرة.",
+                title: t("dash.student.support.noGradeTitle"),
+                description: t("dash.student.support.noGradeDesc"),
                 variant: "destructive",
             });
             return;
         }
         if (!body.trim()) {
             toast({
-                title: "حقول ناقصة",
-                description: "أدخل وصف المشكلة.",
+                title: t("dash.student.support.missingFields"),
+                description: t("dash.student.support.missingDesc"),
                 variant: "destructive",
             });
             return;
@@ -170,60 +172,60 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
             },
             {
                 onSuccess: () => {
-                    toast({ title: "تم الإرسال", description: "ستصل تذكرتك إلى معلم صفك." });
+                    toast({ title: t("dash.student.support.sentTitle"), description: t("dash.student.support.sentDesc") });
                     resetForm();
                 },
                 onError: (err: any) => {
                     toast({
-                        title: "تعذّر الإرسال",
-                        description: err?.message || "حاول مرة أخرى.",
+                        title: t("dash.student.support.sendFail"),
+                        description: err?.message || t("dash.student.support.tryAgain"),
                         variant: "destructive",
                     });
                 },
-            }
+            },
         );
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" dir={dir}>
             <Card>
                 <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
                         <LifeBuoy className="w-5 h-5 text-primary" />
-                        <CardTitle>تذاكر الدعم</CardTitle>
+                        <CardTitle>{t("dash.student.support.title")}</CardTitle>
                     </div>
                     {gradeName ? (
-                        <CardDescription>الصف: {gradeName}</CardDescription>
+                        <CardDescription>{t("dash.student.support.gradePrefix", { name: gradeName })}</CardDescription>
                     ) : null}
                 </CardHeader>
                 <CardContent>
                     {!gradeId && (
                         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                            لم يُربط حسابك بصف دراسي. افتح تبويب الإعدادات وحدّث الصف لاستخدام تذاكر الدعم.
+                            {t("dash.student.support.noGradeWarning")}
                         </div>
                     )}
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <p className="text-destructive text-lg leading-none font-semibold">
                             <span aria-hidden>*</span>
-                            <span className="sr-only">يشير إلى حقول مطلوبة</span>
+                            <span className="sr-only">{t("dash.student.support.requiredHint")}</span>
                         </p>
 
                         <div className="space-y-2">
                             <label htmlFor="ticket-type" className="text-sm font-medium block">
-                                نوع التذكرة {requiredMark}
+                                {t("dash.student.support.typeLabel")} <span className="text-destructive">*</span>
                             </label>
                             <Select
                                 value={ticketType}
                                 onValueChange={(v) => setTicketType(v as SupportTicketTypeValue)}
                                 disabled={!gradeId}
                             >
-                                <SelectTrigger id="ticket-type" dir="rtl" className="text-right">
-                                    <SelectValue placeholder="مشكلة تقنية" />
+                                <SelectTrigger id="ticket-type" dir={dir} className={textAlign}>
+                                    <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent dir="rtl">
-                                    {SUPPORT_TICKET_TYPES.map((t) => (
-                                        <SelectItem key={t.value} value={t.value}>
-                                            {t.label}
+                                <SelectContent dir={dir}>
+                                    {SUPPORT_TICKET_TYPE_VALUES.map((value) => (
+                                        <SelectItem key={value} value={value}>
+                                            {getSupportTicketTypeLabel(value, language)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -232,23 +234,20 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
 
                         <div className="space-y-2">
                             <label htmlFor="ticket-body" className="text-sm font-medium block">
-                                الوصف {requiredMark}
+                                {t("dash.student.support.descLabel")} <span className="text-destructive">*</span>
                             </label>
                             <Textarea
                                 id="ticket-body"
                                 value={body}
                                 onChange={(e) => setBody(e.target.value)}
-                                placeholder=""
                                 rows={6}
-                                dir="rtl"
+                                dir={dir}
                                 className="resize-y min-h-[140px]"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <span className="text-sm font-medium block">
-                                المرفقات (5 صور كحد أقصى)
-                            </span>
+                            <span className="text-sm font-medium block">{t("dash.student.support.attachments")}</span>
                             <input
                                 ref={fileInputRef}
                                 type="file"
@@ -264,13 +263,12 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
                                 className="w-full rounded-xl border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/40 transition-colors p-8 flex flex-col items-center gap-2 text-muted-foreground disabled:opacity-50"
                             >
                                 <ImagePlus className="w-8 h-8" />
-                                <span className="text-sm font-medium text-foreground">انقر لإضافة صور</span>
-                                <span className="text-xs text-center leading-relaxed">
-                                    JPG, JPEG, PNG حتى 5 ميجابايت لكل ملف
-                                </span>
+                                <span className="text-sm font-medium text-foreground">{t("dash.student.support.addImages")}</span>
+                                <span className="text-xs text-center leading-relaxed">{t("dash.student.support.fileHint")}</span>
                             </button>
                             <AttachmentPreviewGrid
                                 files={files}
+                                removeLabel={t("dash.student.support.removeImage")}
                                 onRemove={(i) => {
                                     setFiles((prev) => prev.filter((_, j) => j !== i));
                                     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -278,7 +276,7 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
                             />
                         </div>
 
-                        <div className="flex flex-wrap gap-3 justify-end pt-2">
+                        <div className={cn("flex flex-wrap gap-3 pt-2", isRtl ? "justify-end" : "justify-start")}>
                             <Button
                                 type="submit"
                                 disabled={createMutation.isPending || !gradeId}
@@ -289,7 +287,7 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
                                 ) : (
                                     <Send className="w-4 h-4" />
                                 )}
-                                إرسال التذكرة
+                                {t("dash.student.support.submit")}
                             </Button>
                             <Button
                                 type="button"
@@ -297,7 +295,7 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
                                 onClick={resetForm}
                                 disabled={createMutation.isPending}
                             >
-                                إلغاء
+                                {t("common.cancel")}
                             </Button>
                         </div>
                     </form>
@@ -306,35 +304,30 @@ const StudentSupportTab = ({ userId, gradeId, gradeName, authorName }: Props) =>
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">تذاكري</CardTitle>
-                    <CardDescription>آخر التذاكر المرسلة إلى معلم الصف</CardDescription>
+                    <CardTitle className="text-lg">{t("dash.student.support.myTickets")}</CardTitle>
+                    <CardDescription>{t("dash.student.support.myTicketsDesc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
-                        <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.student.support.loading")}</p>
                     ) : !tickets?.length ? (
-                        <p className="text-sm text-muted-foreground">لا توجد تذاكر بعد.</p>
+                        <p className="text-sm text-muted-foreground">{t("dash.student.support.noTickets")}</p>
                     ) : (
                         <ul className="space-y-3">
-                            {tickets.map((t) => {
-                                const sm = statusMeta[t.status] || statusMeta.OPEN;
+                            {tickets.map((tk) => {
+                                const sm = statusMeta[tk.status] || statusMeta.OPEN;
                                 return (
-                                    <li
-                                        key={t.id}
-                                        className="p-4 rounded-xl border bg-card text-right space-y-2"
-                                    >
+                                    <li key={tk.id} className={cn("p-4 rounded-xl border bg-card space-y-2", textAlign)}>
                                         <div className="flex flex-wrap items-start justify-between gap-2">
                                             <h4 className="font-semibold text-base">
-                                                {getSupportTicketTypeLabel(t.ticketType) || t.subject}
+                                                {getSupportTicketTypeLabel(tk.ticketType, language) || tk.subject}
                                             </h4>
                                             <Badge variant={sm.variant}>{sm.label}</Badge>
                                         </div>
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.body}</p>
-                                        <TicketAttachmentUrls urls={t.attachmentUrls || []} />
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tk.body}</p>
+                                        <TicketAttachmentUrls urls={tk.attachmentUrls || []} />
                                         <p className="text-xs text-muted-foreground">
-                                            {t.createdAt
-                                                ? new Date(t.createdAt).toLocaleString("ar-SA")
-                                                : ""}
+                                            {tk.createdAt ? new Date(tk.createdAt).toLocaleString(locale) : ""}
                                         </p>
                                     </li>
                                 );

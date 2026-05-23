@@ -155,9 +155,58 @@ model TeacherProfile {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subject Subject? @relation(fields: [subjectId], references: [id])
   grade   Grade?   @relation(fields: [gradeId], references: [id])
-  topics  Topic[]  @relation("TeacherTopics")
+  topics         Topic[]                 @relation("TeacherTopics")
+  uploadedSounds TeacherUploadedSound[]
+  gradeAccess    TeacherGradeAccess[]
+  subjectAccess  TeacherSubjectAccess[]
 
   @@map("teacher_profiles")
+}
+
+/// Grades (classes) a teacher may manage — assigned by org/school admin.
+model TeacherGradeAccess {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
+  gradeId          String   @map("grade_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherProfileId, gradeId])
+  @@map("teacher_grade_access")
+}
+
+/// Optional subject restriction within a grade. Empty = all subjects in that grade.
+model TeacherSubjectAccess {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
+  gradeId          String   @map("grade_id") @db.Uuid
+  subjectId        String   @map("subject_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherProfileId, subjectId])
+  @@map("teacher_subject_access")
+}
+
+/// Teacher-owned custom interaction sounds (not shared across teachers).
+model TeacherUploadedSound {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherId      String   @map("teacher_id") @db.Uuid
+  soundCategory  String   @map("sound_category") // correct | wrong | background
+  url            String
+  label          String?
+  storagePath    String?  @map("storage_path")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@index([teacherId, soundCategory])
+  @@map("teacher_uploaded_sounds")
 }
 
 // ============================================================================
@@ -190,10 +239,12 @@ model Grade {
   updatedAt     DateTime   @updatedAt @map("updated_at")
 
   // Relations
-  subjects        Subject[]
-  studentProfiles StudentProfile[]
-  teacherProfiles TeacherProfile[]
-  enrollments     StudentEnrollment[]
+  subjects             Subject[]
+  studentProfiles      StudentProfile[]
+  teacherProfiles      TeacherProfile[]
+  teacherGradeAccess   TeacherGradeAccess[]
+  teacherSubjectAccess TeacherSubjectAccess[]
+  enrollments          StudentEnrollment[]
   exams           Exam[]
   supportTickets  SupportTicket[]
 
@@ -214,10 +265,11 @@ model Subject {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  grade           Grade                    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
-  topics          Topic[]
-  teacherProfiles TeacherProfile[]
-  subjectProgress StudentSubjectProgress[]
+  grade                Grade                    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  topics               Topic[]
+  teacherProfiles      TeacherProfile[]
+  teacherSubjectAccess TeacherSubjectAccess[]
+  subjectProgress      StudentSubjectProgress[]
 
   @@unique([gradeId, name])
   @@map("subjects")
@@ -239,6 +291,10 @@ model Topic {
   /// When both are set, students skip challenge pickers (single/group + activity category).
   studentChallengeMode     String? @map("student_challenge_mode")
   studentChallengeCategory String? @map("student_challenge_category")
+  correctSoundUrl          String? @map("correct_sound_url")
+  wrongSoundUrl            String? @map("wrong_sound_url")
+  answeringBackgroundSoundUrl String? @map("answering_background_sound_url")
+  wheelSpinSoundUrl        String? @map("wheel_spin_sound_url")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -372,6 +428,8 @@ model ChallengeQuestion {
   options          String[] // For MCQ, True/False, Shooting
   correctAnswer    String?      @map("correct_answer") // Can be index, string, or JSON array
   imageUrl         String?      @map("image_url")
+  videoUrl         String?      @map("video_url")
+  audioUrl         String?      @map("audio_url")
   pairs            Json? // For matching: [{ left, right }]
   orderItems       String[]     @map("order_items") // For ordering (in correct order)
   explanation      String?

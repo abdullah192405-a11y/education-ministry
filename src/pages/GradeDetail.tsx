@@ -4,18 +4,36 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, ArrowRight, GraduationCap, ArrowLeft } from "lucide-react";
+import { BookOpen, Users, GraduationCap, ArrowLeft, ArrowRight } from "lucide-react";
 import { useGradeDetail } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
+import { useTranslation } from "@/contexts/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
 const GradeDetail = () => {
     const { gradeId } = useParams(); // This will be the slug
     const { data: grade, isLoading, error } = useGradeDetail(gradeId || "");
+    const { t, dir } = useTranslation();
+    const localeId = t("common.locale");
+    const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
+
+    const getLevelKey = (level: string): TranslationKey | null => {
+        switch (level) {
+            case "PRIMARY":
+                return "level.primary";
+            case "MIDDLE":
+                return "level.middle";
+            case "SECONDARY":
+                return "level.secondary";
+            default:
+                return null;
+        }
+    };
 
     if (isLoading) {
         return (
-            <div className="min-h-screen font-cairo" dir="rtl">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4">
@@ -38,7 +56,7 @@ const GradeDetail = () => {
     }
 
     return (
-        <div className="min-h-screen font-cairo" dir="rtl">
+        <div className="min-h-screen font-cairo" dir={dir}>
             <Header />
             <main className="pt-24 pb-16">
                 <div className="container mx-auto px-4">
@@ -57,7 +75,7 @@ const GradeDetail = () => {
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
 
-                            <div className="absolute bottom-6 right-6 flex items-center gap-4">
+                            <div className={`absolute bottom-6 ${dir === "rtl" ? "right-6" : "left-6"} flex items-center gap-4`}>
                                 <div className="w-20 h-20 rounded-2xl border-4 border-background bg-primary/10 flex items-center justify-center shadow-lg backdrop-blur-sm">
                                     <GraduationCap className="w-12 h-12 text-primary" />
                                 </div>
@@ -77,15 +95,15 @@ const GradeDetail = () => {
                             <Card>
                                 <CardContent className="p-4 text-center">
                                     <Users className="w-6 h-6 mx-auto mb-2 text-primary" />
-                                    <p className="text-2xl font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString("ar-SA")}</p>
-                                    <p className="text-sm text-muted-foreground">طالب مسجل</p>
+                                    <p className="text-2xl font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString(localeId)}</p>
+                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.registeredStudents")}</p>
                                 </CardContent>
                             </Card>
                             <Card>
                                 <CardContent className="p-4 text-center">
                                     <BookOpen className="w-6 h-6 mx-auto mb-2 text-primary" />
                                     <p className="text-2xl font-bold">{grade.subjects?.length || 0}</p>
-                                    <p className="text-sm text-muted-foreground">مادة دراسية</p>
+                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.subject")}</p>
                                 </CardContent>
                             </Card>
                             <Card>
@@ -94,18 +112,19 @@ const GradeDetail = () => {
                                     <p className="text-2xl font-bold">
                                         {grade.subjects?.reduce((total: number, subject: any) => total + (subject.topics?.length || 0), 0) || 0}
                                     </p>
-                                    <p className="text-sm text-muted-foreground">موضوع تعليمي</p>
+                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.topicLabel")}</p>
                                 </CardContent>
                             </Card>
                             <Card>
                                 <CardContent className="p-4 text-center">
                                     <div className="w-6 h-6 mx-auto mb-2 text-primary font-bold text-xl">✓</div>
                                     <p className="text-2xl font-bold">
-                                        {grade.level === "PRIMARY" ? "ابتدائي" :
-                                            grade.level === "MIDDLE" ? "متوسط" :
-                                                grade.level === "SECONDARY" ? "ثانوي" : grade.level}
+                                        {(() => {
+                                            const k = getLevelKey(grade.level);
+                                            return k ? t(k) : grade.level;
+                                        })()}
                                     </p>
-                                    <p className="text-sm text-muted-foreground">المرحلة</p>
+                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.stage")}</p>
                                 </CardContent>
                             </Card>
                         </div>
@@ -120,7 +139,7 @@ const GradeDetail = () => {
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-2xl font-bold flex items-center gap-2">
                                 <BookOpen className="w-6 h-6 text-primary" />
-                                المواد الدراسية
+                                {t("gradeDetail.subjectsHeader")}
                             </h2>
                         </div>
 
@@ -157,11 +176,11 @@ const GradeDetail = () => {
                                                 <div className="flex items-center justify-between pt-4 border-t">
                                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                         <BookOpen className="w-4 h-4" />
-                                                        <span>{subject.topics?.length || 0} موضوع</span>
+                                                        <span>{subject.topics?.length || 0} {t("gradeDetail.topicSuffix")}</span>
                                                     </div>
                                                     <Button variant="ghost" size="sm" className="gap-2 group-hover:gap-3 transition-all">
-                                                        استكشف
-                                                        <ArrowLeft className="w-4 h-4" />
+                                                        {t("gradeDetail.exploreBtn")}
+                                                        <ArrowIcon className="w-4 h-4" />
                                                     </Button>
                                                 </div>
                                             </CardContent>
@@ -174,7 +193,7 @@ const GradeDetail = () => {
                         {(grade.subjects?.length || 0) === 0 && (
                             <div className="text-center py-16">
                                 <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                                <p className="text-muted-foreground text-lg">لا توجد مواد متاحة حالياً</p>
+                                <p className="text-muted-foreground text-lg">{t("gradeDetail.noSubjects")}</p>
                             </div>
                         )}
                     </motion.div>

@@ -1,4 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useMemo } from "react";
+import { useSound } from "@/hooks/useSound";
+import {
+    resolveWheelSpinSoundUrl,
+    WHEEL_SPIN_DURATION_MS,
+    WHEEL_SPIN_DURATION_SEC,
+    WHEEL_SPIN_EASE,
+} from "@/lib/wheelSpinSounds";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,18 +14,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Plus, X, Save, Trash2, ChevronUp, ChevronDown,
     HelpCircle, Gamepad2, CheckCircle, XCircle,
-    Clock, Star, Sparkles, ListOrdered, ArrowLeftRight,
+    Clock, Star, Sparkles, ListOrdered, ArrowLeftRight, Volume2,
     Target, CircleDot, RotateCcw, Wand2, Database, FileUp,
-    Image as ImageIcon, Upload, Loader2
 } from "lucide-react";
+import { QuestionAttachmentField } from "./QuestionAttachmentField";
 import type { ActivityType, GameType, ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import AIQuestionGenerator from "./AIQuestionGenerator";
 import AIQuestionGeneratorFromResources from "./AIQuestionGeneratorFromResources";
-import { useUser } from "@/hooks/useDatabase";
-import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/lib/supabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TFunction } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
-// Type definitions
 type ItemCategory = "activity" | "game";
 type AIMode = "upload" | "resources" | null;
 
@@ -26,28 +32,28 @@ interface QuestionGameEditorProps {
     items: ChallengeQuestion[];
     onSave: (items: ChallengeQuestion[]) => void;
     onCancel: () => void;
-    media?: ContentMedia[]; // Optional media for AI generation from resources
-    isExamMode?: boolean; // If true, hides games, restricts question types to 3 allowed, and hides time limits
+    media?: ContentMedia[];
+    isExamMode?: boolean;
+    /** Custom wheel spin SFX from lesson sound settings (ContentEditor). */
+    wheelSpinSoundUrl?: string;
 }
 
-// Activity and Game type configurations
-const activityTypes: { type: ActivityType; label: string; icon: typeof HelpCircle; description: string }[] = [
-    { type: "multiple_choice", label: "اختيار متعدد", icon: CheckCircle, description: "سؤال مع 4 خيارات وإجابة صحيحة واحدة" },
-    { type: "true_false", label: "صح وخطأ", icon: XCircle, description: "عبارة يحدد اللاعب إن كانت صحيحة أم خاطئة" },
-    { type: "qa", label: "سؤال وجواب", icon: HelpCircle, description: "سؤال مفتوح مع إجابة نصية" },
-    { type: "know_dont_know", label: "أعرف / لا أعرف", icon: CircleDot, description: "اختبر معرفتك - أعرف أو لا أعرف" },
-    { type: "order_questions", label: "رتب الإجابات", icon: ListOrdered, description: "رتب العناصر بالترتيب الصحيح" },
+const getActivityTypes = (t: TFunction) => [
+    { type: "multiple_choice" as const, label: t("dash.teacher.topics.qe.multipleChoice"), icon: CheckCircle, description: t("dash.teacher.topics.qe.multipleChoiceDesc") },
+    { type: "true_false" as const, label: t("dash.teacher.topics.qe.trueFalse"), icon: XCircle, description: t("dash.teacher.topics.qe.trueFalseDesc") },
+    { type: "qa" as const, label: t("dash.teacher.topics.qe.qa"), icon: HelpCircle, description: t("dash.teacher.topics.qe.qaDesc") },
+    { type: "know_dont_know" as const, label: t("dash.teacher.topics.qe.knowDontKnow"), icon: CircleDot, description: t("dash.teacher.topics.qe.knowDontKnowDesc") },
+    { type: "order_questions" as const, label: t("dash.teacher.topics.qe.orderQuestions"), icon: ListOrdered, description: t("dash.teacher.topics.qe.orderQuestionsDesc") },
 ];
 
-const gameTypes: { type: GameType; label: string; icon: typeof Gamepad2; description: string }[] = [
-    { type: "matching", label: "لعبة المطابقة", icon: ArrowLeftRight, description: "طابق العناصر من العمود الأيمن مع الأيسر" },
-    { type: "shooting", label: "لعبة التصويب", icon: Target, description: "أطلق النار على الإجابة الصحيحة أو الخاطئة" },
-    { type: "wheel_spin", label: "دوران العجلة", icon: RotateCcw, description: "أدر العجلة واربح نقاط بناءً على الصعوبة" },
-    { type: "puzzle", label: "لعبة الألغاز", icon: Sparkles, description: "حل اللغز للحصول على النقاط" },
+const getGameTypes = (t: TFunction) => [
+    { type: "matching" as const, label: t("dash.teacher.topics.qe.matching"), icon: ArrowLeftRight, description: t("dash.teacher.topics.qe.matchingDesc") },
+    { type: "shooting" as const, label: t("dash.teacher.topics.qe.shooting"), icon: Target, description: t("dash.teacher.topics.qe.shootingDesc") },
+    { type: "wheel_spin" as const, label: t("dash.teacher.topics.qe.wheelSpin"), icon: RotateCcw, description: t("dash.teacher.topics.qe.wheelSpinDesc") },
+    { type: "puzzle" as const, label: t("dash.teacher.topics.qe.puzzle"), icon: Sparkles, description: t("dash.teacher.topics.qe.puzzleDesc") },
 ];
 
-// Default values for each type
-const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestion> => {
+const getDefaultItem = (type: ActivityType | GameType, t: TFunction): Partial<ChallengeQuestion> => {
     const baseItem = {
         id: Date.now(),
         type,
@@ -57,11 +63,13 @@ const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestio
         explanation: "",
     };
 
+    const option = (n: number) => t("dash.teacher.topics.qe.optionShortN", { n });
+
     switch (type) {
         case "multiple_choice":
             return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0 };
         case "true_false":
-            return { ...baseItem, options: ["صح ✓", "خطأ ✗"], correctAnswer: 0, timeLimit: 15 };
+            return { ...baseItem, options: [t("dash.teacher.topics.qe.trueLabel"), t("dash.teacher.topics.qe.falseLabel")], correctAnswer: 0, timeLimit: 15 };
         case "qa":
             return { ...baseItem, correctAnswer: "", timeLimit: 30 };
         case "know_dont_know":
@@ -86,11 +94,11 @@ const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestio
             return {
                 ...baseItem,
                 wheelSegments: [
-                    { label: "سهل", points: 50, question: "سؤال سهل", options: ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], correctAnswer: 0 },
-                    { label: "متوسط", points: 100, question: "سؤال متوسط", options: ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], correctAnswer: 0 },
-                    { label: "صعب", points: 200, question: "سؤال صعب", options: ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], correctAnswer: 0 },
-                    { label: "مكافأة", points: 300, question: "سؤال مكافأة", options: ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], correctAnswer: 0 },
-                    { label: "أسطوري", points: 500, question: "سؤال أسطوري", options: ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], correctAnswer: 0 }
+                    { label: t("dash.teacher.topics.qe.difficulty.easy"), points: 50, question: t("dash.teacher.topics.qe.default.easyQuestion"), options: [option(1), option(2), option(3), option(4)], correctAnswer: 0 },
+                    { label: t("dash.teacher.topics.qe.difficulty.medium"), points: 100, question: t("dash.teacher.topics.qe.default.mediumQuestion"), options: [option(1), option(2), option(3), option(4)], correctAnswer: 0 },
+                    { label: t("dash.teacher.topics.qe.difficulty.hard"), points: 200, question: t("dash.teacher.topics.qe.default.hardQuestion"), options: [option(1), option(2), option(3), option(4)], correctAnswer: 0 },
+                    { label: t("dash.teacher.topics.qe.difficulty.bonus"), points: 300, question: t("dash.teacher.topics.qe.default.bonusQuestion"), options: [option(1), option(2), option(3), option(4)], correctAnswer: 0 },
+                    { label: t("dash.teacher.topics.qe.difficulty.legendary"), points: 500, question: t("dash.teacher.topics.qe.default.legendaryQuestion"), options: [option(1), option(2), option(3), option(4)], correctAnswer: 0 }
                 ],
                 timeLimit: 30,
                 points: 100
@@ -102,134 +110,24 @@ const getDefaultItem = (type: ActivityType | GameType): Partial<ChallengeQuestio
     }
 };
 
-interface QuestionImageFieldsProps {
-    imageUrl?: string;
-    onImageUrlChange: (url: string | undefined) => void;
-}
-
-/** Optional image shown with the question: public URL or upload to Supabase `teacher-content`. */
-const QuestionImageFields = ({ imageUrl, onImageUrlChange }: QuestionImageFieldsProps) => {
-    const { data: user } = useUser();
-    const { toast } = useToast();
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isUploading, setIsUploading] = useState(false);
-
-    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
-        if (!file) return;
-        if (!user?.id) {
-            toast({ title: "خطأ", description: "لم يتم تسجيل الدخول", variant: "destructive" });
-            return;
-        }
-        if (!file.type.startsWith("image/")) {
-            toast({ title: "نوع غير مدعوم", description: "يرجى اختيار ملف صورة", variant: "destructive" });
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "يجب ألا يتجاوز حجم الصورة 5 ميجابايت", variant: "destructive" });
-            return;
-        }
-        setIsUploading(true);
-        try {
-            const fileExt = file.name.split(".").pop() || "png";
-            const fileName = `q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExt}`;
-            const filePath = `${user.id}/question-images/${fileName}`;
-            const { error } = await supabase.storage.from("teacher-content").upload(filePath, file);
-            if (error) throw error;
-            const { data } = supabase.storage.from("teacher-content").getPublicUrl(filePath);
-            onImageUrlChange(data.publicUrl);
-            toast({ title: "تم الرفع", description: "تم ربط الصورة بالسؤال" });
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : "فشل رفع الصورة";
-            console.error(err);
-            toast({
-                title: "خطأ في الرفع",
-                description: message,
-                variant: "destructive"
-            });
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    return (
-        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-            <div className="flex items-start gap-2">
-                <div className="mt-0.5 rounded-md bg-background p-1.5 border">
-                    <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                </div>
-                <div>
-                    <label className="text-sm font-medium block">صورة مع السؤال (اختياري)</label>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                        أدخل رابط صورة عام أو ارفع صورة من جهازك (تُحفظ في التخزين السحابي).
-                    </p>
-                </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                    value={imageUrl || ""}
-                    onChange={(e) => {
-                        const v = e.target.value.trim();
-                        onImageUrlChange(v ? v : undefined);
-                    }}
-                    placeholder="https://..."
-                    dir="ltr"
-                    className="sm:flex-1 font-mono text-sm"
-                />
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFile}
-                />
-                <Button
-                    type="button"
-                    variant="secondary"
-                    className="gap-2 shrink-0"
-                    disabled={isUploading}
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    رفع صورة
-                </Button>
-            </div>
-            {imageUrl ? (
-                <div className="flex flex-col sm:flex-row sm:items-start gap-3 pt-1">
-                    <img
-                        src={imageUrl}
-                        alt=""
-                        className="max-h-40 max-w-full rounded-md border object-contain bg-background"
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                    />
-                    <Button type="button" variant="outline" size="sm" className="text-destructive shrink-0" onClick={() => onImageUrlChange(undefined)}>
-                        إزالة الصورة
-                    </Button>
-                </div>
-            ) : null}
-        </div>
-    );
-};
-
-const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = false }: QuestionGameEditorProps) => {
+const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = false, wheelSpinSoundUrl = "" }: QuestionGameEditorProps) => {
+    const { t, dir, isRtl, textAlign } = useDashboardLocale();
     const [questionItems, setQuestionItems] = useState<ChallengeQuestion[]>(items);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<ItemCategory | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [aiMode, setAIMode] = useState<AIMode>(null);
 
-    // Handle AI generated questions
+    const activityTypes = useMemo(() => getActivityTypes(t), [t]);
+    const gameTypes = useMemo(() => getGameTypes(t), [t]);
+
     const handleAIGenerate = (generatedQuestions: ChallengeQuestion[]) => {
         setQuestionItems([...questionItems, ...generatedQuestions]);
         setAIMode(null);
     };
 
-    // Add new item
     const handleAddItem = (type: ActivityType | GameType) => {
-        const newItem = getDefaultItem(type) as ChallengeQuestion;
+        const newItem = getDefaultItem(type, t) as ChallengeQuestion;
         newItem.id = Date.now();
         setQuestionItems([...questionItems, newItem]);
         setEditingIndex(questionItems.length);
@@ -237,20 +135,17 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
         setSelectedCategory(null);
     };
 
-    // Update item
     const updateItem = (index: number, updates: Partial<ChallengeQuestion>) => {
         const newItems = [...questionItems];
         newItems[index] = { ...newItems[index], ...updates };
         setQuestionItems(newItems);
     };
 
-    // Delete item
     const deleteItem = (index: number) => {
         setQuestionItems(questionItems.filter((_, i) => i !== index));
         if (editingIndex === index) setEditingIndex(null);
     };
 
-    // Move item
     const moveItem = (index: number, direction: "up" | "down") => {
         if (direction === "up" && index > 0) {
             const newItems = [...questionItems];
@@ -263,7 +158,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
         }
     };
 
-    // Get type label
     const getTypeLabel = (type: ActivityType | GameType): string => {
         const activity = activityTypes.find(a => a.type === type);
         if (activity) return activity.label;
@@ -271,7 +165,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
         return game?.label || type;
     };
 
-    // Get type icon
     const getTypeIcon = (type: ActivityType | GameType) => {
         const activity = activityTypes.find(a => a.type === type);
         if (activity) return activity.icon;
@@ -279,62 +172,58 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
         return game?.icon || HelpCircle;
     };
 
-    const allowedActivityTypes = isExamMode 
-        ? activityTypes.filter(t => ["multiple_choice", "true_false", "order_questions"].includes(t.type)) 
+    const allowedActivityTypes = isExamMode
+        ? activityTypes.filter(a => ["multiple_choice", "true_false", "order_questions"].includes(a.type))
         : activityTypes;
 
-    // Check if type is a game
-    const isGameType = (type: ActivityType | GameType): boolean => {
-        return gameTypes.some(g => g.type === type);
-    };
+    const isGameType = (type: ActivityType | GameType): boolean =>
+        gameTypes.some(g => g.type === type);
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
+        <div className="space-y-6" dir={dir}>
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                     <Gamepad2 className="w-6 h-6 text-primary" />
-                    إدارة الأسئلة والألعاب
+                    {t("dash.teacher.topics.qe.title")}
                     <span className="text-sm font-normal text-muted-foreground">
-                        ({questionItems.length} عنصر)
+                        {t("dash.teacher.topics.qe.itemCount", { n: questionItems.length })}
                     </span>
                 </h2>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={onCancel}>
-                        <X className="w-4 h-4 ml-2" />
-                        إلغاء
+                    <Button variant="outline" onClick={onCancel} className="gap-2">
+                        <X className="w-4 h-4 shrink-0" />
+                        {t("dash.common.cancel")}
                     </Button>
-                    <Button onClick={() => onSave(questionItems)}>
-                        <Save className="w-4 h-4 ml-2" />
-                        حفظ الكل
+                    <Button onClick={() => onSave(questionItems)} className="gap-2">
+                        <Save className="w-4 h-4 shrink-0" />
+                        {t("dash.teacher.topics.qe.saveAll")}
                     </Button>
                 </div>
             </div>
 
-            {/* AI Generation Options */}
             {aiMode === null ? (
-                <Card className="border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-blue-500/5">
+                <Card dir={dir} className="border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-blue-500/5">
                     <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
                                     <Wand2 className="w-5 h-5 text-purple-500" />
                                 </div>
-                                <div>
-                                    <h3 className="font-bold">توليد بالذكاء الاصطناعي</h3>
+                                <div className={cn("min-w-0", textAlign)}>
+                                    <h3 className="font-bold">{t("dash.teacher.topics.qe.aiTitle")}</h3>
                                     <p className="text-sm text-muted-foreground">
-                                        استخدم Gemini AI لتوليد أسئلة وألعاب تفاعلية
+                                        {t("dash.teacher.topics.qe.aiDesc")}
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className={cn("flex flex-wrap gap-2", isRtl ? "justify-start" : "justify-end")}>
                                 {media.length > 0 && (
                                     <Button
                                         onClick={() => setAIMode("resources")}
                                         className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
                                     >
                                         <Database className="w-4 h-4" />
-                                        من موارد الدرس ({media.length})
+                                        {t("dash.teacher.topics.qe.fromResources", { n: media.length })}
                                     </Button>
                                 )}
                                 <Button
@@ -343,7 +232,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                     className="gap-2 border-purple-500/30 hover:border-purple-500 hover:bg-purple-500/10"
                                 >
                                     <FileUp className="w-4 h-4" />
-                                    رفع ملفات أو صور
+                                    {t("dash.teacher.topics.qe.uploadFiles")}
                                 </Button>
                             </div>
                         </div>
@@ -351,7 +240,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                 </Card>
             ) : null}
 
-            {/* AI Generator - Upload Mode */}
             <AnimatePresence>
                 {aiMode === "upload" && (
                     <AIQuestionGenerator
@@ -361,7 +249,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                 )}
             </AnimatePresence>
 
-            {/* AI Generator - Resources Mode */}
             <AnimatePresence>
                 {aiMode === "resources" && media.length > 0 && (
                     <AIQuestionGeneratorFromResources
@@ -372,7 +259,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                 )}
             </AnimatePresence>
 
-            {/* Add New Button */}
             <Button
                 onClick={() => {
                     setShowAddDialog(true);
@@ -382,10 +268,9 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                 className="w-full border-dashed border-2 h-16 text-lg gap-2"
             >
                 <Plus className="w-5 h-5" />
-                {isExamMode ? "إضافة سؤال جديد" : "إضافة سؤال أو لعبة جديدة"}
+                {isExamMode ? t("dash.teacher.topics.qe.addQuestion") : t("dash.teacher.topics.qe.addQuestionOrGame")}
             </Button>
 
-            {/* Add Dialog */}
             <AnimatePresence>
                 {showAddDialog && (
                     <motion.div
@@ -396,7 +281,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                         <Card className="border-primary/50 bg-gradient-to-br from-primary/5 to-secondary/5">
                             <CardHeader>
                                 <CardTitle className="flex items-center justify-between">
-                                    <span>إضافة عنصر جديد</span>
+                                    <span>{t("dash.teacher.topics.qe.addNewItem")}</span>
                                     <Button variant="ghost" size="icon" onClick={() => {
                                         setShowAddDialog(false);
                                         setSelectedCategory(null);
@@ -407,7 +292,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                             </CardHeader>
                             <CardContent>
                                 {!selectedCategory ? (
-                                    // Step 1: Choose category
                                     <div className="grid grid-cols-2 gap-4">
                                         <motion.button
                                             whileHover={{ scale: 1.02 }}
@@ -416,9 +300,9 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                             className="p-6 rounded-xl border-2 border-primary/30 hover:border-primary bg-background text-center transition-all"
                                         >
                                             <HelpCircle className="w-12 h-12 mx-auto mb-3 text-primary" />
-                                            <h3 className="text-lg font-bold mb-1">سؤال (نشاط)</h3>
+                                            <h3 className="text-lg font-bold mb-1">{t("dash.teacher.topics.qe.activityCategory")}</h3>
                                             <p className="text-sm text-muted-foreground">
-                                                اختيار متعدد، صح وخطأ، ترتيب...
+                                                {t("dash.teacher.topics.qe.activityHint")}
                                             </p>
                                         </motion.button>
                                         <motion.button
@@ -428,14 +312,13 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                             className="p-6 rounded-xl border-2 border-secondary/30 hover:border-secondary bg-background text-center transition-all"
                                         >
                                             <Gamepad2 className="w-12 h-12 mx-auto mb-3 text-secondary" />
-                                            <h3 className="text-lg font-bold mb-1">لعبة</h3>
+                                            <h3 className="text-lg font-bold mb-1">{t("dash.teacher.topics.qe.gameCategory")}</h3>
                                             <p className="text-sm text-muted-foreground">
-                                                مطابقة، تصويب، دوران العجلة...
+                                                {t("dash.teacher.topics.qe.gameHint")}
                                             </p>
                                         </motion.button>
                                     </div>
                                 ) : (
-                                    // Step 2: Choose specific type
                                     <div className="space-y-4">
                                         {!isExamMode && (
                                             <Button
@@ -444,7 +327,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                 onClick={() => setSelectedCategory(null)}
                                                 className="mb-2"
                                             >
-                                                ← رجوع
+                                                {t("dash.teacher.topics.qe.back")}
                                             </Button>
                                         )}
 
@@ -480,7 +363,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                 )}
             </AnimatePresence>
 
-            {/* Items List */}
             <div className="space-y-4">
                 {questionItems.map((item, index) => {
                     const TypeIcon = getTypeIcon(item.type);
@@ -497,13 +379,11 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                             <Card className={`overflow-hidden transition-all ${isEditing ? "ring-2 ring-primary" : ""
                                 } ${isGame ? "border-secondary/30" : "border-primary/30"}`}>
                                 <CardContent className="p-0">
-                                    {/* Item Header */}
                                     <div
                                         className={`p-4 flex items-center gap-4 cursor-pointer ${isGame ? "bg-secondary/5" : "bg-primary/5"
                                             }`}
                                         onClick={() => setEditingIndex(isEditing ? null : index)}
                                     >
-                                        {/* Reorder buttons */}
                                         <div className="flex flex-col gap-1">
                                             <Button
                                                 variant="ghost"
@@ -525,19 +405,16 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                             </Button>
                                         </div>
 
-                                        {/* Number */}
                                         <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${isGame ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
                                             }`}>
                                             {index + 1}
                                         </span>
 
-                                        {/* Type Icon */}
                                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isGame ? "bg-secondary/10" : "bg-primary/10"
                                             }`}>
                                             <TypeIcon className={`w-5 h-5 ${isGame ? "text-secondary" : "text-primary"}`} />
                                         </div>
 
-                                        {/* Content */}
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className={`text-xs px-2 py-0.5 rounded ${isGame ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary"
@@ -547,20 +424,19 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                 {!isExamMode && (
                                                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
-                                                        {item.timeLimit}ث
+                                                        {t("dash.teacher.topics.qe.secondsShort", { n: item.timeLimit ?? 0 })}
                                                     </span>
                                                 )}
                                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                                     <Star className="w-3 h-3" />
-                                                    {item.points} نقطة
+                                                    {t("dash.teacher.topics.qe.pointsShort", { n: item.points ?? 0 })}
                                                 </span>
                                             </div>
                                             <p className="text-sm font-medium truncate">
-                                                {item.question || "(بدون عنوان)"}
+                                                {item.question || t("dash.teacher.topics.qe.noTitle")}
                                             </p>
                                         </div>
 
-                                        {/* Delete */}
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -571,7 +447,6 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                         </Button>
                                     </div>
 
-                                    {/* Editing Form */}
                                     <AnimatePresence>
                                         {isEditing && (
                                             <motion.div
@@ -581,16 +456,15 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                 className="overflow-hidden"
                                             >
                                                 <div className="p-4 border-t space-y-4">
-                                                    {/* Common Fields */}
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                         <div className="md:col-span-2">
                                                             <label className="text-sm font-medium mb-2 block">
-                                                                {item.type === "wheel_spin" ? "عنوان العجلة" : "السؤال / العنوان"} *
+                                                                {item.type === "wheel_spin" ? t("dash.teacher.topics.qe.wheelTitle") : t("dash.teacher.topics.qe.questionTitle")} *
                                                             </label>
                                                             <Input
                                                                 value={item.question}
                                                                 onChange={(e) => updateItem(index, { question: e.target.value })}
-                                                                placeholder="أدخل نص السؤال أو العنوان"
+                                                                placeholder={t("dash.teacher.topics.qe.questionPlaceholder")}
                                                             />
                                                         </div>
                                                         <div className={`grid ${isExamMode ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
@@ -598,7 +472,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                                 <div>
                                                                     <label className="text-sm font-medium mb-2 block flex items-center gap-1">
                                                                         <Clock className="w-3 h-3" />
-                                                                        الوقت (ثانية)
+                                                                        {t("dash.teacher.topics.qe.timeSeconds")}
                                                                     </label>
                                                                     <Input
                                                                         type="number"
@@ -612,7 +486,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                             <div>
                                                                 <label className="text-sm font-medium mb-2 block flex items-center gap-1">
                                                                     <Star className="w-3 h-3" />
-                                                                    النقاط
+                                                                    {t("dash.teacher.topics.qe.points")}
                                                                 </label>
                                                                 <Input
                                                                     type="number"
@@ -625,21 +499,30 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                                                         </div>
                                                     </div>
 
-                                                    <QuestionImageFields
-                                                        imageUrl={item.imageUrl}
-                                                        onImageUrlChange={(url) => updateItem(index, { imageUrl: url })}
+                                                    <QuestionAttachmentField
+                                                        key={item.id}
+                                                        value={{
+                                                            imageUrl: item.imageUrl,
+                                                            videoUrl: item.videoUrl,
+                                                            audioUrl: item.audioUrl,
+                                                        }}
+                                                        onChange={(attachment) =>
+                                                            updateItem(index, {
+                                                                imageUrl: attachment.imageUrl,
+                                                                videoUrl: attachment.videoUrl,
+                                                                audioUrl: attachment.audioUrl,
+                                                            })
+                                                        }
                                                     />
 
-                                                    {/* Type-specific fields */}
-                                                    {renderTypeSpecificFields(item, index, updateItem)}
+                                                    {renderTypeSpecificFields(item, index, updateItem, wheelSpinSoundUrl)}
 
-                                                    {/* Explanation */}
                                                     <div>
-                                                        <label className="text-sm font-medium mb-2 block">شرح الإجابة (اختياري)</label>
+                                                        <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.explanationOptional")}</label>
                                                         <Textarea
                                                             value={item.explanation || ""}
                                                             onChange={(e) => updateItem(index, { explanation: e.target.value })}
-                                                            placeholder="شرح يظهر بعد الإجابة"
+                                                            placeholder={t("dash.teacher.topics.qe.explanationPlaceholder")}
                                                             rows={2}
                                                         />
                                                     </div>
@@ -653,15 +536,14 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                     );
                 })}
 
-                {/* Empty State */}
                 {questionItems.length === 0 && !showAddDialog && (
                     <Card className="p-12 text-center">
                         <Gamepad2 className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                        <h3 className="text-xl font-bold mb-2">لا توجد أسئلة أو ألعاب</h3>
-                        <p className="text-muted-foreground mb-4">ابدأ بإضافة سؤال أو لعبة جديدة</p>
+                        <h3 className="text-xl font-bold mb-2">{t("dash.teacher.topics.qe.emptyTitle")}</h3>
+                        <p className="text-muted-foreground mb-4">{t("dash.teacher.topics.qe.emptyDesc")}</p>
                         <Button onClick={() => setShowAddDialog(true)} className="gap-2">
                             <Plus className="w-4 h-4" />
-                            إضافة عنصر جديد
+                            {t("dash.teacher.topics.qe.addNewItem")}
                         </Button>
                     </Card>
                 )}
@@ -670,11 +552,11 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
     );
 };
 
-// Render type-specific form fields
 const renderTypeSpecificFields = (
     item: ChallengeQuestion,
     index: number,
-    updateItem: (index: number, updates: Partial<ChallengeQuestion>) => void
+    updateItem: (index: number, updates: Partial<ChallengeQuestion>) => void,
+    wheelSpinSoundUrl?: string
 ) => {
     switch (item.type) {
         case "multiple_choice":
@@ -691,7 +573,7 @@ const renderTypeSpecificFields = (
         case "shooting":
             return <ShootingFields item={item} index={index} updateItem={updateItem} />;
         case "wheel_spin":
-            return <WheelSpinFields item={item} index={index} updateItem={updateItem} />;
+            return <WheelSpinFields item={item} index={index} updateItem={updateItem} wheelSpinSoundUrl={wheelSpinSoundUrl} />;
         case "puzzle":
             return <PuzzleFields item={item} index={index} updateItem={updateItem} />;
         default:
@@ -699,82 +581,91 @@ const renderTypeSpecificFields = (
     }
 };
 
-// Field Components
 interface FieldProps {
     item: ChallengeQuestion;
     index: number;
     updateItem: (index: number, updates: Partial<ChallengeQuestion>) => void;
 }
 
-const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => (
-    <div>
-        <label className="text-sm font-medium mb-2 block">الخيارات (انقر على الرقم لتحديد الإجابة الصحيحة)</label>
-        <div className="space-y-2">
-            {(item.options || []).map((opt, i) => (
-                <div key={i} className="flex items-center gap-2">
-                    <Button
-                        variant={item.correctAnswer === i ? "default" : "outline"}
-                        size="icon"
-                        className="h-9 w-9 flex-shrink-0"
-                        onClick={() => updateItem(index, { correctAnswer: i })}
-                    >
-                        {item.correctAnswer === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
-                    </Button>
-                    <Input
-                        value={opt}
-                        onChange={(e) => {
-                            const opts = [...(item.options || [])];
-                            opts[i] = e.target.value;
-                            updateItem(index, { options: opts });
-                        }}
-                        placeholder={`الخيار ${i + 1}`}
-                        className={item.correctAnswer === i ? "border-primary" : ""}
-                    />
-                </div>
-            ))}
+const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
+    return (
+        <div>
+            <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.optionsClickCorrect")}</label>
+            <div className="space-y-2">
+                {(item.options || []).map((opt, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                        <Button
+                            variant={item.correctAnswer === i ? "default" : "outline"}
+                            size="icon"
+                            className="h-9 w-9 flex-shrink-0"
+                            onClick={() => updateItem(index, { correctAnswer: i })}
+                        >
+                            {item.correctAnswer === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                        </Button>
+                        <Input
+                            value={opt}
+                            onChange={(e) => {
+                                const opts = [...(item.options || [])];
+                                opts[i] = e.target.value;
+                                updateItem(index, { options: opts });
+                            }}
+                            placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
+                            className={item.correctAnswer === i ? "border-primary" : ""}
+                        />
+                    </div>
+                ))}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
-const TrueFalseFields = ({ item, index, updateItem }: FieldProps) => (
-    <div>
-        <label className="text-sm font-medium mb-2 block">الإجابة الصحيحة</label>
-        <div className="flex gap-4">
-            <Button
-                variant={item.correctAnswer === 0 ? "default" : "outline"}
-                className="flex-1 h-12 text-lg gap-2"
-                onClick={() => updateItem(index, { correctAnswer: 0 })}
-            >
-                <CheckCircle className="w-5 h-5" />
-                صح ✓
-            </Button>
-            <Button
-                variant={item.correctAnswer === 1 ? "default" : "outline"}
-                className="flex-1 h-12 text-lg gap-2"
-                onClick={() => updateItem(index, { correctAnswer: 1 })}
-            >
-                <XCircle className="w-5 h-5" />
-                خطأ ✗
-            </Button>
+const TrueFalseFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
+    return (
+        <div>
+            <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.correctAnswer")}</label>
+            <div className="flex gap-4">
+                <Button
+                    variant={item.correctAnswer === 0 ? "default" : "outline"}
+                    className="flex-1 h-12 text-lg gap-2"
+                    onClick={() => updateItem(index, { correctAnswer: 0 })}
+                >
+                    <CheckCircle className="w-5 h-5" />
+                    {t("dash.teacher.topics.qe.trueLabel")}
+                </Button>
+                <Button
+                    variant={item.correctAnswer === 1 ? "default" : "outline"}
+                    className="flex-1 h-12 text-lg gap-2"
+                    onClick={() => updateItem(index, { correctAnswer: 1 })}
+                >
+                    <XCircle className="w-5 h-5" />
+                    {t("dash.teacher.topics.qe.falseLabel")}
+                </Button>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
-const OpenAnswerFields = ({ item, index, updateItem }: FieldProps) => (
-    <div>
-        <label className="text-sm font-medium mb-2 block">
-            {item.type === "know_dont_know" ? "الإجابة / المعلومة الصحيحة" : "الإجابة المتوقعة"}
-        </label>
-        <Textarea
-            value={String(item.correctAnswer || "")}
-            onChange={(e) => updateItem(index, { correctAnswer: e.target.value })}
-            placeholder="أدخل الإجابة الصحيحة أو المعلومة"
-            rows={2}
-        />
-    </div>
-);
+const OpenAnswerFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
+    return (
+        <div>
+            <label className="text-sm font-medium mb-2 block">
+                {item.type === "know_dont_know" ? t("dash.teacher.topics.qe.knowAnswer") : t("dash.teacher.topics.qe.expectedAnswer")}
+            </label>
+            <Textarea
+                value={String(item.correctAnswer || "")}
+                onChange={(e) => updateItem(index, { correctAnswer: e.target.value })}
+                placeholder={t("dash.teacher.topics.qe.answerPlaceholder")}
+                rows={2}
+            />
+        </div>
+    );
+};
 
 const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
     const orderItems = item.orderItems || [];
 
     const addOrderItem = () => {
@@ -788,7 +679,7 @@ const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
     return (
         <div>
             <label className="text-sm font-medium mb-2 block">
-                العناصر بالترتيب الصحيح (من الأول للأخير)
+                {t("dash.teacher.topics.qe.orderItemsLabel")}
             </label>
             <div className="space-y-2">
                 {orderItems.map((item_text, i) => (
@@ -803,7 +694,7 @@ const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
                                 items[i] = e.target.value;
                                 updateItem(index, { orderItems: items });
                             }}
-                            placeholder={`العنصر ${i + 1}`}
+                            placeholder={t("dash.teacher.topics.qe.itemN", { n: i + 1 })}
                         />
                         <Button
                             variant="ghost"
@@ -818,17 +709,18 @@ const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
                 ))}
                 <Button variant="outline" size="sm" onClick={addOrderItem} className="gap-1">
                     <Plus className="w-4 h-4" />
-                    إضافة عنصر
+                    {t("dash.teacher.topics.qe.addItem")}
                 </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-                💡 سيتم خلط العناصر عند عرضها على اللاعب
+                {t("dash.teacher.topics.qe.shuffleHint")}
             </p>
         </div>
     );
 };
 
 const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
     const pairs = item.pairs || [];
 
     const addPair = () => {
@@ -841,11 +733,11 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
 
     return (
         <div>
-            <label className="text-sm font-medium mb-2 block">أزواج المطابقة</label>
+            <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.matchingPairs")}</label>
             <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2 text-xs font-medium text-muted-foreground">
-                    <span>العمود الأيمن (المصدر)</span>
-                    <span>العمود الأيسر (المطابق)</span>
+                    <span>{t("dash.teacher.topics.qe.rightColumn")}</span>
+                    <span>{t("dash.teacher.topics.qe.leftColumn")}</span>
                 </div>
                 {pairs.map((pair, i) => (
                     <div key={i} className="flex items-center gap-2">
@@ -856,7 +748,7 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
                                 newPairs[i] = { ...newPairs[i], left: e.target.value };
                                 updateItem(index, { pairs: newPairs });
                             }}
-                            placeholder={`المصدر ${i + 1}`}
+                            placeholder={t("dash.teacher.topics.qe.sourceN", { n: i + 1 })}
                         />
                         <ArrowLeftRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                         <Input
@@ -866,7 +758,7 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
                                 newPairs[i] = { ...newPairs[i], right: e.target.value };
                                 updateItem(index, { pairs: newPairs });
                             }}
-                            placeholder={`المطابق ${i + 1}`}
+                            placeholder={t("dash.teacher.topics.qe.matchN", { n: i + 1 })}
                         />
                         <Button
                             variant="ghost"
@@ -881,49 +773,192 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
                 ))}
                 <Button variant="outline" size="sm" onClick={addPair} className="gap-1">
                     <Plus className="w-4 h-4" />
-                    إضافة زوج
+                    {t("dash.teacher.topics.qe.addPair")}
                 </Button>
             </div>
         </div>
     );
 };
 
-const ShootingFields = ({ item, index, updateItem }: FieldProps) => (
-    <div>
-        <label className="text-sm font-medium mb-2 block">
-            الخيارات (حدد الخيار الذي يجب إطلاق النار عليه)
-        </label>
-        <div className="space-y-2">
-            {(item.options || []).map((opt, i) => (
-                <div key={i} className="flex items-center gap-2">
-                    <Button
-                        variant={item.correctAnswer === i ? "destructive" : "outline"}
-                        size="icon"
-                        className="h-9 w-9 flex-shrink-0"
-                        onClick={() => updateItem(index, { correctAnswer: i })}
-                    >
-                        {item.correctAnswer === i ? <Target className="w-4 h-4" /> : i + 1}
-                    </Button>
-                    <Input
-                        value={opt}
-                        onChange={(e) => {
-                            const opts = [...(item.options || [])];
-                            opts[i] = e.target.value;
-                            updateItem(index, { options: opts });
-                        }}
-                        placeholder={`الخيار ${i + 1}`}
-                        className={item.correctAnswer === i ? "border-destructive" : ""}
-                    />
-                </div>
-            ))}
+const ShootingFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
+    return (
+        <div>
+            <label className="text-sm font-medium mb-2 block">
+                {t("dash.teacher.topics.qe.shootingOptions")}
+            </label>
+            <div className="space-y-2">
+                {(item.options || []).map((opt, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                        <Button
+                            variant={item.correctAnswer === i ? "destructive" : "outline"}
+                            size="icon"
+                            className="h-9 w-9 flex-shrink-0"
+                            onClick={() => updateItem(index, { correctAnswer: i })}
+                        >
+                            {item.correctAnswer === i ? <Target className="w-4 h-4" /> : i + 1}
+                        </Button>
+                        <Input
+                            value={opt}
+                            onChange={(e) => {
+                                const opts = [...(item.options || [])];
+                                opts[i] = e.target.value;
+                                updateItem(index, { options: opts });
+                            }}
+                            placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
+                            className={item.correctAnswer === i ? "border-destructive" : ""}
+                        />
+                    </div>
+                ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+                {t("dash.teacher.topics.qe.shootingHint")}
+            </p>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-            🎯 الخيار المحدد باللون الأحمر هو الهدف الصحيح
-        </p>
-    </div>
-);
+    );
+};
 
-const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
+const WHEEL_SEGMENT_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD"];
+
+type WheelSegment = NonNullable<ChallengeQuestion["wheelSegments"]>[number];
+
+const WheelSpinPreview = ({
+    segments,
+    wheelSpinSoundUrl,
+}: {
+    segments: WheelSegment[];
+    wheelSpinSoundUrl?: string;
+}) => {
+    const { t } = useDashboardLocale();
+    const [rotation, setRotation] = useState(0);
+    const [isSpinning, setIsSpinning] = useState(false);
+    const [resultIdx, setResultIdx] = useState<number | null>(null);
+
+    const soundOverrides = useMemo(
+        () => ({ wheel_spin: resolveWheelSpinSoundUrl(wheelSpinSoundUrl) }),
+        [wheelSpinSoundUrl]
+    );
+    const { playWheelSpin } = useSound(true, soundOverrides);
+
+    const labels = segments
+        .map((s, i) => (s.label?.trim() ? s.label.trim() : t("dash.teacher.topics.qe.segmentN", { n: i + 1 })))
+        .filter(Boolean);
+
+    const handleSpin = () => {
+        if (isSpinning || labels.length < 2) return;
+        setIsSpinning(true);
+        setResultIdx(null);
+        playWheelSpin();
+
+        const resultIndex = Math.floor(Math.random() * labels.length);
+        const segmentAngle = 360 / labels.length;
+        const spins = 4 + Math.floor(Math.random() * 2);
+        const targetRotation = spins * 360 + (360 - resultIndex * segmentAngle - segmentAngle / 2);
+        setRotation((prev) => prev + targetRotation);
+
+        window.setTimeout(() => {
+            setIsSpinning(false);
+            setResultIdx(resultIndex);
+        }, WHEEL_SPIN_DURATION_MS);
+    };
+
+    if (labels.length < 2) {
+        return (
+            <p className="text-xs text-muted-foreground rounded-lg border border-dashed p-3 text-center">
+                {t("dash.teacher.topics.qe.wheelNeedSegments")}
+            </p>
+        );
+    }
+
+    const segmentAngle = 360 / labels.length;
+
+    return (
+        <div className="rounded-lg border bg-gradient-to-br from-primary/5 to-secondary/5 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+                <Volume2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                    <p className="text-sm font-medium">{t("dash.teacher.topics.qe.wheelPreview")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dash.teacher.topics.qe.wheelPreviewDesc")}</p>
+                </div>
+            </div>
+
+            <div className="flex flex-col items-center">
+                <div className="relative w-48 h-48 sm:w-56 sm:h-56">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10">
+                        <div className="w-0 h-0 border-l-[12px] border-r-[12px] border-t-[20px] border-l-transparent border-r-transparent border-t-primary" />
+                    </div>
+                    <motion.div
+                        className="w-full h-full rounded-full overflow-hidden border-4 border-primary shadow-lg"
+                        style={{ transformOrigin: "center center" }}
+                        animate={{ rotate: rotation }}
+                        transition={{ duration: WHEEL_SPIN_DURATION_SEC, ease: WHEEL_SPIN_EASE }}
+                    >
+                        <svg viewBox="0 0 100 100" className="w-full h-full">
+                            {labels.map((label, i) => {
+                                const startAngle = i * segmentAngle - 90;
+                                const endAngle = (i + 1) * segmentAngle - 90;
+                                const largeArcFlag = segmentAngle > 180 ? 1 : 0;
+                                const x1 = 50 + 50 * Math.cos((startAngle * Math.PI) / 180);
+                                const y1 = 50 + 50 * Math.sin((startAngle * Math.PI) / 180);
+                                const x2 = 50 + 50 * Math.cos((endAngle * Math.PI) / 180);
+                                const y2 = 50 + 50 * Math.sin((endAngle * Math.PI) / 180);
+                                const textAngle = startAngle + segmentAngle / 2;
+                                const textX = 50 + 30 * Math.cos((textAngle * Math.PI) / 180);
+                                const textY = 50 + 30 * Math.sin((textAngle * Math.PI) / 180);
+
+                                return (
+                                    <g key={i}>
+                                        <path
+                                            d={`M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArcFlag} 1 ${x2} ${y2} Z`}
+                                            fill={WHEEL_SEGMENT_COLORS[i % WHEEL_SEGMENT_COLORS.length]}
+                                            stroke="white"
+                                            strokeWidth="0.5"
+                                        />
+                                        <text
+                                            x={textX}
+                                            y={textY}
+                                            textAnchor="middle"
+                                            dominantBaseline="middle"
+                                            fill="white"
+                                            fontSize="4"
+                                            fontWeight="bold"
+                                            transform={`rotate(${textAngle + 90}, ${textX}, ${textY})`}
+                                        >
+                                            {label.length > 10 ? `${label.substring(0, 10)}…` : label}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+                            <circle cx="50" cy="50" r="8" fill="white" stroke="#333" strokeWidth="0.5" />
+                        </svg>
+                    </motion.div>
+                </div>
+
+                {!isSpinning && (
+                    <Button
+                        type="button"
+                        onClick={handleSpin}
+                        size="sm"
+                        className="mt-3 gap-2"
+                        disabled={isSpinning}
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        {t("dash.teacher.topics.qe.spinWheel")}
+                    </Button>
+                )}
+
+                {resultIdx !== null && !isSpinning && (
+                    <p className="text-sm font-medium text-primary mt-2 animate-in fade-in">
+                        {t("dash.teacher.topics.qe.wheelResult", { label: labels[resultIdx] })}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldProps & { wheelSpinSoundUrl?: string }) => {
+    const { t } = useDashboardLocale();
     const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
     const segments = item.wheelSegments || (item.options?.map(opt => ({
@@ -937,7 +972,7 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
     const addSegment = () => {
         updateItem(index, {
             wheelSegments: [...segments, {
-                label: "شريحة جديدة",
+                label: t("dash.teacher.topics.qe.newSegment"),
                 points: 100,
                 question: "",
                 options: ["", "", "", ""],
@@ -946,7 +981,7 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
         });
     };
 
-    const updateSegment = (sIndex: number, field: string, value: any) => {
+    const updateSegment = (sIndex: number, field: string, value: unknown) => {
         const newSegments = [...segments];
         newSegments[sIndex] = { ...newSegments[sIndex], [field]: value };
         updateItem(index, { wheelSegments: newSegments });
@@ -965,8 +1000,11 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
     };
 
     return (
-        <div>
-            <label className="text-sm font-medium mb-2 block">شرائح العجلة (الأسئلة والخيارات)</label>
+        <div className="space-y-4">
+            <WheelSpinPreview segments={segments} wheelSpinSoundUrl={wheelSpinSoundUrl} />
+
+            <div>
+            <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.wheelSegments")}</label>
             <div className="space-y-3">
                 {segments.map((segment, i) => {
                     const isExpanded = expandedIndex === i;
@@ -981,8 +1019,8 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
                                     >
                                         {i + 1}
                                     </span>
-                                    <span className="text-sm font-bold">{segment.label || `الشريحة ${i + 1}`}</span>
-                                    <span className="text-xs text-muted-foreground ml-2">({segment.points} نقطة)</span>
+                                    <span className="text-sm font-bold">{segment.label || t("dash.teacher.topics.qe.segmentN", { n: i + 1 })}</span>
+                                    <span className="text-xs text-muted-foreground ml-2">({t("dash.teacher.topics.qe.pointsShort", { n: segment.points ?? 0 })})</span>
                                 </div>
                                 <div className="flex gap-1">
                                     <Button
@@ -1009,17 +1047,17 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
                                 <div className="space-y-3 mt-2 border-t pt-3">
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="text-xs text-muted-foreground mb-1 block">عنوان الشريحة</label>
+                                            <label className="text-xs text-muted-foreground mb-1 block">{t("dash.teacher.topics.qe.segmentTitle")}</label>
                                             <Input
                                                 value={segment.label}
                                                 onChange={(e) => updateSegment(i, 'label', e.target.value)}
-                                                placeholder="مثال: سهل"
+                                                placeholder={t("dash.teacher.topics.qe.segmentTitleExample")}
                                                 className="h-8 text-sm"
                                             />
                                         </div>
                                         <div>
                                             <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
-                                                <Star className="w-3 h-3" /> النقاط
+                                                <Star className="w-3 h-3" /> {t("dash.teacher.topics.qe.points")}
                                             </label>
                                             <Input
                                                 type="number"
@@ -1031,17 +1069,17 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
                                     </div>
 
                                     <div>
-                                        <label className="text-xs text-muted-foreground mb-1 block">السؤال</label>
+                                        <label className="text-xs text-muted-foreground mb-1 block">{t("dash.teacher.topics.qe.segmentQuestion")}</label>
                                         <Input
                                             value={segment.question}
                                             onChange={(e) => updateSegment(i, 'question', e.target.value)}
-                                            placeholder="السؤال المرتبط بهذه الشريحة"
+                                            placeholder={t("dash.teacher.topics.qe.segmentQuestionPlaceholder")}
                                             className="h-8 text-sm"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="text-xs text-muted-foreground mb-1 block">الخيارات (حدد الإجابة الصحيحة)</label>
+                                        <label className="text-xs text-muted-foreground mb-1 block">{t("dash.teacher.topics.qe.segmentOptions")}</label>
                                         <div className="space-y-2">
                                             {segmentOptions.map((opt, oIdx) => (
                                                 <div key={oIdx} className="flex items-center gap-2">
@@ -1056,7 +1094,7 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
                                                     <Input
                                                         value={opt}
                                                         onChange={(e) => updateSegmentOption(i, oIdx, e.target.value)}
-                                                        placeholder={`خيار ${oIdx + 1}`}
+                                                        placeholder={t("dash.teacher.topics.qe.optionShortN", { n: oIdx + 1 })}
                                                         className="h-8 text-sm"
                                                     />
                                                 </div>
@@ -1071,14 +1109,16 @@ const WheelSpinFields = ({ item, index, updateItem }: FieldProps) => {
 
                 <Button variant="outline" size="sm" onClick={addSegment} className="w-full gap-1 mt-2">
                     <Plus className="w-4 h-4" />
-                    إضافة شريحة جديدة
+                    {t("dash.teacher.topics.qe.addSegment")}
                 </Button>
+            </div>
             </div>
         </div>
     );
 };
 
 const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
+    const { t } = useDashboardLocale();
     const options = item.options || [];
     const correctAnswerIndex = typeof item.correctAnswer === "number" ? item.correctAnswer : 0;
 
@@ -1105,7 +1145,7 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
     return (
         <div className="space-y-4">
             <div>
-                <label className="text-sm font-medium mb-2 block">خيارات اللغز</label>
+                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.puzzleOptions")}</label>
                 <div className="space-y-2">
                     {options.map((opt, i) => (
                         <div key={i} className="flex items-center gap-2">
@@ -1124,7 +1164,7 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
                                     opts[i] = e.target.value;
                                     updateItem(index, { options: opts });
                                 }}
-                                placeholder={`الخيار ${i + 1}`}
+                                placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
                             />
                             <Button
                                 variant="ghost"
@@ -1139,7 +1179,7 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
                     ))}
                     <Button variant="outline" size="sm" onClick={addOption} className="gap-1">
                         <Plus className="w-4 h-4" />
-                        إضافة خيار
+                        {t("dash.teacher.topics.qe.addOption")}
                     </Button>
                 </div>
             </div>

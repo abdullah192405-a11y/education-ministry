@@ -43,7 +43,9 @@ import {
     useUpsertOrganizationSubscription,
 } from "@/hooks/useDatabase";
 import { useToast } from "@/hooks/use-toast";
-import { getPackageLabel, type OrgPackage } from "@/lib/accountOnboarding";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import type { TFunction } from "@/contexts/LanguageContext";
+import type { OrgPackage } from "@/lib/accountOnboarding";
 
 type OrgKind = "EDUCATIONAL" | "ENRICHMENT" | "BOTH";
 type OrgPlan = OrgPackage;
@@ -60,58 +62,33 @@ type SubscriptionDraft = {
     notes: string;
 };
 
-const STATUS_META: Record<
+function formatSar(amount: number, locale: string, language: string): string {
+    const n = Math.round(amount).toLocaleString(locale);
+    return language === "ar" ? `${n} ر.س` : `SAR ${n}`;
+}
+
+function packageLabel(t: TFunction, pkg: OrgPlan): string {
+    return pkg === "INSTITUTION_ADMIN_STUDENT"
+        ? t("dash.super.planDistribution.adminStudent")
+        : t("dash.super.planDistribution.full");
+}
+
+function orgKindLabel(t: TFunction, kind: OrgKind): string {
+    if (kind === "EDUCATIONAL") return t("dash.super.create.kindEducational");
+    if (kind === "ENRICHMENT") return t("dash.super.create.kindEnrichment");
+    return t("dash.super.create.kindBoth");
+}
+
+function statusMeta(t: TFunction): Record<
     SubscriptionStatus,
     { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
-> = {
-    ACTIVE: { label: "نشطة", variant: "default" },
-    TRIAL: { label: "تجريبية", variant: "secondary" },
-    PAST_DUE: { label: "متأخرة", variant: "destructive" },
-    CANCELED: { label: "ملغاة", variant: "outline" },
-};
-
-const PACKAGE_CATALOG: {
-    id: OrgPlan | "INDIVIDUAL_FREE";
-    title: string;
-    subtitle: string;
-    price: string;
-    features: string[];
-    icon: typeof Users;
-    accent: string;
-}[] = [
-    {
-        id: "INDIVIDUAL_FREE",
-        title: "أفراد — مجاني",
-        subtitle: "خارج المؤسسات",
-        price: "٠ ر.س",
-        features: ["محتوى إثرائي فقط", "بدون رقابة مؤسسية", "للمستخدمين المستقلين"],
-        icon: User,
-        accent: "from-slate-500/10 to-slate-500/5 border-slate-500/20",
-    },
-    {
-        id: "INSTITUTION_ADMIN_STUDENT",
-        title: getPackageLabel("INSTITUTION_ADMIN_STUDENT"),
-        subtitle: "مدرسة بدون معلمين",
-        price: "من ١٩٩ ر.س/شهر",
-        features: ["حساب أدمن", "حسابات طلاب", "تقارير أساسية"],
-        icon: GraduationCap,
-        accent: "from-violet-500/10 to-indigo-500/5 border-violet-500/25",
-    },
-    {
-        id: "INSTITUTION_FULL",
-        title: getPackageLabel("INSTITUTION_FULL"),
-        subtitle: "فريق تعليمي كامل",
-        price: "من ٣٤٩ ر.س/شهر",
-        features: ["أدمن + معلمون + طلاب", "إدارة صفوف ومواد", "تتبع وتقييم"],
-        icon: Users,
-        accent: "from-emerald-500/10 to-teal-500/5 border-emerald-500/25",
-    },
-];
-
-function getOrgKindLabel(kind: OrgKind): string {
-    if (kind === "EDUCATIONAL") return "تعليمية";
-    if (kind === "ENRICHMENT") return "إثرائية";
-    return "تعليمية + إثرائية";
+> {
+    return {
+        ACTIVE: { label: t("dash.super.plans.status.active"), variant: "default" },
+        TRIAL: { label: t("dash.super.plans.status.trial"), variant: "secondary" },
+        PAST_DUE: { label: t("dash.super.plans.status.pastDue"), variant: "destructive" },
+        CANCELED: { label: t("dash.super.plans.status.canceled"), variant: "outline" },
+    };
 }
 
 function monthlyAmount(price: number, cycle: BillingCycle): number {
@@ -130,9 +107,57 @@ function defaultPriceForPackage(pkg: OrgPlan, refAdmin: number, refFull: number)
 
 export function SuperadminPlansTab() {
     const { toast } = useToast();
+    const { t, dir, isRtl, locale, language } = useDashboardLocale();
     const { data: organizations = [], isLoading: loadingOrgs } = useOrganizations({ includeInactive: true });
     const { data: subscriptions = [], isLoading: loadingSubs } = useOrganizationSubscriptions();
     const upsertSubscription = useUpsertOrganizationSubscription();
+
+    const STATUS_META = useMemo(() => statusMeta(t), [t]);
+
+    const PACKAGE_CATALOG = useMemo(
+        () => [
+            {
+                id: "INDIVIDUAL_FREE" as const,
+                title: t("dash.super.plans.catalog.individualTitle"),
+                subtitle: t("dash.super.plans.catalog.individualSubtitle"),
+                price: t("dash.super.plans.catalog.individualPrice"),
+                features: [
+                    t("dash.super.plans.catalog.individualFeature1"),
+                    t("dash.super.plans.catalog.individualFeature2"),
+                    t("dash.super.plans.catalog.individualFeature3"),
+                ],
+                icon: User,
+                accent: "from-slate-500/10 to-slate-500/5 border-slate-500/20",
+            },
+            {
+                id: "INSTITUTION_ADMIN_STUDENT" as const,
+                title: t("dash.super.planDistribution.adminStudent"),
+                subtitle: t("dash.super.plans.catalog.adminStudentSubtitle"),
+                price: t("dash.super.plans.catalog.adminStudentPrice"),
+                features: [
+                    t("dash.super.plans.catalog.adminStudentFeature1"),
+                    t("dash.super.plans.catalog.adminStudentFeature2"),
+                    t("dash.super.plans.catalog.adminStudentFeature3"),
+                ],
+                icon: GraduationCap,
+                accent: "from-violet-500/10 to-indigo-500/5 border-violet-500/25",
+            },
+            {
+                id: "INSTITUTION_FULL" as const,
+                title: t("dash.super.planDistribution.full"),
+                subtitle: t("dash.super.plans.catalog.fullSubtitle"),
+                price: t("dash.super.plans.catalog.fullPrice"),
+                features: [
+                    t("dash.super.plans.catalog.fullFeature1"),
+                    t("dash.super.plans.catalog.fullFeature2"),
+                    t("dash.super.plans.catalog.fullFeature3"),
+                ],
+                icon: Users,
+                accent: "from-emerald-500/10 to-teal-500/5 border-emerald-500/25",
+            },
+        ],
+        [t],
+    );
 
     const [refPriceAdmin, setRefPriceAdmin] = useState(199);
     const [refPriceFull, setRefPriceFull] = useState(349);
@@ -256,9 +281,9 @@ export function SuperadminPlansTab() {
                 auto_renew: draft.auto_renew,
                 notes: draft.notes?.trim() || null,
             });
-            toast({ description: "تم حفظ الاشتراك." });
+            toast({ description: t("dash.super.plans.toast.saved") });
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : "تعذّر حفظ الاشتراك.";
+            const msg = error instanceof Error ? error.message : t("dash.super.plans.toast.saveFailed");
             toast({ variant: "destructive", description: msg });
         }
     };
@@ -281,9 +306,9 @@ export function SuperadminPlansTab() {
                     notes: draft.notes?.trim() || null,
                 });
             }
-            toast({ description: "تم حفظ جميع الاشتراكات الظاهرة." });
+            toast({ description: t("dash.super.plans.toast.savedAll") });
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : "تعذّر حفظ بعض الاشتراكات.";
+            const msg = error instanceof Error ? error.message : t("dash.super.plans.toast.saveAllFailed");
             toast({ variant: "destructive", description: msg });
         }
     };
@@ -291,39 +316,47 @@ export function SuperadminPlansTab() {
     const isLoading = loadingOrgs || loadingSubs;
     const statusTotal = Math.max(1, subscriptions.length);
 
+    const kpiCards = useMemo(
+        () => [
+            {
+                label: t("dash.super.plans.kpi.mrrActual"),
+                value: formatSar(stats.mrr, locale, language),
+                sub: t("dash.super.plans.kpi.mrrSub"),
+                icon: TrendingUp,
+                tone: "text-emerald-600 bg-emerald-500/10",
+            },
+            {
+                label: t("dash.super.plans.kpi.arrActual"),
+                value: formatSar(stats.arr, locale, language),
+                sub: t("dash.super.plans.kpi.arrSub"),
+                icon: Building2,
+                tone: "text-blue-600 bg-blue-500/10",
+            },
+            {
+                label: t("dash.super.plans.kpi.renewalSoon"),
+                value: String(stats.dueSoon),
+                sub: t("dash.super.plans.kpi.renewalSoonSub"),
+                icon: CalendarClock,
+                tone: "text-amber-600 bg-amber-500/10",
+            },
+            {
+                label: t("dash.super.plans.kpi.revenueAtRisk"),
+                value: formatSar(stats.atRisk, locale, language),
+                sub: t("dash.super.plans.kpi.pastDueCount", { count: stats.byStatus.PAST_DUE }),
+                icon: AlertTriangle,
+                tone: "text-destructive bg-destructive/10",
+            },
+        ],
+        [t, stats, locale, language],
+    );
+
+    const searchIconClass = isRtl ? "right-3" : "left-3";
+    const searchInputClass = isRtl ? "pr-10" : "pl-10";
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {[
-                    {
-                        label: "MRR فعلي",
-                        value: `${Math.round(stats.mrr).toLocaleString()} ر.س`,
-                        sub: "من الاشتراكات النشطة",
-                        icon: TrendingUp,
-                        tone: "text-emerald-600 bg-emerald-500/10",
-                    },
-                    {
-                        label: "ARR فعلي",
-                        value: `${Math.round(stats.arr).toLocaleString()} ر.س`,
-                        sub: "تقدير سنوي",
-                        icon: Building2,
-                        tone: "text-blue-600 bg-blue-500/10",
-                    },
-                    {
-                        label: "تجديد خلال ٧ أيام",
-                        value: String(stats.dueSoon),
-                        sub: "مؤسسات",
-                        icon: CalendarClock,
-                        tone: "text-amber-600 bg-amber-500/10",
-                    },
-                    {
-                        label: "إيراد معرّض للخطر",
-                        value: `${Math.round(stats.atRisk).toLocaleString()} ر.س`,
-                        sub: `${stats.byStatus.PAST_DUE} متأخرة`,
-                        icon: AlertTriangle,
-                        tone: "text-destructive bg-destructive/10",
-                    },
-                ].map((kpi) => (
+                {kpiCards.map((kpi) => (
                     <Card key={kpi.label} className="overflow-hidden">
                         <CardContent className="p-4 flex items-start gap-3">
                             <div className={cn("p-2 rounded-lg shrink-0", kpi.tone)}>
@@ -339,15 +372,15 @@ export function SuperadminPlansTab() {
                 ))}
             </div>
 
-            <Tabs defaultValue="overview" dir="rtl" className="space-y-4">
+            <Tabs defaultValue="overview" dir={dir} className="space-y-4">
                 <TabsList className="w-full justify-start h-auto flex-wrap gap-1 bg-muted/50 p-1">
                     <TabsTrigger value="overview" className="text-xs sm:text-sm">
-                        الباقات والملخص
+                        {t("dash.super.plans.tab.overview")}
                     </TabsTrigger>
                     <TabsTrigger value="manage" className="text-xs sm:text-sm">
-                        إدارة الاشتراكات
+                        {t("dash.super.plans.tab.manage")}
                         {subscriptions.length > 0 && (
-                            <Badge variant="secondary" className="mr-1.5 h-5 text-[10px]">
+                            <Badge variant="secondary" className="ms-1.5 h-5 text-[10px]">
                                 {subscriptions.length}
                             </Badge>
                         )}
@@ -391,7 +424,7 @@ export function SuperadminPlansTab() {
                     <div className="grid lg:grid-cols-2 gap-4">
                         <Card>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-base">توزيع حالات الاشتراك</CardTitle>
+                                <CardTitle className="text-base">{t("dash.super.plans.statusDistribution")}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 {(Object.keys(STATUS_META) as SubscriptionStatus[]).map((st) => (
@@ -404,22 +437,20 @@ export function SuperadminPlansTab() {
                                     </div>
                                 ))}
                                 <p className="text-xs text-muted-foreground pt-1">
-                                    تجديد تلقائي مفعّل: {stats.autoRenew} اشتراك
+                                    {t("dash.super.plans.autoRenewCount", { count: stats.autoRenew })}
                                 </p>
                             </CardContent>
                         </Card>
 
                         <Card>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-base">أسعار مرجعية (تقدير الدخل)</CardTitle>
-                                <CardDescription>
-                                    للمقارنة مع MRR الفعلي — لا تُحفظ في قاعدة البيانات.
-                                </CardDescription>
+                                <CardTitle className="text-base">{t("dash.super.plans.refPricingTitle")}</CardTitle>
+                                <CardDescription>{t("dash.super.plans.refPricingDesc")}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid sm:grid-cols-2 gap-3">
                                     <div className="space-y-2">
-                                        <Label>أدمن + طالب / شهر</Label>
+                                        <Label>{t("dash.super.plans.refAdminLabel")}</Label>
                                         <Input
                                             type="number"
                                             min={0}
@@ -427,15 +458,16 @@ export function SuperadminPlansTab() {
                                             onChange={(e) => setRefPriceAdmin(Number(e.target.value || 0))}
                                         />
                                         <p className="text-xs text-muted-foreground">
-                                            {activeOrgs.filter(
-                                                (o: { subscription_package?: string }) =>
-                                                    o.subscription_package === "INSTITUTION_ADMIN_STUDENT",
-                                            ).length}{" "}
-                                            مؤسسة نشطة
+                                            {t("dash.super.plans.activeOrgsCount", {
+                                                count: activeOrgs.filter(
+                                                    (o: { subscription_package?: string }) =>
+                                                        o.subscription_package === "INSTITUTION_ADMIN_STUDENT",
+                                                ).length,
+                                            })}
                                         </p>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>أدمن + معلم + طالب / شهر</Label>
+                                        <Label>{t("dash.super.plans.refFullLabel")}</Label>
                                         <Input
                                             type="number"
                                             min={0}
@@ -443,18 +475,21 @@ export function SuperadminPlansTab() {
                                             onChange={(e) => setRefPriceFull(Number(e.target.value || 0))}
                                         />
                                         <p className="text-xs text-muted-foreground">
-                                            {activeOrgs.filter(
-                                                (o: { subscription_package?: string }) =>
-                                                    o.subscription_package === "INSTITUTION_FULL",
-                                            ).length}{" "}
-                                            مؤسسة نشطة
+                                            {t("dash.super.plans.activeOrgsCount", {
+                                                count: activeOrgs.filter(
+                                                    (o: { subscription_package?: string }) =>
+                                                        o.subscription_package === "INSTITUTION_FULL",
+                                                ).length,
+                                            })}
                                         </p>
                                     </div>
                                 </div>
                                 <div className="rounded-lg border bg-muted/30 p-3 flex justify-between items-center">
-                                    <span className="text-sm text-muted-foreground">دخل شهري تقديري</span>
+                                    <span className="text-sm text-muted-foreground">
+                                        {t("dash.super.plans.estimatedMonthly")}
+                                    </span>
                                     <span className="text-xl font-bold">
-                                        {stats.estimatedMrr.toLocaleString()} ر.س
+                                        {formatSar(stats.estimatedMrr, locale, language)}
                                     </span>
                                 </div>
                             </CardContent>
@@ -465,18 +500,21 @@ export function SuperadminPlansTab() {
                 <TabsContent value="manage" className="space-y-4 mt-0">
                     <Card>
                         <CardHeader className="pb-3">
-                            <CardTitle className="text-base">اشتراكات المؤسسات</CardTitle>
-                            <CardDescription>
-                                عدّل الباقة، الحالة، الفوترة، والسعر لكل مؤسسة ثم احفظ.
-                            </CardDescription>
+                            <CardTitle className="text-base">{t("dash.super.plans.manageTitle")}</CardTitle>
+                            <CardDescription>{t("dash.super.plans.manageDesc")}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex flex-col lg:flex-row gap-2">
                                 <div className="relative flex-1">
-                                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Search
+                                        className={cn(
+                                            "absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground",
+                                            searchIconClass,
+                                        )}
+                                    />
                                     <Input
-                                        className="pr-10"
-                                        placeholder="بحث بالاسم أو slug..."
+                                        className={searchInputClass}
+                                        placeholder={t("dash.super.plans.searchPlaceholder")}
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
                                     />
@@ -484,12 +522,13 @@ export function SuperadminPlansTab() {
                                 <Select
                                     value={statusFilter}
                                     onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+                                    dir={dir}
                                 >
                                     <SelectTrigger className="w-full lg:w-[140px]">
-                                        <SelectValue placeholder="الحالة" />
+                                        <SelectValue placeholder={t("dash.super.plans.filterStatus")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="ALL">كل الحالات</SelectItem>
+                                        <SelectItem value="ALL">{t("dash.super.plans.filterAllStatuses")}</SelectItem>
                                         {(Object.keys(STATUS_META) as SubscriptionStatus[]).map((st) => (
                                             <SelectItem key={st} value={st}>
                                                 {STATUS_META[st].label}
@@ -500,17 +539,18 @@ export function SuperadminPlansTab() {
                                 <Select
                                     value={packageFilter}
                                     onValueChange={(v) => setPackageFilter(v as typeof packageFilter)}
+                                    dir={dir}
                                 >
                                     <SelectTrigger className="w-full lg:w-[160px]">
-                                        <SelectValue placeholder="الباقة" />
+                                        <SelectValue placeholder={t("dash.super.plans.filterPackage")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="ALL">كل الباقات</SelectItem>
+                                        <SelectItem value="ALL">{t("dash.super.plans.filterAllPackages")}</SelectItem>
                                         <SelectItem value="INSTITUTION_ADMIN_STUDENT">
-                                            {getPackageLabel("INSTITUTION_ADMIN_STUDENT")}
+                                            {packageLabel(t, "INSTITUTION_ADMIN_STUDENT")}
                                         </SelectItem>
                                         <SelectItem value="INSTITUTION_FULL">
-                                            {getPackageLabel("INSTITUTION_FULL")}
+                                            {packageLabel(t, "INSTITUTION_FULL")}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -525,7 +565,7 @@ export function SuperadminPlansTab() {
                                     ) : (
                                         <Save className="w-4 h-4" />
                                     )}
-                                    حفظ الظاهر ({filteredRows.length})
+                                    {t("dash.super.plans.saveVisible", { count: filteredRows.length })}
                                 </Button>
                             </div>
 
@@ -533,21 +573,35 @@ export function SuperadminPlansTab() {
                                 <Skeleton className="h-48 w-full" />
                             ) : filteredRows.length === 0 ? (
                                 <p className="text-sm text-muted-foreground text-center py-12">
-                                    لا توجد مؤسسات مطابقة.
+                                    {t("dash.super.plans.noMatches")}
                                 </p>
                             ) : (
                                 <>
                                     <div className="hidden lg:block rounded-xl border overflow-hidden">
-                                        <Table dir="rtl">
+                                        <Table dir={dir}>
                                             <TableHeader>
                                                 <TableRow className="bg-muted/40">
-                                                    <TableHead className="text-right">المؤسسة</TableHead>
-                                                    <TableHead className="text-right">الباقة</TableHead>
-                                                    <TableHead className="text-right">الحالة</TableHead>
-                                                    <TableHead className="text-right">الدورة</TableHead>
-                                                    <TableHead className="text-right">السعر</TableHead>
-                                                    <TableHead className="text-right">الفوترة</TableHead>
-                                                    <TableHead className="text-center">تجديد</TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colOrg")}
+                                                    </TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colPackage")}
+                                                    </TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colStatus")}
+                                                    </TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colCycle")}
+                                                    </TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colPrice")}
+                                                    </TableHead>
+                                                    <TableHead className={isRtl ? "text-right" : "text-left"}>
+                                                        {t("dash.super.plans.colBilling")}
+                                                    </TableHead>
+                                                    <TableHead className="text-center">
+                                                        {t("dash.super.plans.colRenew")}
+                                                    </TableHead>
                                                     <TableHead className="text-center w-[90px]" />
                                                 </TableRow>
                                             </TableHeader>
@@ -582,16 +636,17 @@ export function SuperadminPlansTab() {
                                                                             ),
                                                                         })
                                                                     }
+                                                                    dir={dir}
                                                                 >
                                                                     <SelectTrigger className="h-8 text-xs">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
                                                                         <SelectItem value="INSTITUTION_ADMIN_STUDENT">
-                                                                            أدمن + طالب
+                                                                            {packageLabel(t, "INSTITUTION_ADMIN_STUDENT")}
                                                                         </SelectItem>
                                                                         <SelectItem value="INSTITUTION_FULL">
-                                                                            أدمن + معلم + طالب
+                                                                            {packageLabel(t, "INSTITUTION_FULL")}
                                                                         </SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
@@ -602,6 +657,7 @@ export function SuperadminPlansTab() {
                                                                     onValueChange={(v: SubscriptionStatus) =>
                                                                         updateDraft(org.id, { status: v })
                                                                     }
+                                                                    dir={dir}
                                                                 >
                                                                     <SelectTrigger className="h-8 text-xs">
                                                                         <SelectValue />
@@ -623,13 +679,18 @@ export function SuperadminPlansTab() {
                                                                     onValueChange={(v: BillingCycle) =>
                                                                         updateDraft(org.id, { billing_cycle: v })
                                                                     }
+                                                                    dir={dir}
                                                                 >
                                                                     <SelectTrigger className="h-8 text-xs w-[88px]">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        <SelectItem value="MONTHLY">شهري</SelectItem>
-                                                                        <SelectItem value="YEARLY">سنوي</SelectItem>
+                                                                        <SelectItem value="MONTHLY">
+                                                                            {t("dash.super.plans.cycle.monthly")}
+                                                                        </SelectItem>
+                                                                        <SelectItem value="YEARLY">
+                                                                            {t("dash.super.plans.cycle.yearly")}
+                                                                        </SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
                                                             </TableCell>
@@ -662,7 +723,7 @@ export function SuperadminPlansTab() {
                                                                 />
                                                                 {days != null && days >= 0 && days <= 7 && (
                                                                     <Badge className="mt-1 text-[9px]">
-                                                                        {days} يوم
+                                                                        {t("dash.super.plans.daysBadge", { days })}
                                                                     </Badge>
                                                                 )}
                                                             </TableCell>
@@ -681,6 +742,7 @@ export function SuperadminPlansTab() {
                                                                     className="h-8 w-8 p-0"
                                                                     disabled={upsertSubscription.isPending}
                                                                     onClick={() => void saveDraft(org.id)}
+                                                                    title={t("dash.super.plans.save")}
                                                                 >
                                                                     <Save className="w-3.5 h-3.5" />
                                                                 </Button>
@@ -710,7 +772,10 @@ export function SuperadminPlansTab() {
                                                 >
                                                     <button
                                                         type="button"
-                                                        className="w-full text-right p-3 flex items-start justify-between gap-2 hover:bg-muted/40"
+                                                        className={cn(
+                                                            "w-full p-3 flex items-start justify-between gap-2 hover:bg-muted/40",
+                                                            isRtl ? "text-right" : "text-left",
+                                                        )}
                                                         onClick={() => setExpandedId(open ? null : org.id)}
                                                     >
                                                         <div className="min-w-0">
@@ -720,7 +785,7 @@ export function SuperadminPlansTab() {
                                                             </p>
                                                             <div className="flex flex-wrap gap-1 mt-2">
                                                                 <Badge variant="outline" className="text-[10px]">
-                                                                    {getOrgKindLabel(org.kind)}
+                                                                    {orgKindLabel(t, org.kind)}
                                                                 </Badge>
                                                                 <Badge
                                                                     variant={STATUS_META[draft.status].variant}
@@ -730,20 +795,22 @@ export function SuperadminPlansTab() {
                                                                 </Badge>
                                                                 {days != null && days >= 0 && days <= 7 && (
                                                                     <Badge className="text-[10px]">
-                                                                        تجديد {days} يوم
+                                                                        {t("dash.super.plans.renewalInDays", { days })}
                                                                     </Badge>
                                                                 )}
                                                             </div>
                                                         </div>
                                                         <Badge variant="secondary" className="shrink-0 text-[10px]">
-                                                            {getPackageLabel(draft.subscription_package)}
+                                                            {packageLabel(t, draft.subscription_package)}
                                                         </Badge>
                                                     </button>
                                                     {open && (
                                                         <div className="px-3 pb-3 pt-0 space-y-3 border-t">
                                                             <div className="grid grid-cols-2 gap-2">
                                                                 <div className="space-y-1">
-                                                                    <Label className="text-xs">الباقة</Label>
+                                                                    <Label className="text-xs">
+                                                                        {t("dash.super.plans.colPackage")}
+                                                                    </Label>
                                                                     <Select
                                                                         value={draft.subscription_package}
                                                                         onValueChange={(v: OrgPlan) =>
@@ -756,27 +823,31 @@ export function SuperadminPlansTab() {
                                                                                 ),
                                                                             })
                                                                         }
+                                                                        dir={dir}
                                                                     >
                                                                         <SelectTrigger className="h-8">
                                                                             <SelectValue />
                                                                         </SelectTrigger>
                                                                         <SelectContent>
                                                                             <SelectItem value="INSTITUTION_ADMIN_STUDENT">
-                                                                                أدمن + طالب
+                                                                                {packageLabel(t, "INSTITUTION_ADMIN_STUDENT")}
                                                                             </SelectItem>
                                                                             <SelectItem value="INSTITUTION_FULL">
-                                                                                كامل
+                                                                                {t("dash.super.plans.packageFullShort")}
                                                                             </SelectItem>
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                    <Label className="text-xs">الحالة</Label>
+                                                                    <Label className="text-xs">
+                                                                        {t("dash.super.plans.colStatus")}
+                                                                    </Label>
                                                                     <Select
                                                                         value={draft.status}
                                                                         onValueChange={(v: SubscriptionStatus) =>
                                                                             updateDraft(org.id, { status: v })
                                                                         }
+                                                                        dir={dir}
                                                                     >
                                                                         <SelectTrigger className="h-8">
                                                                             <SelectValue />
@@ -793,24 +864,33 @@ export function SuperadminPlansTab() {
                                                                     </Select>
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                    <Label className="text-xs">الدورة</Label>
+                                                                    <Label className="text-xs">
+                                                                        {t("dash.super.plans.colCycle")}
+                                                                    </Label>
                                                                     <Select
                                                                         value={draft.billing_cycle}
                                                                         onValueChange={(v: BillingCycle) =>
                                                                             updateDraft(org.id, { billing_cycle: v })
                                                                         }
+                                                                        dir={dir}
                                                                     >
                                                                         <SelectTrigger className="h-8">
                                                                             <SelectValue />
                                                                         </SelectTrigger>
                                                                         <SelectContent>
-                                                                            <SelectItem value="MONTHLY">شهري</SelectItem>
-                                                                            <SelectItem value="YEARLY">سنوي</SelectItem>
+                                                                            <SelectItem value="MONTHLY">
+                                                                                {t("dash.super.plans.cycle.monthly")}
+                                                                            </SelectItem>
+                                                                            <SelectItem value="YEARLY">
+                                                                                {t("dash.super.plans.cycle.yearly")}
+                                                                            </SelectItem>
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                    <Label className="text-xs">السعر (ر.س)</Label>
+                                                                    <Label className="text-xs">
+                                                                        {t("dash.super.plans.priceLabel")}
+                                                                    </Label>
                                                                     <Input
                                                                         type="number"
                                                                         min={0}
@@ -827,7 +907,9 @@ export function SuperadminPlansTab() {
                                                                     />
                                                                 </div>
                                                                 <div className="space-y-1 col-span-2">
-                                                                    <Label className="text-xs">الفوترة القادمة</Label>
+                                                                    <Label className="text-xs">
+                                                                        {t("dash.super.plans.nextBillingLabel")}
+                                                                    </Label>
                                                                     <Input
                                                                         type="date"
                                                                         className="h-8"
@@ -841,7 +923,9 @@ export function SuperadminPlansTab() {
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center justify-between">
-                                                                <Label className="text-xs">تجديد تلقائي</Label>
+                                                                <Label className="text-xs">
+                                                                    {t("dash.super.plans.autoRenewLabel")}
+                                                                </Label>
                                                                 <Switch
                                                                     checked={draft.auto_renew}
                                                                     onCheckedChange={(c) =>
@@ -851,7 +935,7 @@ export function SuperadminPlansTab() {
                                                             </div>
                                                             <Textarea
                                                                 className="min-h-[60px] text-xs"
-                                                                placeholder="ملاحظة داخلية..."
+                                                                placeholder={t("dash.super.plans.notesPlaceholder")}
                                                                 value={draft.notes}
                                                                 onChange={(e) =>
                                                                     updateDraft(org.id, { notes: e.target.value })
@@ -864,7 +948,7 @@ export function SuperadminPlansTab() {
                                                                 onClick={() => void saveDraft(org.id)}
                                                             >
                                                                 <Save className="w-4 h-4" />
-                                                                حفظ
+                                                                {t("dash.super.plans.save")}
                                                             </Button>
                                                         </div>
                                                     )}

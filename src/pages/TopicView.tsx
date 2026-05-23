@@ -35,12 +35,7 @@ import NotFound from "./NotFound";
 import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
-
-const liveProviderLabels: Record<string, string> = {
-    GOOGLE_MEET: "Google Meet",
-    ZOOM: "Zoom",
-    CUSTOM: "رابط مباشر",
-};
+import { useTranslation } from "@/contexts/LanguageContext";
 
 interface TopicLiveSession {
     id: string;
@@ -57,12 +52,6 @@ interface TopicLiveSession {
         } | null;
     } | null;
 }
-
-const formatLiveDateTime = (value?: string | null) => {
-    const date = new Date(value || "");
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
-};
 
 const getLiveSessionStatus = (session: TopicLiveSession): "live" | "upcoming" | "ended" => {
     const now = Date.now();
@@ -82,6 +71,20 @@ const TopicView = () => {
     const { data: user } = useUser();
     const createSessionMutation = useCreateChallengeSession();
     const [isJoiningChallenge, setIsJoiningChallenge] = useState(false);
+    const { t, dir, language } = useTranslation();
+    const dateLocale = language === "ar" ? "ar-SA" : "en-US";
+    const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
+    const ChevronForward = dir === "rtl" ? ChevronLeft : ChevronRight;
+    const liveProviderLabels: Record<string, string> = {
+        GOOGLE_MEET: "Google Meet",
+        ZOOM: "Zoom",
+        CUSTOM: t("topicView.live.directLink"),
+    };
+    const formatLiveDateTime = (value?: string | null) => {
+        const date = new Date(value || "");
+        if (Number.isNaN(date.getTime())) return "—";
+        return date.toLocaleString(dateLocale, { dateStyle: "medium", timeStyle: "short" });
+    };
     const { data: discussions = [], isLoading: discussionsLoading } = useTopicDiscussions(topicId || "");
     const { data: topicLiveSessionsData = [] } = useTopicLiveSessions(topicId || "");
     const topicLiveSessions = topicLiveSessionsData as TopicLiveSession[];
@@ -119,10 +122,10 @@ const TopicView = () => {
     const publicDiscussionsEnabled = topic?.discussions_enabled !== false;
     const canParticipateInDiscussions = user?.role === "STUDENT" || user?.role === "TEACHER";
     const discussionStarterPrompts = [
-        "ما الفكرة التي لم أفهمها في هذا الدرس؟",
-        "كيف أطبق هذا المفهوم في الحياة اليومية؟",
-        "اشرحوا لي هذا الجزء بطريقة أبسط",
-        "من يشارك مثالًا سريعًا على هذا الدرس؟",
+        t("topicView.compose.prompt1"),
+        t("topicView.compose.prompt2"),
+        t("topicView.compose.prompt3"),
+        t("topicView.compose.prompt4"),
     ];
     const stickerChoices = ["😀", "😍", "🤩", "😂", "👏", "🔥", "🎉", "💡", "📚", "👍"];
     const reactionChoices = ["👍", "❤️", "😂", "😮", "👏", "🔥"];
@@ -219,17 +222,17 @@ const TopicView = () => {
         return [
             {
                 type: "live_session",
-                caption: featuredLiveSession.title || "البث المباشر",
+                caption: featuredLiveSession.title || t("topicView.live.bannerTitle"),
                 liveSession: featuredLiveSession,
                 additionalLiveSessions: additionalUpcomingSessions,
             },
             ...media,
         ];
-    }, [additionalUpcomingSessions, featuredLiveSession, media]);
+    }, [additionalUpcomingSessions, featuredLiveSession, media, t]);
 
     if (isLoading) {
         return (
-            <div className="min-h-screen font-cairo" dir="rtl">
+            <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4">
@@ -285,8 +288,8 @@ const TopicView = () => {
         } catch (error) {
             console.error("Failed to start preset challenge", error);
             toast({
-                title: "تعذر بدء التحدي",
-                description: "حاول مرة أخرى أو تواصل مع المعلم.",
+                title: t("topicView.toast.challengeStartFail"),
+                description: t("topicView.toast.challengeStartFailDesc"),
                 variant: "destructive",
             });
         } finally {
@@ -294,15 +297,15 @@ const TopicView = () => {
         }
     };
 
-    const formatRelativeArabicTime = (iso: string) => {
+    const formatRelativeTime = (iso: string) => {
         const ms = Date.now() - new Date(iso).getTime();
         const minutes = Math.floor(ms / (1000 * 60));
-        if (minutes < 1) return "الآن";
-        if (minutes < 60) return `منذ ${minutes} دقيقة`;
+        if (minutes < 1) return t("topicView.relative.now");
+        if (minutes < 60) return t("topicView.relative.minutes", { n: minutes });
         const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `منذ ${hours} ساعة`;
+        if (hours < 24) return t("topicView.relative.hours", { n: hours });
         const days = Math.floor(hours / 24);
-        return `منذ ${days} يوم`;
+        return t("topicView.relative.days", { n: days });
     };
 
     const getStudentClassLabel = (discussionUser: any) => {
@@ -310,13 +313,13 @@ const TopicView = () => {
         const gradeName = discussionUser?.student_profiles?.[0]?.grade?.name;
         if (gradeName) return gradeName;
         if (discussionUser?.details) return discussionUser.details;
-        return "الصف غير محدد";
+        return t("topicView.user.classUnknown");
     };
 
     const getUserRoleLabel = (discussionUser: any) => {
-        if (discussionUser?.role === "TEACHER") return "معلم";
-        if (discussionUser?.role === "ADMIN") return "مشرف";
-        return "طالب";
+        if (discussionUser?.role === "TEACHER") return t("topicView.user.teacher");
+        if (discussionUser?.role === "ADMIN") return t("topicView.user.admin");
+        return t("topicView.user.student");
     };
 
     const getRoleDefaultAvatar = (discussionUser: any) => {
@@ -335,7 +338,7 @@ const TopicView = () => {
         new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(new Error("تعذر قراءة الملف"));
+            reader.onerror = () => reject(new Error(t("topicView.toast.errReadFile")));
             reader.readAsDataURL(file);
         });
 
@@ -370,15 +373,15 @@ const TopicView = () => {
             if (error) throw error;
             if (isUuid(data?.id)) return data.id as string;
         }
-        throw new Error("تعذر تحديد معرف الطالب في قاعدة البيانات.");
+        throw new Error(t("topicView.toast.errResolveUser"));
     };
 
     const handleAddDiscussion = async () => {
         const trimmed = discussionContent.trim();
         if (!user?.id || !canParticipateInDiscussions) {
             toast({
-                title: "التعليق غير متاح لحسابك",
-                description: "التعليقات متاحة للطلاب والمعلمين فقط.",
+                title: t("topicView.toast.commentNotAvailable"),
+                description: t("topicView.toast.commentForStudentsTeachers"),
                 variant: "destructive",
             });
             return;
@@ -399,12 +402,12 @@ const TopicView = () => {
             setDiscussionSticker("");
             setDiscussionAttachment(null);
             setIsDiscussionComposerOpen(false);
-            toast({ title: "تم نشر مشاركتك بنجاح" });
+            toast({ title: t("topicView.toast.publishedSuccess") });
         } catch (err: unknown) {
             console.error("Failed to add discussion:", err);
-            const message = err instanceof Error ? err.message : "تعذر نشر المشاركة. حاول مرة أخرى.";
+            const message = err instanceof Error ? err.message : t("topicView.toast.errPublish");
             toast({
-                title: "خطأ",
+                title: t("topicView.toast.errGeneric"),
                 description: message,
                 variant: "destructive",
             });
@@ -415,8 +418,8 @@ const TopicView = () => {
         const trimmed = (replyDrafts[discussionId] || "").trim();
         if (!user?.id || !canParticipateInDiscussions) {
             toast({
-                title: "التعليق غير متاح لحسابك",
-                description: "التعليقات متاحة للطلاب والمعلمين فقط.",
+                title: t("topicView.toast.commentNotAvailable"),
+                description: t("topicView.toast.commentForStudentsTeachers"),
                 variant: "destructive",
             });
             return;
@@ -439,9 +442,9 @@ const TopicView = () => {
             setReplyAttachments((prev) => ({ ...prev, [discussionId]: null }));
         } catch (err: unknown) {
             console.error("Failed to add reply:", err);
-            const message = err instanceof Error ? err.message : "تعذر إضافة الرد حاليًا.";
+            const message = err instanceof Error ? err.message : t("topicView.toast.errAddReply");
             toast({
-                title: "خطأ",
+                title: t("topicView.toast.errGeneric"),
                 description: message,
                 variant: "destructive",
             });
@@ -451,7 +454,7 @@ const TopicView = () => {
     const handleSelectDiscussionAttachment = async (file?: File | null) => {
         if (!file) return;
         if (file.size > 5 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "الحد الأقصى 5MB", variant: "destructive" });
+            toast({ title: t("topicView.toast.fileLarge"), description: t("topicView.toast.fileLargeDesc"), variant: "destructive" });
             return;
         }
         try {
@@ -459,14 +462,14 @@ const TopicView = () => {
             setDiscussionAttachment({ url, name: file.name, type: file.type || "application/octet-stream" });
         } catch (e) {
             console.error(e);
-            toast({ title: "خطأ", description: "تعذر تجهيز الملف", variant: "destructive" });
+            toast({ title: t("topicView.toast.errGeneric"), description: t("topicView.toast.errPrepFile"), variant: "destructive" });
         }
     };
 
     const handleSelectReplyAttachment = async (discussionId: string, file?: File | null) => {
         if (!file) return;
         if (file.size > 5 * 1024 * 1024) {
-            toast({ title: "حجم الملف كبير", description: "الحد الأقصى 5MB", variant: "destructive" });
+            toast({ title: t("topicView.toast.fileLarge"), description: t("topicView.toast.fileLargeDesc"), variant: "destructive" });
             return;
         }
         try {
@@ -477,13 +480,13 @@ const TopicView = () => {
             }));
         } catch (e) {
             console.error(e);
-            toast({ title: "خطأ", description: "تعذر تجهيز الملف", variant: "destructive" });
+            toast({ title: t("topicView.toast.errGeneric"), description: t("topicView.toast.errPrepFile"), variant: "destructive" });
         }
     };
 
     const handleToggleReaction = async (payload: { discussionId?: string; replyId?: string; emoji: string }) => {
         if (!currentUserId) {
-            toast({ title: "سجّل الدخول أولًا", description: "يلزم تسجيل الدخول للتفاعل." });
+            toast({ title: t("topicView.toast.loginFirst"), description: t("topicView.toast.loginToReact") });
             return;
         }
         try {
@@ -496,7 +499,7 @@ const TopicView = () => {
             });
         } catch (e) {
             console.error(e);
-            toast({ title: "خطأ", description: "تعذر حفظ التفاعل", variant: "destructive" });
+            toast({ title: t("topicView.toast.errGeneric"), description: t("topicView.toast.errSaveReact"), variant: "destructive" });
         }
     };
 
@@ -510,7 +513,7 @@ const TopicView = () => {
             });
         } catch (e) {
             console.error(e);
-            toast({ title: "خطأ", description: "تعذر حفظ التقييم", variant: "destructive" });
+            toast({ title: t("topicView.toast.errGeneric"), description: t("topicView.rate.errSaving"), variant: "destructive" });
         }
     };
 
@@ -563,27 +566,27 @@ const TopicView = () => {
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold backdrop-blur ${isLiveNow ? "bg-emerald-500 text-white" : "bg-white/15 text-white"}`}>
                                                 {isLiveNow ? <Radio className="w-3.5 h-3.5 animate-pulse" /> : <CalendarClock className="w-3.5 h-3.5" />}
-                                                {isLiveNow ? "مباشر الآن" : "موعد بث قادم"}
+                                                {isLiveNow ? t("topicView.live.now") : t("topicView.live.upcoming")}
                                             </span>
                                             <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 backdrop-blur">
                                                 <CheckCircle2 className="h-3.5 w-3.5" />
-                                                ضمن محتوى الدرس
+                                                {t("topicView.live.partOfLesson")}
                                             </span>
                                         </div>
 
                                         <div>
-                                            <p className="text-2xl md:text-3xl font-black tracking-tight">{session.title || "حصة مباشرة للدرس"}</p>
+                                            <p className="text-2xl md:text-3xl font-black tracking-tight">{session.title || t("topicView.live.lessonStream")}</p>
                                             <p className="mt-2 max-w-2xl text-sm md:text-base text-white/80">
                                                 {isLiveNow
-                                                    ? "الحصة جارية الآن. انضم للشرح المباشر ثم تابع باقي محتوى الدرس من هنا."
-                                                    : "هذا الموعد جزء من الدرس. عند بداية الحصة سيظهر لك خيار الانضمام من نفس المحتوى."}
+                                                    ? t("topicView.live.descNow")
+                                                    : t("topicView.live.descUpcoming")}
                                             </p>
                                         </div>
                                     </div>
 
                                     <Button asChild size="lg" className="h-12 rounded-full bg-white px-6 font-bold text-primary shadow-lg hover:bg-white/90">
                                         <a href={session.meeting_url || "#"} target="_blank" rel="noopener noreferrer">
-                                            {isLiveNow ? "انضم الآن" : "فتح رابط الجلسة"}
+                                            {isLiveNow ? t("topicView.live.joinNow") : t("topicView.live.openLink")}
                                             <ExternalLink className="w-4 h-4" />
                                         </a>
                                     </Button>
@@ -593,20 +596,20 @@ const TopicView = () => {
                             <div className="space-y-4 bg-background p-5 md:p-6">
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     <div className="rounded-2xl border bg-muted/25 p-4">
-                                        <p className="text-[11px] font-bold text-muted-foreground">منصة البث</p>
-                                        <p className="mt-1 font-bold">{liveProviderLabels[session.provider || ""] || "رابط مباشر"}</p>
+                                        <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.platform")}</p>
+                                        <p className="mt-1 font-bold">{liveProviderLabels[session.provider || ""] || t("topicView.live.directLink")}</p>
                                     </div>
                                     <div className="rounded-2xl border bg-muted/25 p-4">
-                                        <p className="text-[11px] font-bold text-muted-foreground">وقت البداية</p>
+                                        <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.startTime")}</p>
                                         <p className="mt-1 text-sm font-bold">{formatLiveDateTime(session.starts_at)}</p>
                                     </div>
                                     <div className="rounded-2xl border bg-muted/25 p-4">
-                                        <p className="text-[11px] font-bold text-muted-foreground">وقت النهاية</p>
+                                        <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.endTime")}</p>
                                         <p className="mt-1 text-sm font-bold">{formatLiveDateTime(session.ends_at)}</p>
                                     </div>
                                     {hostName && (
                                         <div className="rounded-2xl border bg-muted/25 p-4">
-                                            <p className="text-[11px] font-bold text-muted-foreground">المعلم</p>
+                                            <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.teacher")}</p>
                                             <p className="mt-1 font-bold">{hostName}</p>
                                         </div>
                                     )}
@@ -614,20 +617,20 @@ const TopicView = () => {
 
                                 {session.notes && (
                                     <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4">
-                                        <p className="mb-1 text-xs font-bold text-primary">ملاحظة المعلم</p>
+                                        <p className="mb-1 text-xs font-bold text-primary">{t("topicView.live.teacherNote")}</p>
                                         <p className="text-sm text-muted-foreground">{session.notes}</p>
                                     </div>
                                 )}
 
                                 {upcomingSessions && upcomingSessions.length > 0 && (
                                     <div className="border-t pt-4">
-                                        <p className="mb-2 text-xs font-bold text-muted-foreground">جلسات قادمة أخرى</p>
+                                        <p className="mb-2 text-xs font-bold text-muted-foreground">{t("topicView.live.otherUpcoming")}</p>
                                         <div className="grid gap-2 md:grid-cols-2">
                                             {upcomingSessions.map((upcomingSession) => (
                                                 <div key={upcomingSession.id} className="rounded-xl border bg-muted/20 p-3">
-                                                    <p className="text-sm font-bold">{upcomingSession.title || "حصة مباشرة قادمة"}</p>
+                                                    <p className="text-sm font-bold">{upcomingSession.title || t("topicView.live.upcomingTitle")}</p>
                                                     <p className="mt-1 text-xs text-muted-foreground">
-                                                        {formatLiveDateTime(upcomingSession.starts_at)} - {liveProviderLabels[upcomingSession.provider || ""] || "رابط مباشر"}
+                                                        {formatLiveDateTime(upcomingSession.starts_at)} - {liveProviderLabels[upcomingSession.provider || ""] || t("topicView.live.directLink")}
                                                     </p>
                                                 </div>
                                             ))}
@@ -668,7 +671,7 @@ const TopicView = () => {
                                 </div>
                             </div>
                             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
-                                <p className="text-white text-lg font-bold">{currentMedia.caption || "عرض الفيديو"}</p>
+                                <p className="text-white text-lg font-bold">{currentMedia.caption || t("topicView.video.show")}</p>
                             </div>
                         </div>
                     );
@@ -723,9 +726,9 @@ const TopicView = () => {
                     return (
                         <div className="w-full h-[400px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
                             <FileText className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                            <h3 className="text-lg font-bold mb-2">ملف PDF غير متوفر</h3>
+                            <h3 className="text-lg font-bold mb-2">{t("topicView.pdf.notAvailable")}</h3>
                             <p className="text-muted-foreground max-w-sm">
-                                يبدو أن محتوى الملف لم يتم رفعه بشكل صحيح. يرجى التواصل مع المعلم لتحديث الدرس.
+                                {t("topicView.pdf.notAvailableDesc")}
                             </p>
                         </div>
                     );
@@ -736,7 +739,7 @@ const TopicView = () => {
                         {/* Loading indicator behind the PDF */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/10 z-0">
                             <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                            <p className="text-muted-foreground font-medium text-sm md:text-base">جاري تحميل ملف PDF...</p>
+                            <p className="text-muted-foreground font-medium text-sm md:text-base">{t("topicView.pdf.loading")}</p>
                         </div>
 
                         {/* PDF Viewer - using object for better compatibility, falls back to iframe */}
@@ -748,7 +751,7 @@ const TopicView = () => {
                             <iframe
                                 src={currentMedia.url}
                                 className="w-full h-full border-none"
-                                title={currentMedia.caption || "عرض ملف PDF"}
+                                title={currentMedia.caption || t("topicView.pdf.viewPdf")}
                             />
                         </object>
 
@@ -757,7 +760,7 @@ const TopicView = () => {
                             <Button size="sm" variant="secondary" className="shadow-md font-bold" asChild>
                                 <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
                                     <FileText className="w-4 h-4 ml-2" />
-                                    فتح في نافذة جديدة
+                                    {t("topicView.pdf.openNewWindow")}
                                 </a>
                             </Button>
                         </div>
@@ -769,9 +772,9 @@ const TopicView = () => {
                     return (
                         <div className="w-full min-h-[200px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
                             <Headphones className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                            <h3 className="text-lg font-bold mb-2">ملف صوتي غير متوفر</h3>
+                            <h3 className="text-lg font-bold mb-2">{t("topicView.audio.notAvailable")}</h3>
                             <p className="text-muted-foreground max-w-sm text-sm">
-                                لم يتم العثور على رابط التشغيل. يرجى التواصل مع المعلم.
+                                {t("topicView.audio.notAvailableDesc")}
                             </p>
                         </div>
                     );
@@ -784,7 +787,7 @@ const TopicView = () => {
                             src={currentMedia.url}
                             preload="metadata"
                         >
-                            متصفحك لا يدعم تشغيل الصوت.
+                            {t("topicView.audio.notSupported")}
                         </audio>
                         {currentMedia.caption ? (
                             <p className="text-center text-muted-foreground text-sm md:text-base max-w-2xl">
@@ -799,7 +802,7 @@ const TopicView = () => {
                     return (
                         <div className="w-full min-h-[200px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
                             <Link2 className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                            <h3 className="text-lg font-bold mb-2">رابط غير متوفر</h3>
+                            <h3 className="text-lg font-bold mb-2">{t("topicView.link.notAvailable")}</h3>
                         </div>
                     );
                 }
@@ -813,7 +816,7 @@ const TopicView = () => {
                         <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
                             <iframe
                                 src={embedUrl}
-                                title={currentMedia.caption || "رابط فيديو"}
+                                title={currentMedia.caption || t("topicView.link.videoCaption")}
                                 className="w-full h-full"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                 allowFullScreen
@@ -829,7 +832,7 @@ const TopicView = () => {
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold mb-2">
-                                    {currentMedia.caption || "رابط خارجي"}
+                                    {currentMedia.caption || t("topicView.link.external")}
                                 </h3>
                                 <p className="text-sm text-muted-foreground break-all mb-6" dir="ltr">
                                     {linkUrl}
@@ -837,7 +840,7 @@ const TopicView = () => {
                             </div>
                             <Button size="lg" className="font-bold gap-2" asChild>
                                 <a href={linkUrl} target="_blank" rel="noopener noreferrer">
-                                    فتح الرابط
+                                    {t("topicView.link.openLink")}
                                     <ExternalLink className="w-4 h-4" />
                                 </a>
                             </Button>
@@ -850,7 +853,7 @@ const TopicView = () => {
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-b from-background to-muted/30" dir="rtl">
+        <div className="min-h-screen font-cairo bg-gradient-to-b from-background to-muted/30" dir={dir}>
             <Header />
             <main className="pt-24 pb-16">
                 <div className="container mx-auto px-4">
@@ -861,7 +864,7 @@ const TopicView = () => {
                         className="mb-6 flex items-center gap-2 text-sm text-muted-foreground"
                     >
                         <Link to="/grades" className="hover:text-primary transition-colors">
-                            الصفوف
+                            {t("subjectView.breadcrumbGrades")}
                         </Link>
                         <span>/</span>
                         <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors">
@@ -893,7 +896,7 @@ const TopicView = () => {
                             </span>
                             <span className="flex items-center gap-1 text-muted-foreground text-sm">
                                 <Eye className="w-4 h-4" />
-                                {((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString("ar-SA")} مشاهدة
+                                {((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString(dateLocale)} {t("topicView.viewsSuffix")}
                             </span>
                             {topic.duration && (
                                 <span className="flex items-center gap-1 text-muted-foreground text-sm">
@@ -910,7 +913,7 @@ const TopicView = () => {
                         {/* Progress Bar */}
                         <div className="flex items-center gap-4 mb-4">
                             <span className="text-sm text-muted-foreground">
-                                {currentMediaIndex + 1} من {totalMedia}
+                                {t("topicView.media.ofTotal", { current: currentMediaIndex + 1, total: totalMedia })}
                             </span>
                             <Progress value={((currentMediaIndex + 1) / totalMedia) * 100} className="flex-1 h-2 rotate-180" />
                         </div>
@@ -944,8 +947,8 @@ const TopicView = () => {
                                 disabled={currentMediaIndex === 0}
                                 className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base"
                             >
-                                <ChevronRight className="w-3 h-3 md:w-4 md:h-4" />
-                                السابق
+                                <ChevronBack className="w-3 h-3 md:w-4 md:h-4" />
+                                {t("topicView.previous")}
                             </Button>
 
                             <div className="flex flex-wrap justify-center gap-2 max-h-[200px] overflow-y-auto p-2">
@@ -968,8 +971,8 @@ const TopicView = () => {
 
                             {currentMediaIndex < totalMedia - 1 ? (
                                 <Button onClick={handleNextMedia} className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base">
-                                    التالي
-                                    <ChevronLeft className="w-3 h-3 md:w-4 md:h-4" />
+                                    {t("topicView.next")}
+                                    <ChevronForward className="w-3 h-3 md:w-4 md:h-4" />
                                 </Button>
                             ) : (
                                 <Button
@@ -979,7 +982,7 @@ const TopicView = () => {
                                     className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base"
                                 >
                                     <Gamepad2 className="w-3 h-3 md:w-4 md:h-4" />
-                                    {isJoiningChallenge ? "جاري التجهيز..." : "انضم للتحدي"}
+                                    {isJoiningChallenge ? t("topicView.preparing") : t("topicView.joinChallenge")}
                                 </Button>
                             )}
                         </div>
@@ -994,7 +997,7 @@ const TopicView = () => {
                                     className="gap-2"
                                 >
                                     <Play className="w-4 h-4" />
-                                    {isJoiningChallenge ? "جاري التجهيز..." : "الانتقال للتحدي مباشرة"}
+                                    {isJoiningChallenge ? t("topicView.preparing") : t("topicView.goToChallenge")}
                                 </Button>
                             </div>
                         )}
@@ -1012,29 +1015,29 @@ const TopicView = () => {
                                         <div className="flex flex-wrap items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <MessageCircle className="w-5 h-5 text-primary" />
-                                                <h3 className="text-xl font-bold">المناقشات العامة</h3>
+                                                <h3 className="text-xl font-bold">{t("topicView.discussions.title")}</h3>
                                             </div>
                                             <div className="flex items-center gap-2 text-xs">
                                                 <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
-                                                    {discussions.length} مشاركة
+                                                    {discussions.length} {t("topicView.discussions.countSuffix")}
                                                 </span>
                                                 <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 font-medium">
-                                                    {discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0)} رد
+                                                    {discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0)} {t("topicView.discussions.repliesSuffix")}
                                                 </span>
                                             </div>
                                         </div>
                                         <p className="text-sm text-muted-foreground">
-                                            مساحة آمنة للطلاب لطرح الأسئلة وتبادل الفهم حول هذا الدرس.
+                                            {t("topicView.discussions.intro")}
                                         </p>
                                         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-                                            التعليقات مفعلة لهذا المحتوى بواسطة المعلم.
+                                            {t("topicView.discussions.enabled")}
                                         </div>
 
                                         <div className="rounded-xl border bg-background p-4 space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <h4 className="text-sm font-bold">تقييم الدرس</h4>
+                                                <h4 className="text-sm font-bold">{t("topicView.rate.title")}</h4>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {ratingsTotal} تقييم - المتوسط {ratingsAvg.toFixed(1)} / 5
+                                                    {t("topicView.rate.summary", { count: ratingsTotal, avg: ratingsAvg.toFixed(1) })}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-1">
@@ -1044,36 +1047,36 @@ const TopicView = () => {
                                                         type="button"
                                                         onClick={() => handleRateTopic(star)}
                                                         className="p-1 rounded hover:bg-muted transition"
-                                                        aria-label={`تقييم ${star}`}
+                                                        aria-label={t("topicView.rate.aria", { n: star })}
                                                     >
                                                         <Star
                                                             className={`w-5 h-5 ${star <= myRating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`}
                                                         />
                                                     </button>
                                                 ))}
-                                                <span className="text-xs text-muted-foreground mr-2">تقييمك: {myRating || "—"}</span>
+                                                <span className="text-xs text-muted-foreground mr-2">{t("topicView.rate.yourRating")} {myRating || "—"}</span>
                                             </div>
                                         </div>
 
                                         <div className="rounded-2xl border bg-background p-4 md:p-5">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <h4 className="text-sm font-bold">اكتب مشاركة جديدة</h4>
-                                                    <span className="text-[11px] text-muted-foreground">سؤال - فكرة - توضيح</span>
+                                                    <h4 className="text-sm font-bold">{t("topicView.compose.title")}</h4>
+                                                    <span className="text-[11px] text-muted-foreground">{t("topicView.compose.sub")}</span>
                                                 </div>
                                                 <Button
                                                     onClick={() => setIsDiscussionComposerOpen(true)}
                                                     disabled={!canParticipateInDiscussions}
                                                 >
-                                                    اكتب مشاركة جديدة
+                                                    {t("topicView.compose.title")}
                                                 </Button>
                                             </div>
                                         </div>
 
                                         <Dialog open={isDiscussionComposerOpen} onOpenChange={setIsDiscussionComposerOpen}>
-                                            <DialogContent dir="rtl" className="sm:max-w-2xl">
+                                            <DialogContent dir={dir} className="sm:max-w-2xl">
                                                 <DialogHeader>
-                                                    <DialogTitle>اكتب مشاركة جديدة</DialogTitle>
+                                                    <DialogTitle>{t("topicView.compose.title")}</DialogTitle>
                                                 </DialogHeader>
                                                 <div className="space-y-3">
                                                     <div className="flex flex-wrap gap-2">
@@ -1091,7 +1094,7 @@ const TopicView = () => {
                                                     <Textarea
                                                         value={discussionContent}
                                                         onChange={(e) => setDiscussionContent(e.target.value)}
-                                                        placeholder={canParticipateInDiscussions ? "اكتب سؤالك أو رأيك حول الدرس..." : "تسجيل الدخول بحساب طالب أو معلم مطلوب للمشاركة"}
+                                                        placeholder={canParticipateInDiscussions ? t("topicView.compose.placeholder") : t("topicView.compose.placeholderDisabled")}
                                                         rows={5}
                                                         disabled={!canParticipateInDiscussions}
                                                         className="bg-background"
@@ -1114,7 +1117,7 @@ const TopicView = () => {
                                                     {discussionAttachment ? (
                                                         <div className="rounded-lg border bg-muted/20 p-2 text-xs flex items-center justify-between gap-2">
                                                             <span className="truncate">{discussionAttachment.name}</span>
-                                                            <Button size="sm" variant="ghost" onClick={() => setDiscussionAttachment(null)}>حذف</Button>
+                                                            <Button size="sm" variant="ghost" onClick={() => setDiscussionAttachment(null)}>{t("topicView.posts.delete")}</Button>
                                                         </div>
                                                     ) : null}
                                                     <input
@@ -1138,7 +1141,7 @@ const TopicView = () => {
                                                                 onClick={() => discussionAttachmentInputRef.current?.click()}
                                                             >
                                                                 <Paperclip className="w-4 h-4 ml-1" />
-                                                                ملف
+                                                                {t("topicView.compose.file")}
                                                             </Button>
                                                             <Button
                                                                 onClick={handleAddDiscussion}
@@ -1149,7 +1152,7 @@ const TopicView = () => {
                                                                     discussionContent.trim().length > 300
                                                                 }
                                                             >
-                                                                نشر المشاركة
+                                                                {t("topicView.compose.publish")}
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -1159,24 +1162,24 @@ const TopicView = () => {
 
                                         <div className="space-y-4 rounded-xl border bg-background p-4">
                                             <div className="flex items-center justify-between border-b pb-2">
-                                                <h4 className="text-sm font-bold">ساحة المشاركات</h4>
-                                                <span className="text-xs text-muted-foreground">مرتبة من الأحدث إلى الأقدم</span>
+                                                <h4 className="text-sm font-bold">{t("topicView.posts.title")}</h4>
+                                                <span className="text-xs text-muted-foreground">{t("topicView.posts.orderHint")}</span>
                                             </div>
                                             {discussionsLoading ? (
                                                 <Skeleton className="h-24 w-full" />
                                             ) : discussions.length === 0 ? (
                                                 <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-                                                    لا توجد مشاركات بعد. كن أول من يبدأ النقاش بفكرة ملهمة.
+                                                    {t("topicView.posts.empty")}
                                                 </div>
                                             ) : (
                                                 discussions.map((discussion: any) => (
                                                     <div key={discussion.id} className="rounded-2xl border-2 border-muted/60 p-4 md:p-5 space-y-4 bg-background">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div className="flex items-start gap-3 min-w-0">
-                                                                <Avatar className="h-10 w-10 border">
+                                                                    <Avatar className="h-10 w-10 border">
                                                                     <AvatarImage
                                                                         src={getUserAvatarSrc(discussion.user)}
-                                                                        alt={discussion.user?.name || "مستخدم"}
+                                                                        alt={discussion.user?.name || t("topicView.user.student")}
                                                                     />
                                                                     <AvatarFallback>
                                                                         <img
@@ -1188,7 +1191,7 @@ const TopicView = () => {
                                                                 </Avatar>
                                                                 <div className="min-w-0">
                                                                     <div className="flex flex-wrap items-center gap-2">
-                                                                        <p className="font-semibold truncate">{discussion.user?.name || "طالب"}</p>
+                                                                        <p className="font-semibold truncate">{discussion.user?.name || t("topicView.user.student")}</p>
                                                                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                                                                         {getUserRoleLabel(discussion.user)}
                                                                     </span>
@@ -1198,11 +1201,11 @@ const TopicView = () => {
                                                                         </span>
                                                                     ) : null}
                                                                 </div>
-                                                                    <p className="text-xs text-muted-foreground mt-1">{formatRelativeArabicTime(discussion.created_at)}</p>
+                                                                    <p className="text-xs text-muted-foreground mt-1">{formatRelativeTime(discussion.created_at)}</p>
                                                                 </div>
                                                             </div>
                                                             <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                                                                {discussion.replies?.length || 0} رد
+                                                                {discussion.replies?.length || 0} {t("topicView.discussions.repliesSuffix")}
                                                             </span>
                                                         </div>
                                                         <p className="leading-7 whitespace-pre-wrap text-[15px]">{discussion.content.trim()}</p>
@@ -1221,7 +1224,7 @@ const TopicView = () => {
                                                                         download={discussion.attachment_name || "file"}
                                                                         className="text-sm text-primary underline"
                                                                     >
-                                                                        {discussion.attachment_name || "تحميل ملف مرفق"}
+                                                                        {discussion.attachment_name || t("topicView.posts.downloadAttachment")}
                                                                     </a>
                                                                 )}
                                                             </div>
@@ -1246,7 +1249,7 @@ const TopicView = () => {
 
                                                         <div className="space-y-3 border-t border-dashed pt-3">
                                                             <div className="flex items-center justify-between">
-                                                                <p className="text-xs font-semibold text-muted-foreground">الردود</p>
+                                                                <p className="text-xs font-semibold text-muted-foreground">{t("topicView.posts.repliesLabel")}</p>
                                                                 {(discussion.replies?.length || 0) > 0 ? (
                                                                     <Button
                                                                         type="button"
@@ -1261,8 +1264,8 @@ const TopicView = () => {
                                                                         }
                                                                     >
                                                                         {isRepliesExpanded(discussion.id, discussion.replies?.length || 0)
-                                                                            ? "إخفاء الردود"
-                                                                            : `إظهار الردود (${discussion.replies?.length || 0})`}
+                                                                            ? t("topicView.posts.hideReplies")
+                                                                            : t("topicView.posts.showReplies", { count: discussion.replies?.length || 0 })}
                                                                     </Button>
                                                                 ) : null}
                                                             </div>
@@ -1273,7 +1276,7 @@ const TopicView = () => {
                                                                             <Avatar className="h-8 w-8 border">
                                                                                 <AvatarImage
                                                                                     src={getUserAvatarSrc(reply.user)}
-                                                                                    alt={reply.user?.name || "مستخدم"}
+                                                                                    alt={reply.user?.name || t("topicView.user.student")}
                                                                                 />
                                                                                 <AvatarFallback>
                                                                                     <img
@@ -1285,7 +1288,7 @@ const TopicView = () => {
                                                                             </Avatar>
                                                                             <div className="min-w-0 flex-1">
                                                                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                                                                    <p className="text-sm font-medium truncate">{reply.user?.name || "طالب"}</p>
+                                                                                    <p className="text-sm font-medium truncate">{reply.user?.name || t("topicView.user.student")}</p>
                                                                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                                                                                 {getUserRoleLabel(reply.user)}
                                                                             </span>
@@ -1311,7 +1314,7 @@ const TopicView = () => {
                                                                                                 download={reply.attachment_name || "file"}
                                                                                                 className="text-xs text-primary underline"
                                                                                             >
-                                                                                                {reply.attachment_name || "تحميل ملف"}
+                                                                                                {reply.attachment_name || t("topicView.posts.downloadFile")}
                                                                                             </a>
                                                                                         )}
                                                                                     </div>
@@ -1348,7 +1351,7 @@ const TopicView = () => {
                                                                         }))
                                                                     }
                                                                     rows={2}
-                                                                    placeholder="أضف ردًا..."
+                                                                    placeholder={t("topicView.posts.replyPlaceholder")}
                                                                     disabled={!canParticipateInDiscussions}
                                                                     className="bg-background"
                                                                 />
@@ -1379,7 +1382,7 @@ const TopicView = () => {
                                                                                 setReplyAttachments((prev) => ({ ...prev, [discussion.id]: null }))
                                                                             }
                                                                         >
-                                                                            حذف
+                                                                            {t("topicView.posts.delete")}
                                                                         </Button>
                                                                     </div>
                                                                 ) : null}
@@ -1401,7 +1404,7 @@ const TopicView = () => {
                                                                         onClick={() => replyAttachmentInputRefs.current[discussion.id]?.click()}
                                                                     >
                                                                         <Paperclip className="w-4 h-4 ml-1" />
-                                                                        ملف
+                                                                        {t("topicView.compose.file")}
                                                                     </Button>
                                                                     <Button
                                                                         size="sm"
@@ -1415,7 +1418,7 @@ const TopicView = () => {
                                                                                 !replyAttachments[discussion.id])
                                                                         }
                                                                     >
-                                                                        إضافة رد
+                                                                        {t("topicView.posts.addReply")}
                                                                     </Button>
                                                                 </div>
                                                             </div>

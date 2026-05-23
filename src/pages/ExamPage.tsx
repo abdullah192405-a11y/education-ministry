@@ -15,6 +15,8 @@ import Footer from "@/components/layout/Footer";
 import { useExamByPin, useSubmitExamResult, useExamSubmission, examCategoryLabels } from "@/hooks/useExams";
 import { useUser, useStudentProfile } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
 
 // ============================================================================
 // Exam Page - Student takes exam via link only
@@ -22,6 +24,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 const ExamPage = () => {
     const { pin } = useParams<{ pin: string }>();
     const navigate = useNavigate();
+    const { dir } = useTranslation();
+    const ArrowBack = dir === "rtl" ? ArrowRight : ArrowLeft;
+    const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
     const { data: exam, isLoading: loadingExam } = useExamByPin(pin || "");
     const { data: currentUser, isLoading: loadingUser } = useUser();
     const { data: studentProfile, isLoading: loadingStudent } = useStudentProfile(currentUser?.id || "");
@@ -239,7 +244,7 @@ const ExamPage = () => {
                             <h1 className="text-2xl font-black mb-2">الاختبار غير موجود</h1>
                             <p className="text-muted-foreground mb-6">الرابط غير صحيح أو أن الاختبار قد تم حذفه</p>
                             <Button onClick={() => navigate("/")} className="gap-2">
-                                <ArrowRight className="w-4 h-4" />
+                                <ArrowBack className="w-4 h-4" />
                                 العودة للرئيسية
                             </Button>
                         </Card>
@@ -261,7 +266,7 @@ const ExamPage = () => {
                             <h1 className="text-2xl font-black mb-2">يجب تسجيل الدخول</h1>
                             <p className="text-muted-foreground mb-6">يجب عليك تسجيل الدخول لدخول الاختبار</p>
                             <Button onClick={() => navigate(`/login?redirect=/exam/${pin}`)} className="gap-2 w-full h-12">
-                                <ArrowRight className="w-4 h-4" />
+                                <ArrowBack className="w-4 h-4" />
                                 تسجيل الدخول
                             </Button>
                         </Card>
@@ -288,7 +293,7 @@ const ExamPage = () => {
                                 فقط. صفك الحالي لا يطابق المستهدف.
                             </p>
                             <Button onClick={() => navigate("/")} variant="outline" className="gap-2 w-full">
-                                <ArrowRight className="w-4 h-4" />
+                                <ArrowBack className="w-4 h-4" />
                                 العودة للمتجر التعليمي
                             </Button>
                         </Card>
@@ -337,7 +342,7 @@ const ExamPage = () => {
                             <h1 className="text-2xl font-black mb-2">انتهى وقت الاختبار</h1>
                             <p className="text-muted-foreground mb-6">لقد انتهى الوقت المسموح لهذا الاختبار</p>
                             <Button onClick={() => navigate("/")} variant="outline" className="gap-2">
-                                <ArrowRight className="w-4 h-4" />
+                                <ArrowBack className="w-4 h-4" />
                                 العودة للرئيسية
                             </Button>
                         </Card>
@@ -404,7 +409,7 @@ const ExamPage = () => {
                                 </div>
 
                                 <Button onClick={() => navigate("/")} className="gap-2 w-full h-12">
-                                    <ArrowRight className="w-4 h-4" />
+                                    <ArrowBack className="w-4 h-4" />
                                     العودة للرئيسية
                                 </Button>
                             </Card>
@@ -557,9 +562,12 @@ const ExamPage = () => {
                                     </div>
                                     <div className="flex-1">
                                         <p className="text-lg font-bold leading-relaxed">{currentQuestion.question}</p>
-                                        {currentQuestion.imageUrl && (
-                                            <img src={currentQuestion.imageUrl} alt="" className="mt-4 rounded-xl max-h-60 object-contain" />
-                                        )}
+                                        <QuestionAttachmentDisplay
+                                            imageUrl={currentQuestion.imageUrl}
+                                            videoUrl={currentQuestion.videoUrl}
+                                            audioUrl={currentQuestion.audioUrl}
+                                            className="mt-4 mb-0"
+                                        />
                                     </div>
                                 </div>
 
@@ -652,7 +660,7 @@ const ExamPage = () => {
                                     disabled={currentQuestionIndex === 0}
                                     onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
                                 >
-                                    <ArrowRight className="w-4 h-4" />
+                                    <ArrowBack className="w-4 h-4" />
                                     السابق
                                 </Button>
 
@@ -677,7 +685,7 @@ const ExamPage = () => {
                                         onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
                                     >
                                         التالي
-                                        <ArrowLeft className="w-4 h-4" />
+                                        <ArrowForward className="w-4 h-4" />
                                     </Button>
                                 ) : (
                                     <Button

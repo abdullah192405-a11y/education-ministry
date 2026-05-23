@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Building2, GraduationCap, BookOpen } from "lucide-react";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 const OrganizationProfile = () => {
   const { orgSlug } = useParams();
@@ -15,16 +16,18 @@ const OrganizationProfile = () => {
     organizationId: org?.id || null,
     enabled: !!org?.id,
   });
+  const { t, dir } = useTranslation();
+  const localeId = t("common.locale");
 
   return (
-    <div className="min-h-screen font-cairo" dir="rtl">
+    <div className="min-h-screen font-cairo" dir={dir}>
       <Header />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4">
           {isLoadingOrgs ? (
             <Skeleton className="h-44 w-full mb-8" />
           ) : !org ? (
-            <p className="text-center py-16 text-muted-foreground">المؤسسة غير موجودة.</p>
+            <p className="text-center py-16 text-muted-foreground">{t("orgProfile.notFound")}</p>
           ) : (
             <>
               <div className="rounded-2xl border p-6 md:p-8 bg-gradient-to-r from-primary/10 to-background mb-8">
@@ -44,9 +47,9 @@ const OrganizationProfile = () => {
                       <h1 className="text-2xl md:text-3xl font-black">{org.name}</h1>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Badge variant="outline">{org.entity_type === "SCHOOL" ? "مدرسة" : "مؤسسة"}</Badge>
-                      <Badge variant="outline">{org.kind === "EDUCATIONAL" ? "تعليمية" : org.kind === "ENRICHMENT" ? "إثرائية" : "تعليمية + إثرائية"}</Badge>
-                      <Badge variant="secondary">{org.subscription_package === "INSTITUTION_ADMIN_STUDENT" ? "باقة المؤسسات (٢)" : "باقة المؤسسات الكاملة"}</Badge>
+                      <Badge variant="outline">{org.entity_type === "SCHOOL" ? t("common.school") : t("common.institution")}</Badge>
+                      <Badge variant="outline">{org.kind === "EDUCATIONAL" ? t("orgProfile.kindEducational") : org.kind === "ENRICHMENT" ? t("orgProfile.kindEnrichment") : t("orgProfile.kindBoth")}</Badge>
+                      <Badge variant="secondary">{org.subscription_package === "INSTITUTION_ADMIN_STUDENT" ? t("orgProfile.packageBasic") : t("orgProfile.packageFull")}</Badge>
                     </div>
                   </div>
                 </div>
@@ -57,7 +60,7 @@ const OrganizationProfile = () => {
                 ) : null}
               </div>
 
-              <h2 className="text-xl font-bold mb-4">محتوى المؤسسة</h2>
+              <h2 className="text-xl font-bold mb-4">{t("orgProfile.contentHeader")}</h2>
               {isLoadingGrades ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -65,7 +68,7 @@ const OrganizationProfile = () => {
                   ))}
                 </div>
               ) : (grades as any[]).length === 0 ? (
-                <p className="text-center text-muted-foreground py-10">لا يوجد محتوى منشور لهذه المؤسسة حالياً.</p>
+                <p className="text-center text-muted-foreground py-10">{t("orgProfile.noContent")}</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {(grades as any[]).map((grade: any) => (
@@ -78,8 +81,8 @@ const OrganizationProfile = () => {
                           <h3 className="font-bold mb-1">{grade.name}</h3>
                           <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{grade.description}</p>
                           <div className="flex items-center justify-between text-xs border-t pt-2">
-                            <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" />{(grade.students_count || 0).toLocaleString("ar-SA")} طالب</span>
-                            <span className="flex items-center gap-1 text-primary"><BookOpen className="w-3 h-3" />{grade.subjects?.length || 0} مواد</span>
+                            <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" />{(grade.students_count || 0).toLocaleString(localeId)} {t("orgProfile.studentSuffix")}</span>
+                            <span className="flex items-center gap-1 text-primary"><BookOpen className="w-3 h-3" />{grade.subjects?.length || 0} {t("orgProfile.subjectsSuffix")}</span>
                           </div>
                         </CardContent>
                       </Card>

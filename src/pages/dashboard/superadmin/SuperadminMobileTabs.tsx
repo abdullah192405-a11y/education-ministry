@@ -11,18 +11,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/contexts/LanguageContext";
 import type { SuperadminTabId } from "./SuperadminNav";
-
-const MOBILE_TABS: { id: SuperadminTabId; icon: LucideIcon; label: string }[] = [
-    { id: "overview", icon: LayoutDashboard, label: "نظرة" },
-    { id: "create", icon: Sparkles, label: "إنشاء" },
-    { id: "admins", icon: UserCheck, label: "أدمن" },
-    { id: "orgs", icon: Building2, label: "مؤسسات" },
-    { id: "users", icon: Users, label: "مستخدمون" },
-    { id: "plans", icon: Package, label: "باقات" },
-    { id: "support", icon: LifeBuoy, label: "دعم" },
-    { id: "settings", icon: Settings, label: "إعدادات" },
-];
 
 type SuperadminMobileTabsProps = {
     activeTab: SuperadminTabId;
@@ -35,9 +25,22 @@ export function SuperadminMobileTabs({
     onTabChange,
     pendingRequestsCount = 0,
 }: SuperadminMobileTabsProps) {
+    const { t, dir } = useTranslation();
+
+    const MOBILE_TABS: { id: SuperadminTabId; icon: LucideIcon; label: string }[] = [
+        { id: "overview", icon: LayoutDashboard, label: t("dash.super.mobile.overview") },
+        { id: "create", icon: Sparkles, label: t("dash.super.mobile.create") },
+        { id: "admins", icon: UserCheck, label: t("dash.super.mobile.admins") },
+        { id: "orgs", icon: Building2, label: t("dash.super.mobile.orgs") },
+        { id: "users", icon: Users, label: t("dash.super.mobile.users") },
+        { id: "plans", icon: Package, label: t("dash.super.mobile.plans") },
+        { id: "support", icon: LifeBuoy, label: t("dash.super.mobile.support") },
+        { id: "settings", icon: Settings, label: t("dash.super.mobile.settings") },
+    ];
+
     return (
         <div className="lg:hidden sticky top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur border-b border-border">
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin" dir="rtl">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin" dir={dir}>
                 {MOBILE_TABS.map((tab) => {
                     const active = activeTab === tab.id;
                     const badge = tab.id === "admins" ? pendingRequestsCount : 0;
