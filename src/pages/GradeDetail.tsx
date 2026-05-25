@@ -4,7 +4,8 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Users, GraduationCap, ArrowLeft, ArrowRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { BookOpen, Users, GraduationCap, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
 import { useGradeDetail } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
@@ -31,16 +32,33 @@ const GradeDetail = () => {
         }
     };
 
+    const getLevelColor = (level: string) => {
+        switch (level) {
+            case "PRIMARY":
+                return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+            case "MIDDLE":
+                return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+            case "SECONDARY":
+                return "bg-purple-500/10 text-purple-700 dark:text-purple-400";
+            default:
+                return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
+        }
+    };
+
+    const getOrganizationName = (gradeData: NonNullable<typeof grade>) => {
+        const org = gradeData.organizations;
+        if (!org) return null;
+        if (Array.isArray(org)) return org[0]?.name || null;
+        return org.name || null;
+    };
+
     if (isLoading) {
         return (
             <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />
                 <main className="pt-24 pb-16">
                     <div className="container mx-auto px-4">
-                        <Skeleton className="h-64 w-full rounded-2xl mb-8" />
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-                            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
-                        </div>
+                        <Skeleton className="h-48 w-full rounded-2xl mb-12" />
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full" />)}
                         </div>
@@ -55,6 +73,17 @@ const GradeDetail = () => {
         return <NotFound />;
     }
 
+    const levelKey = getLevelKey(grade.level);
+    const levelLabel = levelKey ? t(levelKey) : grade.level;
+    const organizationName = getOrganizationName(grade);
+    const topicCount =
+        grade.subjects?.reduce(
+            (total: number, subject: { topics?: unknown[] }) => total + (subject.topics?.length || 0),
+            0,
+        ) || 0;
+    const studentsCount = (grade.students_count || grade.studentsCount || 0).toLocaleString(localeId);
+    const subjectsCount = grade.subjects?.length || 0;
+
     return (
         <div className="min-h-screen font-cairo" dir={dir}>
             <Header />
@@ -66,68 +95,72 @@ const GradeDetail = () => {
                         animate={{ opacity: 1, y: 0 }}
                         className="mb-12"
                     >
-                        {/* Cover Image */}
-                        <div className="relative h-64 rounded-2xl overflow-hidden mb-8">
-                            <img
-                                src={grade.cover_image || grade.coverImage}
-                                alt={grade.name}
-                                className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-
-                            <div className={`absolute bottom-6 ${dir === "rtl" ? "right-6" : "left-6"} flex items-center gap-4`}>
-                                <div className="w-20 h-20 rounded-2xl border-4 border-background bg-primary/10 flex items-center justify-center shadow-lg backdrop-blur-sm">
-                                    <GraduationCap className="w-12 h-12 text-primary" />
-                                </div>
-                                <div>
-                                    <h1 className="text-3xl md:text-4xl font-black text-white drop-shadow-lg">
-                                        {grade.name}
-                                    </h1>
-                                    <p className="text-white/90 text-lg drop-shadow-md mt-1">
-                                        {grade.description}
-                                    </p>
-                                </div>
-                            </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+                            <Link to="/grades" className="hover:text-primary transition-colors">
+                                {t("subjectView.breadcrumbGrades")}
+                            </Link>
+                            <span>/</span>
+                            <span className="text-foreground font-medium">{grade.name}</span>
                         </div>
 
-                        {/* Stats */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Card>
-                                <CardContent className="p-4 text-center">
-                                    <Users className="w-6 h-6 mx-auto mb-2 text-primary" />
-                                    <p className="text-2xl font-bold">{(grade.students_count || grade.studentsCount || 0).toLocaleString(localeId)}</p>
-                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.registeredStudents")}</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardContent className="p-4 text-center">
-                                    <BookOpen className="w-6 h-6 mx-auto mb-2 text-primary" />
-                                    <p className="text-2xl font-bold">{grade.subjects?.length || 0}</p>
-                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.subject")}</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardContent className="p-4 text-center">
-                                    <GraduationCap className="w-6 h-6 mx-auto mb-2 text-primary" />
-                                    <p className="text-2xl font-bold">
-                                        {grade.subjects?.reduce((total: number, subject: any) => total + (subject.topics?.length || 0), 0) || 0}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.topicLabel")}</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardContent className="p-4 text-center">
-                                    <div className="w-6 h-6 mx-auto mb-2 text-primary font-bold text-xl">✓</div>
-                                    <p className="text-2xl font-bold">
-                                        {(() => {
-                                            const k = getLevelKey(grade.level);
-                                            return k ? t(k) : grade.level;
-                                        })()}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">{t("gradeDetail.stage")}</p>
-                                </CardContent>
-                            </Card>
-                        </div>
+                        <Card className="overflow-hidden border-2">
+                            <CardContent className="p-6 md:p-8">
+                                <div className="flex flex-col md:flex-row items-start gap-6 md:gap-8">
+                                    <div className="w-full md:w-44 lg:w-52 shrink-0 rounded-3xl overflow-hidden shadow-lg ring-1 ring-primary/10">
+                                        <img
+                                            src={grade.cover_image || grade.coverImage}
+                                            alt={grade.name}
+                                            className="w-full aspect-[4/3] md:aspect-square object-cover"
+                                        />
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap mb-3">
+                                            <Badge variant="outline" className={getLevelColor(grade.level)}>
+                                                {levelLabel}
+                                            </Badge>
+                                            {grade.verified && (
+                                                <Badge variant="secondary" className="gap-1">
+                                                    <CheckCircle className="w-3 h-3 text-primary fill-primary/20" />
+                                                    {t("dash.common.verified")}
+                                                </Badge>
+                                            )}
+                                        </div>
+
+                                        <h1 className="text-3xl md:text-4xl font-black mb-3">
+                                            {grade.name}
+                                        </h1>
+
+                                        {grade.description && (
+                                            <p className="text-lg text-muted-foreground mb-4">
+                                                {grade.description}
+                                            </p>
+                                        )}
+
+                                        {organizationName && (
+                                            <p className="text-sm text-muted-foreground mb-4">
+                                                {t("gradesSection.institutionLabel")}: {organizationName}
+                                            </p>
+                                        )}
+
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <Badge variant="secondary" className="gap-1">
+                                                <Users className="w-3 h-3" />
+                                                {studentsCount} {t("gradesPage.studentsSuffix")}
+                                            </Badge>
+                                            <Badge variant="secondary" className="gap-1">
+                                                <BookOpen className="w-3 h-3" />
+                                                {subjectsCount} {t("gradesPage.subjectsSuffix")}
+                                            </Badge>
+                                            <Badge variant="secondary" className="gap-1">
+                                                <GraduationCap className="w-3 h-3" />
+                                                {topicCount} {t("gradeDetail.topicSuffix")}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </motion.div>
 
                     {/* Subjects Section */}

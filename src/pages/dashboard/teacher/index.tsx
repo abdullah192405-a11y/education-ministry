@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ClipboardList, Radio } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
@@ -83,7 +83,23 @@ const TeacherDashboard = () => {
     const { data: hostedSessions } = useHostedSessions(user?.id || "");
 
     const [activeTab, setActiveTab] = useState("overview");
+    const [topicsHasUnsavedQuestions, setTopicsHasUnsavedQuestions] = useState(false);
+    const topicsNavigationGuardRef = useRef<(onProceed: () => void) => void>((onProceed) => onProceed());
     const { toast } = useToast();
+
+    const requestDashboardTab = useCallback(
+        (tabId: string) => {
+            if (tabId === activeTab) return;
+            const leavingTopicsWithUnsaved =
+                activeTab === "topics" && tabId !== "topics" && topicsHasUnsavedQuestions;
+            if (leavingTopicsWithUnsaved) {
+                topicsNavigationGuardRef.current(() => setActiveTab(tabId));
+                return;
+            }
+            setActiveTab(tabId);
+        },
+        [activeTab, topicsHasUnsavedQuestions]
+    );
     const [localChallenges, setLocalChallenges] = useState<any[]>([]);
 
     // State for sharing modal
@@ -409,7 +425,7 @@ const TeacherDashboard = () => {
             });
 
             if (!isScheduled) {
-                setActiveTab("challenges");
+                requestDashboardTab("challenges");
             }
         } catch (error: any) {
             console.error("Detailed Error creating challenge:", error);
@@ -541,7 +557,7 @@ const TeacherDashboard = () => {
                                     ].map(item => (
                                         <button
                                             key={item.id}
-                                            onClick={() => setActiveTab(item.id)}
+                                            onClick={() => requestDashboardTab(item.id)}
                                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${activeTab === item.id
                                                 ? "bg-primary text-primary-foreground"
                                                 : "hover:bg-muted"
@@ -597,7 +613,7 @@ const TeacherDashboard = () => {
                                                     {t("dash.teacher.welcomeSubtitle")}
                                                 </p>
                                                 <div className="flex gap-3">
-                                                    <Button variant="secondary" size="sm" className="gap-2" onClick={() => setActiveTab("topics")}>
+                                                    <Button variant="secondary" size="sm" className="gap-2" onClick={() => requestDashboardTab("topics")}>
                                                         <Library className="w-4 h-4" />
                                                         {t("dash.teacher.manageLessons")}
                                                     </Button>
@@ -849,7 +865,7 @@ const TeacherDashboard = () => {
                                                 <Library className="w-5 h-5 text-primary" />
                                                 {t("dash.teacher.myLessons")}
                                             </CardTitle>
-                                            <Button size="sm" onClick={() => setActiveTab("topics")}>
+                                            <Button size="sm" onClick={() => requestDashboardTab("topics")}>
                                                 {t("dash.common.viewAll")}
                                             </Button>
                                         </CardHeader>
@@ -927,7 +943,7 @@ const TeacherDashboard = () => {
                                                 <div className="col-span-1 md:col-span-2 text-center py-8">
                                                     <Library className="w-12 h-12 mx-auto mb-3 text-primary/30" />
                                                     <p className="text-muted-foreground text-sm mb-4">{t("dash.teacher.noLessons")}</p>
-                                                    <Button onClick={() => setActiveTab("topics")} className="gap-2">
+                                                    <Button onClick={() => requestDashboardTab("topics")} className="gap-2">
                                                         <Plus className="w-4 h-4" />
                                                         {t("dash.teacher.createNewLesson")}
                                                     </Button>
@@ -950,6 +966,8 @@ const TeacherDashboard = () => {
                                         <TeacherTopicsTab
                                             teacherProfileId={profile?.id}
                                             onCreateChallenge={handleCreateChallenge}
+                                            onUnsavedQuestionsChange={setTopicsHasUnsavedQuestions}
+                                            navigationGuardRef={topicsNavigationGuardRef}
                                         />
                                     )}
                                     {activeTab === "challenges" && (

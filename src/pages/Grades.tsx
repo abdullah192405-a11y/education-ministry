@@ -205,16 +205,16 @@ const Grades = () => {
                                     >
                                         <Link to={`/grade/${grade.slug}`}>
                                             <Card variant="interactive" className="h-full overflow-hidden group">
-                                                {/* Cover Image */}
-                                                <div className="relative h-36 overflow-hidden">
-                                                    <img
-                                                        src={grade.cover_image || grade.coverImage}
-                                                        alt={grade.name}
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                    />
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+                                                <div className="relative h-40">
+                                                    <div className="absolute inset-0 overflow-hidden">
+                                                        <img
+                                                            src={grade.cover_image || grade.coverImage}
+                                                            alt={grade.name}
+                                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                        />
+                                                    </div>
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent pointer-events-none" />
 
-                                                    {/* Level Badge */}
                                                     <div className={`absolute top-3 ${dir === "rtl" ? "right-3" : "left-3"}`}>
                                                         <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${getLevelColor(grade.level)}`}>
                                                             {(() => {
@@ -223,16 +223,15 @@ const Grades = () => {
                                                             })()}
                                                         </span>
                                                     </div>
-                                                </div>
 
-                                                {/* Icon - positioned over the background */}
-                                                <div className="relative z-10 -mt-8 mr-4">
-                                                    <div className="w-16 h-16 rounded-xl border-4 border-background overflow-hidden shadow-lg bg-primary/10 flex items-center justify-center">
-                                                        <GraduationCap className="w-10 h-10 text-primary" />
+                                                    <div className="absolute bottom-0 start-4 z-10 translate-y-1/2">
+                                                        <div className="w-16 h-16 rounded-xl border-4 border-background shadow-lg bg-primary/10 flex items-center justify-center">
+                                                            <GraduationCap className="w-10 h-10 text-primary" />
+                                                        </div>
                                                     </div>
                                                 </div>
 
-                                                <CardContent className="pt-2 pb-5 px-5">
+                                                <CardContent className="relative bg-card pt-9 pb-5 px-5">
                                                     {/* Grade Name & Verification */}
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <h3 className="text-lg font-bold">{grade.name}</h3>

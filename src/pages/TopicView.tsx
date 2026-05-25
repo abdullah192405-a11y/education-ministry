@@ -36,6 +36,7 @@ import { getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { getLiveProviderLabel } from "@/lib/topicLiveSession";
 
 interface TopicLiveSession {
     id: string;
@@ -75,11 +76,8 @@ const TopicView = () => {
     const dateLocale = language === "ar" ? "ar-SA" : "en-US";
     const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
     const ChevronForward = dir === "rtl" ? ChevronLeft : ChevronRight;
-    const liveProviderLabels: Record<string, string> = {
-        GOOGLE_MEET: "Google Meet",
-        ZOOM: "Zoom",
-        CUSTOM: t("topicView.live.directLink"),
-    };
+    const liveProviderLabel = (provider?: string | null) =>
+        getLiveProviderLabel(provider, t, { customLabel: t("topicView.live.directLink") });
     const formatLiveDateTime = (value?: string | null) => {
         const date = new Date(value || "");
         if (Number.isNaN(date.getTime())) return "—";
@@ -597,7 +595,7 @@ const TopicView = () => {
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     <div className="rounded-2xl border bg-muted/25 p-4">
                                         <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.platform")}</p>
-                                        <p className="mt-1 font-bold">{liveProviderLabels[session.provider || ""] || t("topicView.live.directLink")}</p>
+                                        <p className="mt-1 font-bold">{liveProviderLabel(session.provider)}</p>
                                     </div>
                                     <div className="rounded-2xl border bg-muted/25 p-4">
                                         <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.startTime")}</p>
@@ -630,7 +628,7 @@ const TopicView = () => {
                                                 <div key={upcomingSession.id} className="rounded-xl border bg-muted/20 p-3">
                                                     <p className="text-sm font-bold">{upcomingSession.title || t("topicView.live.upcomingTitle")}</p>
                                                     <p className="mt-1 text-xs text-muted-foreground">
-                                                        {formatLiveDateTime(upcomingSession.starts_at)} - {liveProviderLabels[upcomingSession.provider || ""] || t("topicView.live.directLink")}
+                                                        {formatLiveDateTime(upcomingSession.starts_at)} - {liveProviderLabel(upcomingSession.provider)}
                                                     </p>
                                                 </div>
                                             ))}

@@ -79,28 +79,30 @@ function GradeSpotlightCard({ grade, index }: { grade: GradeRow; index: number }
         >
             <Link to={`/grade/${grade.slug}`}>
                 <Card variant="interactive" className="h-full overflow-hidden group">
-                    <div className="relative h-32 overflow-hidden">
-                        <img
-                            src={grade.cover_image || grade.coverImage || ""}
-                            alt={grade.name}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
-
-                        <div className="absolute -bottom-6 right-4">
-                            <div className="w-12 h-12 rounded-xl border-2 border-background bg-primary/10 flex items-center justify-center shadow-lg">
-                                <GraduationCap className="w-7 h-7 text-primary" />
-                            </div>
+                    <div className="relative h-36">
+                        <div className="absolute inset-0 overflow-hidden">
+                            <img
+                                src={grade.cover_image || grade.coverImage || ""}
+                                alt={grade.name}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            />
                         </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent pointer-events-none" />
 
-                        <div className="absolute top-3 left-3">
+                        <div className="absolute top-3 start-3">
                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${getLevelColor(grade.level)}`}>
                                 {levelLabel}
                             </span>
                         </div>
+
+                        <div className="absolute bottom-0 start-4 translate-y-1/2 z-10">
+                            <div className="w-12 h-12 rounded-xl border-2 border-background bg-primary/10 flex items-center justify-center shadow-lg">
+                                <GraduationCap className="w-7 h-7 text-primary" />
+                            </div>
+                        </div>
                     </div>
 
-                    <CardContent className="pt-8 pb-5 px-5">
+                    <CardContent className="relative bg-card pt-7 pb-5 px-5">
                         <div className="flex items-center gap-1 mb-2">
                             <h3 className="text-base font-bold line-clamp-1">{grade.name}</h3>
                             {grade.verified && (

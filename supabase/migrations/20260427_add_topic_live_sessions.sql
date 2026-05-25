@@ -1,5 +1,5 @@
 -- ============================================================================
--- LIVE STREAMING SESSIONS (Google Meet / Zoom / custom links)
+-- LIVE STREAMING SESSIONS (Google Meet / Zoom / Microsoft Teams / custom links)
 -- Allows teachers to publish scheduled or active live sessions per topic.
 -- ============================================================================
 
@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.topic_live_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     topic_id UUID NOT NULL REFERENCES public.topics(id) ON DELETE CASCADE,
     teacher_id UUID NOT NULL REFERENCES public.teacher_profiles(id) ON DELETE CASCADE,
-    provider TEXT NOT NULL CHECK (provider IN ('GOOGLE_MEET', 'ZOOM', 'CUSTOM')),
+    provider TEXT NOT NULL CHECK (provider IN ('GOOGLE_MEET', 'ZOOM', 'MICROSOFT_TEAMS', 'CUSTOM')),
     meeting_url TEXT NOT NULL CHECK (char_length(trim(meeting_url)) > 0),
     title TEXT,
     notes TEXT,

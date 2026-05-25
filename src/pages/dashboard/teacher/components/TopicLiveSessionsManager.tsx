@@ -53,6 +53,9 @@ const validationMessages = (
     if (key === "invalidZoom") {
         return { title: t("dash.teacher.live.toast.invalidUrl"), description: t("dash.teacher.live.toast.invalidZoom") };
     }
+    if (key === "invalidTeams") {
+        return { title: t("dash.teacher.live.toast.invalidUrl"), description: t("dash.teacher.live.toast.invalidTeams") };
+    }
     if (key === "invalidHttps") {
         return { title: t("dash.teacher.live.toast.invalidUrl"), description: t("dash.teacher.live.toast.invalidHttps") };
     }

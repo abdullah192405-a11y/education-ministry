@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
     Search, MoreVertical, Trophy, User,
     TrendingUp, Gamepad2
@@ -27,6 +27,8 @@ import {
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { averageChallengeResultScorePercent } from "@/lib/challengeResultScore";
+import { useTeacherVisibleClasses } from "@/hooks/useTeacherVisibleClasses";
+import TeacherClassFilterCard from "./TeacherClassFilterCard";
 
 const TeacherStudentsTab = () => {
     const { t, dir, locale, isRtl, textAlign } = useDashboardLocale();
@@ -34,13 +36,34 @@ const TeacherStudentsTab = () => {
     const [selectedStudent, setSelectedStudent] = useState<any>(null);
     const { data: user } = useUser();
     const { data: teacherProfile } = useTeacherProfile(user?.id || "");
-    const { data: gradeStudents, isLoading: isLoadingStudents } = useStudentsInGrade(teacherProfile?.grade_id || "");
+    const {
+        visibleGrades,
+        allowedSubjectIds,
+        selectedGradeId,
+        setSelectedGradeId,
+        selectedSubjectId,
+        setSelectedSubjectId,
+        availableSubjects,
+        showGradeFilter,
+        showSubjectFilter,
+        showClassFilters,
+    } = useTeacherVisibleClasses(teacherProfile?.id || "", teacherProfile?.grade_id);
+
+    const activeGradeId = selectedGradeId || teacherProfile?.grade_id || "";
+    const activeSubjectId = selectedSubjectId || teacherProfile?.subject_id || "";
+
+    const { data: gradeStudents, isLoading: isLoadingStudents } = useStudentsInGrade(activeGradeId);
     const { data: hostedResults, isLoading: isLoadingResults } = useHostedChallengeResults(user?.id || "", 100);
-    const { data: gradeSubjectProgress } = useGradeSubjectProgress(teacherProfile?.grade_id || "", teacherProfile?.subject_id || "");
+    const { data: gradeSubjectProgress } = useGradeSubjectProgress(activeGradeId, activeSubjectId);
     const { data: pendingRequests = [], isLoading: isLoadingPending } = usePendingStudentRegistrationRequestsForTeacher(user?.id || "");
     const reviewRequest = useReviewRegistrationRequest();
 
     const isLoading = isLoadingStudents || isLoadingResults;
+
+    const pendingForClass = useMemo(() => {
+        if (!showClassFilters || !activeGradeId) return pendingRequests;
+        return pendingRequests.filter((req: any) => req.grade_id === activeGradeId);
+    }, [pendingRequests, showClassFilters, activeGradeId]);
 
     const students = (gradeStudents || [])
         .map((profile: any) => {
@@ -83,19 +106,31 @@ const TeacherStudentsTab = () => {
 
     return (
         <div className="space-y-6">
+            <TeacherClassFilterCard
+                visibleGrades={visibleGrades}
+                selectedGradeId={selectedGradeId}
+                onGradeChange={setSelectedGradeId}
+                selectedSubjectId={selectedSubjectId}
+                onSubjectChange={setSelectedSubjectId}
+                availableSubjects={availableSubjects}
+                allowedSubjectIds={allowedSubjectIds}
+                showGradeFilter={showGradeFilter}
+                showSubjectFilter={showSubjectFilter}
+            />
+
             <Card className="border-primary/20 bg-primary/5">
                 <CardContent className="p-4 space-y-3">
                     <div className="flex items-center justify-between">
                         <h3 className="font-semibold">{t("dash.teacher.students.pendingHeader")}</h3>
-                        <Badge variant="outline">{pendingRequests.length}</Badge>
+                        <Badge variant="outline">{pendingForClass.length}</Badge>
                     </div>
                     {isLoadingPending ? (
                         <p className="text-sm text-muted-foreground">{t("dash.teacher.students.loadingRequests")}</p>
-                    ) : pendingRequests.length === 0 ? (
+                    ) : pendingForClass.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("dash.teacher.students.noPendingRequests")}</p>
                     ) : (
                         <div className="space-y-2">
-                            {pendingRequests.map((req: any) => (
+                            {pendingForClass.map((req: any) => (
                                 <div key={req.id} className="rounded-lg border bg-background p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                     <div>
                                         <p className="font-medium">{req.applicant?.name || t("dash.teacher.students.newStudentFallback")}</p>

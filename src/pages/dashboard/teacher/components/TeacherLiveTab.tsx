@@ -25,6 +25,12 @@ import {
     useTeacherLiveSessions,
     useUpdateTopicLiveSession,
 } from "@/hooks/useDatabase";
+import { useDashboardLocale } from "@/contexts/LanguageContext";
+import {
+    getLiveProviderLabel,
+    LIVE_PROVIDER_I18N_KEYS,
+    type LiveProvider,
+} from "@/lib/topicLiveSession";
 
 interface TeacherLiveTabProps {
     teacherProfileId?: string;
@@ -41,7 +47,6 @@ const toMillis = (value?: string | null) => {
     return Number.isFinite(t) ? t : 0;
 };
 
-type LiveProvider = "GOOGLE_MEET" | "ZOOM" | "CUSTOM";
 type SessionStatus = "live" | "upcoming" | "ended";
 
 interface LiveTopic {
@@ -73,15 +78,10 @@ interface LiveSession {
     topic?: LiveTopic | null;
 }
 
-const providerLabels: Record<LiveProvider, string> = {
-    GOOGLE_MEET: "Google Meet",
-    ZOOM: "Zoom",
-    CUSTOM: "رابط مباشر",
-};
-
 const providerPlaceholders: Record<LiveProvider, string> = {
     GOOGLE_MEET: "https://meet.google.com/abc-defg-hij",
     ZOOM: "https://zoom.us/j/123456789",
+    MICROSOFT_TEAMS: "https://teams.microsoft.com/l/meetup-join/...",
     CUSTOM: "https://example.com/live-class",
 };
 
@@ -94,6 +94,14 @@ const isValidMeetingUrl = (value: string, provider: LiveProvider) => {
         const host = url.hostname.toLowerCase();
         if (provider === "GOOGLE_MEET") return host === "meet.google.com" || host.endsWith(".meet.google.com");
         if (provider === "ZOOM") return host.endsWith("zoom.us") || host.endsWith("zoom.com");
+        if (provider === "MICROSOFT_TEAMS") {
+            return (
+                host === "teams.microsoft.com" ||
+                host.endsWith(".teams.microsoft.com") ||
+                host === "teams.live.com" ||
+                host.endsWith(".teams.live.com")
+            );
+        }
         return true;
     } catch {
         return false;
@@ -150,13 +158,13 @@ const getTopicUrl = (topic?: LiveTopic | null) => {
     return path ? `${getOrigin()}${path}` : "";
 };
 
-const buildShareText = (session: LiveSession) => {
+const buildShareText = (session: LiveSession, platformLabel: string) => {
     const title = session.title || session.topic?.title || "حصة مباشرة";
     const lessonUrl = getTopicUrl(session.topic);
     const parts = [
         `تمت جدولة ${title}`,
         `البداية: ${formatDateTime(session.starts_at)}`,
-        `المنصة: ${providerLabels[session.provider as LiveProvider] || "رابط مباشر"}`,
+        `المنصة: ${platformLabel}`,
     ];
     if (lessonUrl) parts.push(`صفحة الدرس: ${lessonUrl}`);
     return parts.join("\n");
@@ -167,6 +175,9 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 
 const TeacherLiveTab = ({ teacherProfileId }: TeacherLiveTabProps) => {
     const { toast } = useToast();
+    const { t } = useDashboardLocale();
+    const providerLabel = (value?: string | null) =>
+        getLiveProviderLabel(value, t, { customLabel: t("dash.teacher.live.otherLink") });
     const { data: teacherTopics = [] } = useTeacherAllTopics(teacherProfileId || "");
     const { data: teacherLiveSessions = [] } = useTeacherLiveSessions(teacherProfileId || "");
     const topics = teacherTopics as LiveTopic[];
@@ -233,10 +244,12 @@ const TeacherLiveTab = ({ teacherProfileId }: TeacherLiveTabProps) => {
                 title: "رابط غير صالح",
                 description:
                     provider === "GOOGLE_MEET"
-                        ? "أدخل رابط Google Meet صحيح يبدأ بـ https://meet.google.com/"
+                        ? t("dash.teacher.live.toast.invalidMeet")
                         : provider === "ZOOM"
-                            ? "أدخل رابط Zoom صحيح يبدأ بـ https://*.zoom.us/"
-                            : "أدخل رابط HTTPS صالح.",
+                            ? t("dash.teacher.live.toast.invalidZoom")
+                            : provider === "MICROSOFT_TEAMS"
+                                ? t("dash.teacher.live.toast.invalidTeams")
+                                : t("dash.teacher.live.toast.invalidHttps"),
                 variant: "destructive",
             });
             return;
@@ -358,9 +371,14 @@ const TeacherLiveTab = ({ teacherProfileId }: TeacherLiveTabProps) => {
                                             <SelectValue placeholder="المنصة" />
                                         </SelectTrigger>
                                         <SelectContent dir="rtl" align="end">
-                                            <SelectItem value="GOOGLE_MEET">Google Meet</SelectItem>
-                                            <SelectItem value="ZOOM">Zoom</SelectItem>
-                                            <SelectItem value="CUSTOM">رابط آخر</SelectItem>
+                                            {(Object.keys(LIVE_PROVIDER_I18N_KEYS) as Array<keyof typeof LIVE_PROVIDER_I18N_KEYS>).map(
+                                                (value) => (
+                                                    <SelectItem key={value} value={value}>
+                                                        {t(LIVE_PROVIDER_I18N_KEYS[value])}
+                                                    </SelectItem>
+                                                )
+                                            )}
+                                            <SelectItem value="CUSTOM">{t("dash.teacher.live.otherLink")}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -477,7 +495,7 @@ const TeacherLiveTab = ({ teacherProfileId }: TeacherLiveTabProps) => {
                             const status = getSessionStatus(session);
                             const statusConfig = getStatusConfig(status);
                             const topicUrl = getTopicUrl(session.topic);
-                            const shareText = buildShareText(session);
+                            const shareText = buildShareText(session, providerLabel(session.provider));
                             return (
                                 <div
                                     key={session.id}
@@ -506,7 +524,7 @@ const TeacherLiveTab = ({ teacherProfileId }: TeacherLiveTabProps) => {
                                             النهاية: {formatDateTime(session.ends_at)}
                                         </span>
                                         <span className="px-2 py-1 rounded-md bg-background/70">
-                                            المنصة: {providerLabels[session.provider as LiveProvider] || "رابط مباشر"}
+                                            المنصة: {providerLabel(session.provider)}
                                         </span>
                                     </div>
                                     {session.notes && (

@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import {
+    LIVE_PROVIDER_I18N_KEYS,
     LIVE_PROVIDER_PLACEHOLDERS,
     toDatetimeLocal,
     type LiveProvider,
@@ -46,8 +47,13 @@ const TopicLiveSessionFormFields = ({
                             <SelectValue placeholder={t("dash.teacher.live.platform")} />
                         </SelectTrigger>
                         <SelectContent dir={dir}>
-                            <SelectItem value="GOOGLE_MEET">Google Meet</SelectItem>
-                            <SelectItem value="ZOOM">Zoom</SelectItem>
+                            {(Object.keys(LIVE_PROVIDER_I18N_KEYS) as Array<keyof typeof LIVE_PROVIDER_I18N_KEYS>).map(
+                                (provider) => (
+                                    <SelectItem key={provider} value={provider}>
+                                        {t(LIVE_PROVIDER_I18N_KEYS[provider])}
+                                    </SelectItem>
+                                )
+                            )}
                             <SelectItem value="CUSTOM">{t("dash.teacher.live.otherLink")}</SelectItem>
                         </SelectContent>
                     </Select>

@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useEffect } from "react";
+import { useRef, useState, useMemo, useEffect, useCallback, useLayoutEffect } from "react";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TFunction } from "@/contexts/LanguageContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,7 +38,8 @@ import {
     STUDENT_CHALLENGE_PRESET_OPTIONS,
     type StudentChallengePresetValue,
 } from "@/lib/topicChallengePreset";
-import QuestionGameEditor from "./QuestionGameEditor";
+import QuestionGameEditor, { type QuestionGameEditorHandle } from "./QuestionGameEditor";
+import UnsavedQuestionsDialog from "./UnsavedQuestionsDialog";
 import TopicLiveSessionFormFields from "./TopicLiveSessionFormFields";
 import TopicLiveSessionsManager from "./TopicLiveSessionsManager";
 import {
@@ -69,7 +70,7 @@ import {
     type SoundOption,
     type TeacherSoundCategory,
 } from "@/lib/teacherUploadedSounds";
-import { getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
+import { cn, getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
 import {
     generateImagePromptFromAnalyzedResources,
     generateImageBytesFromPrompt,
@@ -94,12 +95,22 @@ export type TopicEditorSavePayload = Partial<EducationalContent> & {
 type EditorMediaType = ContentMedia["type"] | "live";
 type EditorNewMedia = Omit<ContentMedia, "type"> & { type: EditorMediaType };
 
+type ContentEditorTab = "info" | "media" | "questions";
+
+type PendingEditorExit =
+    | { type: "content-tab"; tabId: ContentEditorTab }
+    | { type: "dashboard-nav"; proceed: () => void };
+
 interface ContentEditorProps {
     content?: EducationalContent & { challengeItems?: ChallengeQuestion[] };
     onSave: (content: TopicEditorSavePayload) => void | Promise<void>;
     onCancel: () => void;
     teacherProfileId?: string;
     lessonPagePath?: string;
+    /** Fired when the question editor has unsaved local changes. */
+    onUnsavedQuestionsChange?: (dirty: boolean) => void;
+    /** Dashboard sidebar calls this before leaving the topics tab. */
+    registerNavigationGuard?: (tryNavigate: (onProceed: () => void) => void) => void;
 }
 
 const getMediaTypes = (t: TFunction) => [
@@ -205,6 +216,12 @@ const liveDraftValidationToast = (key: LiveSessionDraftValidationKey, t: TFuncti
             description: t("dash.teacher.live.toast.invalidZoom"),
         };
     }
+    if (key === "invalidTeams") {
+        return {
+            title: t("dash.teacher.live.toast.invalidUrl"),
+            description: t("dash.teacher.live.toast.invalidTeams"),
+        };
+    }
     if (key === "invalidHttps") {
         return {
             title: t("dash.teacher.live.toast.invalidUrl"),
@@ -217,7 +234,15 @@ const liveDraftValidationToast = (key: LiveSessionDraftValidationKey, t: TFuncti
     };
 };
 
-const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPagePath }: ContentEditorProps) => {
+const ContentEditor = ({
+    content,
+    onSave,
+    onCancel,
+    teacherProfileId,
+    lessonPagePath,
+    onUnsavedQuestionsChange,
+    registerNavigationGuard,
+}: ContentEditorProps) => {
     const { t, dir } = useDashboardLocale();
     const { data: user } = useUser();
     const { data: teacherUploadedSounds = [] } = useTeacherUploadedSounds(teacherProfileId);
@@ -890,10 +915,116 @@ const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPage
         }
     };
 
-    // Handle saving challenge items from QuestionGameEditor
+    const questionEditorRef = useRef<QuestionGameEditorHandle>(null);
+    const questionEditorCloseGuardRef = useRef<(onProceed: () => void) => void>((onProceed) => onProceed());
+    const [questionsEditorDirty, setQuestionsEditorDirty] = useState(false);
+    const [unsavedExitDialogOpen, setUnsavedExitDialogOpen] = useState(false);
+    const pendingExitRef = useRef<PendingEditorExit | null>(null);
+
+    const handleQuestionsDirtyChange = useCallback(
+        (dirty: boolean) => {
+            setQuestionsEditorDirty(dirty);
+            onUnsavedQuestionsChange?.(dirty);
+        },
+        [onUnsavedQuestionsChange]
+    );
+
     const handleSaveChallengeItems = (items: ChallengeQuestion[]) => {
         setChallengeItems(items);
         setShowQuestionEditor(false);
+        handleQuestionsDirtyChange(false);
+    };
+
+    const registerQuestionEditorCloseGuard = useCallback(
+        (tryClose: (onProceed: () => void, intent?: "cancel" | "external") => void) => {
+            questionEditorCloseGuardRef.current = (onProceed) => tryClose(onProceed, "external");
+        },
+        []
+    );
+
+    const openUnsavedExitDialog = useCallback((pending: PendingEditorExit) => {
+        pendingExitRef.current = pending;
+        setUnsavedExitDialogOpen(true);
+    }, []);
+
+    const requestBlockedExit = useCallback(
+        (onProceed: () => void) => {
+            if (showQuestionEditor && questionsEditorDirty) {
+                openUnsavedExitDialog({ type: "dashboard-nav", proceed: onProceed });
+                return;
+            }
+            onProceed();
+        },
+        [showQuestionEditor, questionsEditorDirty, openUnsavedExitDialog]
+    );
+
+    useLayoutEffect(() => {
+        registerNavigationGuard?.(requestBlockedExit);
+    }, [registerNavigationGuard, requestBlockedExit]);
+
+    const completePendingExit = (pending: PendingEditorExit) => {
+        setShowQuestionEditor(false);
+        setQuestionsEditorDirty(false);
+        onUnsavedQuestionsChange?.(false);
+        if (pending.type === "content-tab") {
+            setActiveTab(pending.tabId);
+        } else {
+            pending.proceed();
+        }
+    };
+
+    const guardedSetActiveTab = (tabId: ContentEditorTab) => {
+        if (tabId === activeTab) return;
+
+        if (showQuestionEditor) {
+            if (questionsEditorDirty) {
+                openUnsavedExitDialog({ type: "content-tab", tabId });
+                return;
+            }
+            setShowQuestionEditor(false);
+            setActiveTab(tabId);
+            return;
+        }
+
+        setActiveTab(tabId);
+    };
+
+    const handleUnsavedExitSave = () => {
+        const pending = pendingExitRef.current;
+        if (!pending) return;
+        const items = questionEditorRef.current?.getItems() ?? challengeItems;
+        handleSaveChallengeItems(items);
+        setUnsavedExitDialogOpen(false);
+        pendingExitRef.current = null;
+        if (pending.type === "content-tab") {
+            setActiveTab(pending.tabId);
+        } else {
+            pending.proceed();
+        }
+    };
+
+    const handleUnsavedExitDiscard = () => {
+        const pending = pendingExitRef.current;
+        if (!pending) return;
+        setUnsavedExitDialogOpen(false);
+        pendingExitRef.current = null;
+        completePendingExit(pending);
+    };
+
+    const handleUnsavedExitStay = () => {
+        setUnsavedExitDialogOpen(false);
+        pendingExitRef.current = null;
+    };
+
+    const guardedContentCancel = () => {
+        if (showQuestionEditor) {
+            questionEditorCloseGuardRef.current(() => {
+                setShowQuestionEditor(false);
+                onCancel();
+            });
+            return;
+        }
+        onCancel();
     };
 
     return (
@@ -904,7 +1035,7 @@ const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPage
                     {content ? t("dash.teacher.topics.editor.editContent") : t("dash.teacher.topics.editor.addContent")}
                 </h2>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={onCancel} disabled={isSaving}>
+                    <Button variant="outline" onClick={guardedContentCancel} disabled={isSaving}>
                         <X className="w-4 h-4 ml-2" />
                         {t("dash.common.cancel")}
                     </Button>
@@ -925,19 +1056,40 @@ const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPage
                     { id: "info", label: t("dash.teacher.topics.editor.tabInfo"), icon: FileText },
                     { id: "media", label: t("dash.teacher.topics.editor.tabMedia", { n: mediaList.length + pendingLiveSessions.length }), icon: Video },
                     { id: "questions", label: t("dash.teacher.topics.editor.tabQuestions", { n: challengeItems.length }), icon: Gamepad2 },
-                ].map(tab => (
-                    <Button
-                        key={tab.id}
-                        variant={activeTab === tab.id ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                        className="gap-2"
-                    >
-                        <tab.icon className="w-4 h-4" />
-                        {tab.label}
-                    </Button>
-                ))}
+                ].map(tab => {
+                    const isCurrentTab = activeTab === tab.id;
+                    const tabLockedByUnsaved =
+                        showQuestionEditor && questionsEditorDirty && !isCurrentTab;
+
+                    return (
+                        <Button
+                            key={tab.id}
+                            variant={isCurrentTab ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => guardedSetActiveTab(tab.id as typeof activeTab)}
+                            className={cn(
+                                "gap-2",
+                                tabLockedByUnsaved && "opacity-60"
+                            )}
+                            title={
+                                tabLockedByUnsaved
+                                    ? t("dash.teacher.topics.qe.unsavedDialogTitle")
+                                    : undefined
+                            }
+                        >
+                            <tab.icon className="w-4 h-4" />
+                            {tab.label}
+                        </Button>
+                    );
+                })}
             </div>
+
+            <UnsavedQuestionsDialog
+                open={unsavedExitDialogOpen}
+                onSave={handleUnsavedExitSave}
+                onDiscard={handleUnsavedExitDiscard}
+                onStay={handleUnsavedExitStay}
+            />
 
             {/* Info Tab */}
             {activeTab === "info" && (
@@ -1920,9 +2072,12 @@ const ContentEditor = ({ content, onSave, onCancel, teacherProfileId, lessonPage
                     <div className="space-y-4">
                         {showQuestionEditor ? (
                             <QuestionGameEditor
+                                ref={questionEditorRef}
                                 items={challengeItems}
                                 onSave={handleSaveChallengeItems}
                                 onCancel={() => setShowQuestionEditor(false)}
+                                onDirtyChange={handleQuestionsDirtyChange}
+                                registerCloseGuard={registerQuestionEditorCloseGuard}
                                 media={mediaList}
                                 wheelSpinSoundUrl={resolveWheelSpinSoundUrl(wheelSpinSoundUrl)}
                             />

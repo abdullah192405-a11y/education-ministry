@@ -11,7 +11,7 @@ import {
 import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
-import { exclusiveQuestionAttachmentFields } from "@/lib/questionAttachments";
+import { questionAttachmentFields } from "@/lib/questionAttachments";
 import {
     buildTeacherClassAccessFromRows,
     filterTopicsOwnedByTeacher,
@@ -107,6 +107,7 @@ export const useGradeDetail = (slug: string, options?: OrgScopeOptions) => {
                 .from("grades")
                 .select(`
           *,
+          organizations (id, name),
           subjects (
             *,
             topics (
@@ -657,7 +658,7 @@ export const useCreateTopicLiveSession = () => {
         mutationFn: async (payload: {
             topicId: string;
             teacherId: string;
-            provider: "GOOGLE_MEET" | "ZOOM" | "CUSTOM";
+            provider: "GOOGLE_MEET" | "ZOOM" | "MICROSOFT_TEAMS" | "CUSTOM";
             meetingUrl: string;
             title?: string | null;
             startsAt: string;
@@ -2882,7 +2883,7 @@ export const useSaveChallengeQuestions = () => {
                 question: q.question || "",
                 options: q.options || [],
                 correct_answer: q.correctAnswer != null ? String(q.correctAnswer) : null,
-                ...exclusiveQuestionAttachmentFields(q),
+                ...questionAttachmentFields(q),
                 pairs: q.pairs || null,
                 order_items: q.orderItems || [],
                 explanation: q.explanation || null,

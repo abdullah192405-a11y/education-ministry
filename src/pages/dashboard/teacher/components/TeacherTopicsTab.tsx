@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, type MutableRefObject } from "react";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TFunction } from "@/contexts/LanguageContext";
 import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
@@ -118,6 +118,9 @@ interface TeacherTopicsTabProps {
     subjectId?: string;
     teacherProfileId?: string;
     onCreateChallenge: (topicId: string, details?: any) => void;
+    /** Set by ContentEditor when question edits are unsaved (dashboard nav guard). */
+    onUnsavedQuestionsChange?: (dirty: boolean) => void;
+    navigationGuardRef?: MutableRefObject<((onProceed: () => void) => void) | null>;
 }
 
 interface ExtendedTopic {
@@ -282,7 +285,14 @@ const getAttemptQuestionRows = (result: unknown, topic: unknown) =>
         };
     });
 
-const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teacherProfileId, onCreateChallenge }: TeacherTopicsTabProps) => {
+const TeacherTopicsTab = ({
+    gradeId: propGradeId,
+    subjectId: propSubjectId,
+    teacherProfileId,
+    onCreateChallenge,
+    onUnsavedQuestionsChange,
+    navigationGuardRef,
+}: TeacherTopicsTabProps) => {
     const { t, dir, locale, language } = useDashboardLocale();
     const { toast } = useToast();
 
@@ -1450,7 +1460,17 @@ const TeacherTopicsTab = ({ gradeId: propGradeId, subjectId: propSubjectId, teac
                         createdAt: editingTopic.createdAt
                     } : undefined}
                     onSave={handleSaveTopic}
+                    onUnsavedQuestionsChange={onUnsavedQuestionsChange}
+                    registerNavigationGuard={(guard) => {
+                        if (navigationGuardRef) {
+                            navigationGuardRef.current = guard;
+                        }
+                    }}
                     onCancel={() => {
+                        onUnsavedQuestionsChange?.(false);
+                        if (navigationGuardRef) {
+                            navigationGuardRef.current = (onProceed) => onProceed();
+                        }
                         setIsEditorOpen(false);
                         setEditingTopic(null);
                     }}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     ClipboardList, Plus, Calendar, Clock, Users, Trophy, Copy,
@@ -56,7 +56,10 @@ import QuestionGameEditor from "./QuestionGameEditor";
 import { ChallengeQuestion } from "@/data/challengeTypes";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/translations";
-import { exclusiveQuestionAttachmentFields } from "@/lib/questionAttachments";
+import { questionAttachmentFields } from "@/lib/questionAttachments";
+import { useTeacherVisibleClasses } from "@/hooks/useTeacherVisibleClasses";
+import { filterTopicsOwnedByTeacher } from "@/lib/teacherClassAccess";
+import { cn } from "@/lib/utils";
 
 const EXAM_CATEGORY_KEYS: Record<string, TranslationKey> = {
     WEEKLY: "dash.teacher.exams.category.WEEKLY",
@@ -338,21 +341,27 @@ const CreateExamDialog = ({
     open,
     onOpenChange,
     onCreated,
+    initialGradeId,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onCreated: (exam: any) => void;
+    initialGradeId?: string;
 }) => {
     const { toast } = useToast();
     const { t, dir, getCategoryLabel } = useExamI18n();
     const { data: user } = useUser();
     const { data: profile } = useTeacherProfile(user?.id || "");
     const { data: topics, isLoading: loadingTopics } = useTeacherAllTopics(profile?.id || "");
+    const {
+        visibleGrades,
+        allowedSubjectIds,
+    } = useTeacherVisibleClasses(profile?.id || "", profile?.grade_id);
     const createExamMutation = useCreateExam();
 
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [gradeId, setGradeId] = useState("");
+    const [gradeId, setGradeId] = useState(initialGradeId || "");
     const [topicId, setTopicId] = useState("");
     const [customTopic, setCustomTopic] = useState("");
     const [category, setCategory] = useState("WEEKLY");
@@ -440,23 +449,31 @@ const CreateExamDialog = ({
         }
     };
 
-    // Extract unique grades from teacher's topics
-    const availableGrades = useMemo(() => {
-        const gradesMap = new Map();
-        (topics || []).forEach((t: any) => {
-            if (t.subject?.grade) {
-                gradesMap.set(t.subject.grade.id, t.subject.grade);
-            }
-        });
-        return Array.from(gradesMap.values());
-    }, [topics]);
+    const ownedTopics = useMemo(
+        () => filterTopicsOwnedByTeacher(topics, profile?.id || ""),
+        [topics, profile?.id],
+    );
 
-    // Topics filtered by selected grade
+    const availableGrades = visibleGrades;
+
     const availableTopics = useMemo(() => {
-        return (topics || []).filter((t: any) => 
-            t.title && (!gradeId || t.subject?.grade?.id === gradeId)
-        );
-    }, [topics, gradeId]);
+        return ownedTopics.filter((t: any) => {
+            if (!t.title) return false;
+            const subjectId = t.subject?.id;
+            if (subjectId && !allowedSubjectIds.has(subjectId)) return false;
+            if (gradeId && t.subject?.grade?.id !== gradeId) return false;
+            return true;
+        });
+    }, [ownedTopics, gradeId, allowedSubjectIds]);
+
+    useEffect(() => {
+        if (!open) return;
+        if (initialGradeId) {
+            setGradeId(initialGradeId);
+        } else if (!gradeId && availableGrades.length > 0) {
+            setGradeId(availableGrades[0].id);
+        }
+    }, [open, initialGradeId, availableGrades, gradeId]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -784,7 +801,7 @@ const ManageQuestionsDialog = ({
                     question: q.question,
                     options: q.options || [],
                     correct_answer: String(q.correctAnswer ?? 0),
-                    ...exclusiveQuestionAttachmentFields(q),
+                    ...questionAttachmentFields(q),
                     pairs: q.pairs || null,
                     order_items: q.orderItems || [],
                     explanation: q.explanation || null,
@@ -814,15 +831,28 @@ const ManageQuestionsDialog = ({
         }
     };
 
+    const questionEditorCloseGuardRef = useRef<(onProceed: () => void) => void>((onProceed) => onProceed());
+
     if (!exam) return null;
 
     return (
-        <Dialog open={!!exam} onOpenChange={(open) => !open && onClose()}>
+        <Dialog
+            open={!!exam}
+            onOpenChange={(open) => {
+                if (!open) {
+                    questionEditorCloseGuardRef.current(onClose);
+                }
+            }}
+        >
             <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto p-4 md:p-8 bg-muted/10 border-none rounded-[2rem] shadow-2xl" dir={dir}>
                 <QuestionGameEditor
                     items={mappedQuestions}
                     onSave={handleSave}
                     onCancel={onClose}
+                    registerCloseGuard={(tryClose) => {
+                        questionEditorCloseGuardRef.current = (onProceed) =>
+                            tryClose(onProceed, "external");
+                    }}
                     isExamMode={true}
                 />
             </DialogContent>
@@ -837,14 +867,21 @@ const TeacherExamsTab = () => {
     const { toast } = useToast();
     const { t, dir, locale, isRtl } = useDashboardLocale();
     const { data: user } = useUser();
+    const { data: teacherProfile } = useTeacherProfile(user?.id || "");
     const { data: exams, isLoading } = useTeacherExams(user?.id || "");
     const deleteExamMutation = useDeleteExam();
+    const {
+        visibleGrades,
+        showGradeFilter,
+        selectedGradeId: classGradeId,
+    } = useTeacherVisibleClasses(teacherProfile?.id || "", teacherProfile?.grade_id);
 
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [selectedExam, setSelectedExam] = useState<any>(null);
     const [manageQuestionsExam, setManageQuestionsExam] = useState<any>(null);
     const [shareExam, setShareExam] = useState<{ pin: string; title: string } | null>(null);
     const [filterCategory, setFilterCategory] = useState<string>("all");
+    const [filterGradeId, setFilterGradeId] = useState<string>("all");
     const [searchQuery, setSearchQuery] = useState("");
 
     const getCategoryLabel = (key: string) => {
@@ -902,6 +939,15 @@ const TeacherExamsTab = () => {
             filtered = filtered.filter((e: any) => e.category === filterCategory);
         }
 
+        if (showGradeFilter && filterGradeId !== "all") {
+            filtered = filtered.filter((e: any) => {
+                const examGradeId =
+                    e.grade_id ||
+                    e.topic?.subject?.grade?.id;
+                return examGradeId === filterGradeId;
+            });
+        }
+
         if (searchQuery) {
             filtered = filtered.filter((e: any) =>
                 e.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -910,7 +956,7 @@ const TeacherExamsTab = () => {
         }
 
         return filtered;
-    }, [exams, filterCategory, searchQuery]);
+    }, [exams, filterCategory, filterGradeId, showGradeFilter, searchQuery]);
 
     const handleDeleteExam = async (id: string) => {
         try {
@@ -1015,15 +1061,37 @@ const TeacherExamsTab = () => {
                 </Card>
             </div>
 
+            {showGradeFilter && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-[120px]">
+                        <GraduationCap className="w-5 h-5" />
+                        <span>{t("dash.teacher.topics.gradeLabel")}</span>
+                    </div>
+                    <Select value={filterGradeId} onValueChange={setFilterGradeId}>
+                        <SelectTrigger className="w-full sm:w-64 h-11 bg-background">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">{t("dash.teacher.exams.allGrades")}</SelectItem>
+                            {visibleGrades.map((grade) => (
+                                <SelectItem key={grade.id} value={grade.id}>
+                                    {grade.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-3">
                 <div className="relative flex-1">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground", isRtl ? "right-3" : "left-3")} />
                     <Input
                         placeholder={t("dash.teacher.exams.searchPlaceholder")}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pr-10 h-11"
+                        className={cn("h-11", isRtl ? "pr-10" : "pl-10")}
                     />
                 </div>
                 <Select value={filterCategory} onValueChange={setFilterCategory}>
@@ -1224,14 +1292,16 @@ const TeacherExamsTab = () => {
                 <div className="text-center py-24 bg-muted/20 rounded-3xl border-2 border-dashed">
                     <ClipboardList className="w-20 h-20 mx-auto mb-6 text-muted-foreground/20" />
                     <h3 className="text-xl font-bold mb-2">
-                        {searchQuery || filterCategory !== "all" ? t("dash.teacher.exams.emptyFiltered") : t("dash.teacher.exams.emptyNone")}
+                        {searchQuery || filterCategory !== "all" || (showGradeFilter && filterGradeId !== "all")
+                            ? t("dash.teacher.exams.emptyFiltered")
+                            : t("dash.teacher.exams.emptyNone")}
                     </h3>
                     <p className="text-muted-foreground mb-6">
-                        {searchQuery || filterCategory !== "all"
+                        {searchQuery || filterCategory !== "all" || (showGradeFilter && filterGradeId !== "all")
                             ? t("dash.teacher.exams.emptyFilteredHint")
                             : t("dash.teacher.exams.emptyNoneHint")}
                     </p>
-                    {!searchQuery && filterCategory === "all" && (
+                    {!searchQuery && filterCategory === "all" && (!showGradeFilter || filterGradeId === "all") && (
                         <Button
                             className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600"
                             onClick={() => setShowCreateDialog(true)}
@@ -1248,6 +1318,7 @@ const TeacherExamsTab = () => {
                 open={showCreateDialog}
                 onOpenChange={setShowCreateDialog}
                 onCreated={(exam) => setShareExam({ pin: exam.pin, title: exam.title })}
+                initialGradeId={showGradeFilter && filterGradeId !== "all" ? filterGradeId : classGradeId}
             />
 
             {/* Share Exam Dialog */}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { useSound } from "@/hooks/useSound";
 import {
     resolveWheelSpinSoundUrl,
@@ -15,7 +15,7 @@ import {
     Plus, X, Save, Trash2, ChevronUp, ChevronDown,
     HelpCircle, Gamepad2, CheckCircle, XCircle,
     Clock, Star, Sparkles, ListOrdered, ArrowLeftRight, Volume2,
-    Target, CircleDot, RotateCcw, Wand2, Database, FileUp,
+    Target, CircleDot, RotateCcw, Wand2, Database, FileUp, AlertTriangle,
 } from "lucide-react";
 import { QuestionAttachmentField } from "./QuestionAttachmentField";
 import type { ActivityType, GameType, ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
@@ -24,6 +24,8 @@ import AIQuestionGeneratorFromResources from "./AIQuestionGeneratorFromResources
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TFunction } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
+import UnsavedQuestionsDialog from "./UnsavedQuestionsDialog";
 
 type ItemCategory = "activity" | "game";
 type AIMode = "upload" | "resources" | null;
@@ -36,7 +38,17 @@ interface QuestionGameEditorProps {
     isExamMode?: boolean;
     /** Custom wheel spin SFX from lesson sound settings (ContentEditor). */
     wheelSpinSoundUrl?: string;
+    /** Parent calls this before closing (dialog overlay, tab switch, etc.). */
+    registerCloseGuard?: (tryClose: (onProceed: () => void, intent?: "cancel" | "external") => void) => void;
+    onDirtyChange?: (dirty: boolean) => void;
 }
+
+export type QuestionGameEditorHandle = {
+    getItems: () => ChallengeQuestion[];
+    resetDirtyBaseline: () => void;
+};
+
+const serializeChallengeItems = (items: ChallengeQuestion[]) => JSON.stringify(items);
 
 const getActivityTypes = (t: TFunction) => [
     { type: "multiple_choice" as const, label: t("dash.teacher.topics.qe.multipleChoice"), icon: CheckCircle, description: t("dash.teacher.topics.qe.multipleChoiceDesc") },
@@ -110,27 +122,110 @@ const getDefaultItem = (type: ActivityType | GameType, t: TFunction): Partial<Ch
     }
 };
 
-const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = false, wheelSpinSoundUrl = "" }: QuestionGameEditorProps) => {
+const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEditorProps>(function QuestionGameEditor(
+    { items, onSave, onCancel, media = [], isExamMode = false, wheelSpinSoundUrl = "", registerCloseGuard, onDirtyChange },
+    ref
+) {
     const { t, dir, isRtl, textAlign } = useDashboardLocale();
+    const { toast } = useToast();
     const [questionItems, setQuestionItems] = useState<ChallengeQuestion[]>(items);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<ItemCategory | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [aiMode, setAIMode] = useState<AIMode>(null);
+    const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+    const pendingProceedRef = useRef<(() => void) | null>(null);
+    const closeIntentRef = useRef<"cancel" | "external">("cancel");
+    const savedSnapshotRef = useRef(serializeChallengeItems(items));
 
     const activityTypes = useMemo(() => getActivityTypes(t), [t]);
     const gameTypes = useMemo(() => getGameTypes(t), [t]);
 
+    const isDirty = useMemo(
+        () => serializeChallengeItems(questionItems) !== savedSnapshotRef.current,
+        [questionItems]
+    );
+
+    useEffect(() => {
+        if (isDirty) return;
+        savedSnapshotRef.current = serializeChallengeItems(items);
+        setQuestionItems(items);
+    }, [items, isDirty]);
+
+    useEffect(() => {
+        onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
+
+    useImperativeHandle(ref, () => ({
+        getItems: () => questionItems,
+        resetDirtyBaseline: () => {
+            savedSnapshotRef.current = serializeChallengeItems(questionItems);
+        },
+    }), [questionItems]);
+
+    const remindToSave = useCallback(() => {
+        toast({
+            title: t("dash.teacher.topics.qe.toastAddedReminderTitle"),
+            description: t("dash.teacher.topics.qe.toastAddedReminderDesc"),
+        });
+    }, [toast, t]);
+
+    const requestClose = useCallback((onProceed: () => void, intent: "cancel" | "external" = "cancel") => {
+        if (!isDirty) {
+            onProceed();
+            return;
+        }
+        closeIntentRef.current = intent;
+        pendingProceedRef.current = onProceed;
+        setShowUnsavedDialog(true);
+    }, [isDirty]);
+
+    useLayoutEffect(() => {
+        registerCloseGuard?.(requestClose);
+    }, [registerCloseGuard, requestClose]);
+
+    const handleConfirmSave = () => {
+        setShowUnsavedDialog(false);
+        const proceed = pendingProceedRef.current;
+        const intent = closeIntentRef.current;
+        pendingProceedRef.current = null;
+        savedSnapshotRef.current = serializeChallengeItems(questionItems);
+        onSave(questionItems);
+        if (intent === "external" && !isExamMode) {
+            proceed?.();
+        }
+    };
+
+    const handleConfirmDiscard = () => {
+        setShowUnsavedDialog(false);
+        const proceed = pendingProceedRef.current;
+        const intent = closeIntentRef.current;
+        pendingProceedRef.current = null;
+        if (intent === "cancel") {
+            onCancel();
+        } else {
+            proceed?.();
+        }
+    };
+
+    const handleStayEditing = () => {
+        setShowUnsavedDialog(false);
+        pendingProceedRef.current = null;
+    };
+
     const handleAIGenerate = (generatedQuestions: ChallengeQuestion[]) => {
-        setQuestionItems([...questionItems, ...generatedQuestions]);
+        setQuestionItems((prev) => [...prev, ...generatedQuestions]);
         setAIMode(null);
+        remindToSave();
     };
 
     const handleAddItem = (type: ActivityType | GameType) => {
         const newItem = getDefaultItem(type, t) as ChallengeQuestion;
         newItem.id = Date.now();
-        setQuestionItems([...questionItems, newItem]);
-        setEditingIndex(questionItems.length);
+        setQuestionItems((prev) => {
+            setEditingIndex(prev.length);
+            return [...prev, newItem];
+        });
         setShowAddDialog(false);
         setSelectedCategory(null);
     };
@@ -190,16 +285,39 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
                     </span>
                 </h2>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={onCancel} className="gap-2">
+                    <Button variant="outline" onClick={() => requestClose(onCancel)} className="gap-2">
                         <X className="w-4 h-4 shrink-0" />
                         {t("dash.common.cancel")}
                     </Button>
-                    <Button onClick={() => onSave(questionItems)} className="gap-2">
+                    <Button
+                        onClick={() => {
+                            savedSnapshotRef.current = serializeChallengeItems(questionItems);
+                            onSave(questionItems);
+                        }}
+                        className="gap-2"
+                    >
                         <Save className="w-4 h-4 shrink-0" />
                         {t("dash.teacher.topics.qe.saveAll")}
                     </Button>
                 </div>
             </div>
+
+            {isDirty && (
+                <div
+                    role="status"
+                    className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 flex items-start gap-2"
+                >
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                    <span>{t("dash.teacher.topics.qe.unsavedBanner")}</span>
+                </div>
+            )}
+
+            <UnsavedQuestionsDialog
+                open={showUnsavedDialog}
+                onSave={handleConfirmSave}
+                onDiscard={handleConfirmDiscard}
+                onStay={handleStayEditing}
+            />
 
             {aiMode === null ? (
                 <Card dir={dir} className="border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-blue-500/5">
@@ -550,7 +668,7 @@ const QuestionGameEditor = ({ items, onSave, onCancel, media = [], isExamMode = 
             </div>
         </div>
     );
-};
+});
 
 const renderTypeSpecificFields = (
     item: ChallengeQuestion,

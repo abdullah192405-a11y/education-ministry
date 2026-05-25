@@ -1,4 +1,4 @@
-export type LiveProvider = "GOOGLE_MEET" | "ZOOM" | "CUSTOM";
+export type LiveProvider = "GOOGLE_MEET" | "ZOOM" | "MICROSOFT_TEAMS" | "CUSTOM";
 export type LiveSessionStatus = "live" | "upcoming" | "ended";
 
 export interface TopicLiveSessionRow {
@@ -14,9 +14,29 @@ export interface TopicLiveSessionRow {
     is_active?: boolean | null;
 }
 
+export const LIVE_PROVIDER_I18N_KEYS: Record<Exclude<LiveProvider, "CUSTOM">, string> = {
+    GOOGLE_MEET: "dash.teacher.live.provider.googleMeet",
+    ZOOM: "dash.teacher.live.provider.zoom",
+    MICROSOFT_TEAMS: "dash.teacher.live.provider.teams",
+};
+
+export const getLiveProviderLabel = (
+    provider: string | null | undefined,
+    t: (key: string) => string,
+    options?: { customLabel?: string }
+) => {
+    const key = LIVE_PROVIDER_I18N_KEYS[provider as Exclude<LiveProvider, "CUSTOM">];
+    if (key) return t(key);
+    if (provider === "CUSTOM") {
+        return options?.customLabel || t("dash.teacher.live.otherLink");
+    }
+    return options?.customLabel || t("topicView.live.directLink");
+};
+
 export const LIVE_PROVIDER_PLACEHOLDERS: Record<LiveProvider, string> = {
     GOOGLE_MEET: "https://meet.google.com/abc-defg-hij",
     ZOOM: "https://zoom.us/j/123456789",
+    MICROSOFT_TEAMS: "https://teams.microsoft.com/l/meetup-join/...",
     CUSTOM: "https://example.com/live-class",
 };
 
@@ -39,6 +59,14 @@ export const isValidMeetingUrl = (value: string, provider: LiveProvider) => {
         const host = url.hostname.toLowerCase();
         if (provider === "GOOGLE_MEET") return host === "meet.google.com" || host.endsWith(".meet.google.com");
         if (provider === "ZOOM") return host.endsWith("zoom.us") || host.endsWith("zoom.com");
+        if (provider === "MICROSOFT_TEAMS") {
+            return (
+                host === "teams.microsoft.com" ||
+                host.endsWith(".teams.microsoft.com") ||
+                host === "teams.live.com" ||
+                host.endsWith(".teams.live.com")
+            );
+        }
         return true;
     } catch {
         return false;
@@ -85,6 +113,7 @@ export type LiveSessionDraftValidationKey =
     | "missingUrl"
     | "invalidMeet"
     | "invalidZoom"
+    | "invalidTeams"
     | "invalidHttps"
     | "invalidTime";
 
@@ -97,6 +126,7 @@ export const validateLiveSessionDraft = (
     if (!isValidMeetingUrl(draft.meetingUrl, draft.provider)) {
         if (draft.provider === "GOOGLE_MEET") return "invalidMeet";
         if (draft.provider === "ZOOM") return "invalidZoom";
+        if (draft.provider === "MICROSOFT_TEAMS") return "invalidTeams";
         return "invalidHttps";
     }
 
