@@ -2,15 +2,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Grades from "./pages/Grades";
 import GradeDetail from "./pages/GradeDetail";
 import SubjectView from "./pages/SubjectView";
 import TopicView from "./pages/TopicView";
 import OrganizationProfile from "./pages/OrganizationProfile";
-import Organizations from "./pages/Organizations";
-import Schools from "./pages/Schools";
+import Partners from "./pages/Partners";
 import ChallengeModeSelect from "./pages/ChallengeModeSelect";
 import SingleChallenge from "./pages/SingleChallenge";
 import GroupChallenge from "./pages/GroupChallenge";
@@ -57,8 +56,9 @@ const App = () => (
 
                 {/* Education Routes - Grades > Subjects > Topics */}
                 <Route path="/grades" element={<Grades />} />
-                <Route path="/schools" element={<Schools />} />
-                <Route path="/organizations" element={<Organizations />} />
+                <Route path="/partners" element={<Partners />} />
+                <Route path="/schools" element={<Navigate to="/partners" replace />} />
+                <Route path="/organizations" element={<Navigate to="/partners" replace />} />
                 <Route path="/org/:orgSlug" element={<OrganizationProfile />} />
                 <Route path="/grade/:gradeId" element={<GradeDetail />} />
                 <Route path="/grade/:gradeId/subject/:subjectId" element={<SubjectView />} />

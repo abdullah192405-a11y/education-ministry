@@ -68,6 +68,7 @@ export const translations = {
 
         // Header
         "header.educationalGrades": "الصفوف التعليمية",
+        "header.educationalContent": "المحتوى التعليمي",
         "header.enrichmentChannels": "القنوات الإثرائية",
         "header.regularGrades": "الصفوف الدراسية",
 
@@ -175,15 +176,17 @@ export const translations = {
         "joinSection.team": "جماعي",
 
         // Organizations section (landing)
-        "orgsSection.schoolsTitle": "المدارس",
-        "orgsSection.schoolsDescription": "اختر مدرسة واستكشف المحتوى المرتبط بها",
-        "orgsSection.schoolsCount": "جهة",
-        "orgsSection.viewSchools": "عرض المدارس",
-        "orgsSection.schoolsEmpty": "لا توجد مدارس منشورة حالياً.",
-        "orgsSection.orgsTitle": "المؤسسات",
-        "orgsSection.orgsDescription": "اختر مؤسسة واستكشف المحتوى المرتبط بها",
-        "orgsSection.viewOrgs": "عرض المؤسسات",
-        "orgsSection.orgsEmpty": "لا توجد مؤسسات منشورة حالياً.",
+        "orgsSection.partnersTitle": "شركاء النجاح",
+        "orgsSection.partnersDescription": "مدارس ومؤسسات شريكة تنشر المحتوى التعليمي والإثرائي على المنصة",
+        "orgsSection.partnersCount": "شريك",
+        "orgsSection.viewPartners": "عرض شركاء النجاح",
+        "orgsSection.partnersEmpty": "لا يوجد شركاء منشورون حالياً.",
+        "orgsSection.carouselPrev": "السابق",
+        "orgsSection.carouselNext": "التالي",
+        "partnersPage.title": "شركاء النجاح",
+        "partnersPage.description": "استكشف المدارس والمؤسسات الشريكة ومحتوى كل جهة.",
+        "partnersPage.count": "شريك",
+        "partnersPage.empty": "لا يوجد شركاء منشورون حالياً.",
 
         // CTA section
         "cta.badge": "ابدأ رحلتك الآن",
@@ -2102,6 +2105,7 @@ export const translations = {
 
         // Header
         "header.educationalGrades": "Educational Grades",
+        "header.educationalContent": "Educational Content",
         "header.enrichmentChannels": "Enrichment Channels",
         "header.regularGrades": "Grades",
 
@@ -2209,15 +2213,17 @@ export const translations = {
         "joinSection.team": "Team",
 
         // Organizations section (landing)
-        "orgsSection.schoolsTitle": "Schools",
-        "orgsSection.schoolsDescription": "Choose a school and explore its content",
-        "orgsSection.schoolsCount": "entities",
-        "orgsSection.viewSchools": "View Schools",
-        "orgsSection.schoolsEmpty": "No schools published yet.",
-        "orgsSection.orgsTitle": "Institutions",
-        "orgsSection.orgsDescription": "Choose an institution and explore its content",
-        "orgsSection.viewOrgs": "View Institutions",
-        "orgsSection.orgsEmpty": "No institutions published yet.",
+        "orgsSection.partnersTitle": "Success Partners",
+        "orgsSection.partnersDescription": "Partner schools and institutions publishing educational and enrichment content on the platform",
+        "orgsSection.partnersCount": "partners",
+        "orgsSection.viewPartners": "View success partners",
+        "orgsSection.partnersEmpty": "No partners published yet.",
+        "orgsSection.carouselPrev": "Previous",
+        "orgsSection.carouselNext": "Next",
+        "partnersPage.title": "Success Partners",
+        "partnersPage.description": "Explore partner schools and institutions and the content offered by each.",
+        "partnersPage.count": "partners",
+        "partnersPage.empty": "No partners published yet.",
 
         // CTA section
         "cta.badge": "Start your journey now",

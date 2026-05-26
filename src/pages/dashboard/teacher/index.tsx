@@ -319,7 +319,7 @@ const TeacherDashboard = () => {
 
     const performChallengeCreation = async (topicId: string | number, details?: any) => {
         let topic = topics.find((t: any) => String(t.id) === String(topicId));
-        
+
         if (!topic && details) {
             topic = {
                 id: topicId,
@@ -383,7 +383,7 @@ const TeacherDashboard = () => {
             setLocalChallenges(prev => [newChallenge, ...prev]);
 
             const joinLink = `${window.location.origin}/join/${pin}`;
-            const shareText = isScheduled 
+            const shareText = isScheduled
                 ? t("dash.teacher.share.scheduledShareText", { title: topic.title, pin, time: new Date(details.scheduledStartTime).toLocaleString(locale) })
                 : t("dash.teacher.share.shareText", { title: topic.title, pin });
 
@@ -906,28 +906,28 @@ const TeacherDashboard = () => {
                                                                         </Button>
                                                                     </DropdownMenuTrigger>
                                                                     <DropdownMenuContent align="end" className="w-48">
-                                                                        <DropdownMenuItem 
+                                                                        <DropdownMenuItem
                                                                             className="text-xs gap-2 cursor-pointer"
-                                                                            onClick={() => handleCreateChallenge(topic.id, { 
-                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "ACTIVITIES" 
+                                                                            onClick={() => handleCreateChallenge(topic.id, {
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "ACTIVITIES"
                                                                             })}
                                                                         >
                                                                             <ListChecks className="w-3.5 h-3.5 text-blue-500" />
                                                                             {t("dash.teacher.activitiesInteractive")}
                                                                         </DropdownMenuItem>
-                                                                        <DropdownMenuItem 
+                                                                        <DropdownMenuItem
                                                                             className="text-xs gap-2 cursor-pointer"
-                                                                            onClick={() => handleCreateChallenge(topic.id, { 
-                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "GAMES" 
+                                                                            onClick={() => handleCreateChallenge(topic.id, {
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "GAMES"
                                                                             })}
                                                                         >
                                                                             <Gamepad2 className="w-3.5 h-3.5 text-purple-500" />
                                                                             {t("dash.teacher.activitiesGamified")}
                                                                         </DropdownMenuItem>
-                                                                        <DropdownMenuItem 
+                                                                        <DropdownMenuItem
                                                                             className="text-xs gap-2 cursor-pointer font-bold"
-                                                                            onClick={() => handleCreateChallenge(topic.id, { 
-                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "MIXED" 
+                                                                            onClick={() => handleCreateChallenge(topic.id, {
+                                                                                title: topic.title, gradeId: gId, subjectId: sId, category: "MIXED"
                                                                             })}
                                                                         >
                                                                             <Target className="w-3.5 h-3.5 text-emerald-500" />
@@ -1111,21 +1111,21 @@ const TeacherDashboard = () => {
                                     <Clock className="w-4 h-4 text-primary" />
                                     {t("dash.teacher.schedule.startTime")}
                                 </label>
-                                <Input 
-                                    type="datetime-local" 
+                                <Input
+                                    type="datetime-local"
                                     className="h-11"
                                     value={scheduledTimes.start}
                                     onChange={(e) => setScheduledTimes(prev => ({ ...prev, start: e.target.value }))}
                                 />
                             </div>
-                            
+
                             <div className="space-y-2">
                                 <label className="text-sm font-bold flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-destructive" />
                                     {t("dash.teacher.schedule.endTime")}
                                 </label>
-                                <Input 
-                                    type="datetime-local" 
+                                <Input
+                                    type="datetime-local"
                                     className="h-11"
                                     value={scheduledTimes.end}
                                     onChange={(e) => setScheduledTimes(prev => ({ ...prev, end: e.target.value }))}

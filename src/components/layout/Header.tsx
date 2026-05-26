@@ -4,23 +4,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import AnnouncementBar from "./AnnouncementBar";
 import { useUser } from "@/hooks/useDatabase";
-import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { LayoutDashboard, LogIn, User, Menu, X } from "lucide-react";
+import { LogIn, User, Menu, X } from "lucide-react";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useUser();
-  const { mode: visitorGradeMode } = useCatalogGradeClassMode();
   const { t } = useTranslation();
 
-  const gradesNavLabel =
-    visitorGradeMode === "teaching_only"
-      ? t("header.educationalGrades")
-      : visitorGradeMode === "enrichment_only"
-        ? t("header.enrichmentChannels")
-        : t("header.regularGrades");
+  const contentNavLabel = user
+    ? t("header.educationalContent")
+    : t("header.enrichmentChannels");
+  const contentNavHref = user ? "/grades?kind=teaching" : "/grades?kind=enrichment";
 
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
@@ -35,12 +31,10 @@ const Header = () => {
 
   const navItems = [
     { label: t("common.home"), href: "/" },
-    { label: gradesNavLabel, href: "/grades" },
+    { label: contentNavLabel, href: contentNavHref },
+    { label: t("orgsSection.partnersTitle"), href: "/partners" },
+    ...(user ? [{ label: t("common.dashboard"), href: dashboardPath }] : []),
   ];
-
-  if (user) {
-    navItems.push({ label: t("common.dashboard"), href: dashboardPath });
-  }
 
   return (
     <header className="fixed top-0 right-0 left-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -73,12 +67,6 @@ const Header = () => {
             <LanguageSwitcher />
             {user ? (
               <>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to={dashboardPath}>
-                    <LayoutDashboard className="w-4 h-4" />
-                    {t("common.dashboard")}
-                  </Link>
-                </Button>
                 <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
                   <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
                     <User className="w-3.5 h-3.5 text-primary" />
@@ -140,12 +128,7 @@ const Header = () => {
               ))}
               <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
                 {user ? (
-                  <Button className="w-full" asChild>
-                    <Link to={dashboardPath} onClick={() => setIsMenuOpen(false)}>
-                      <LayoutDashboard className="w-4 h-4" />
-                      {t("common.dashboard")}
-                    </Link>
-                  </Button>
+                  <div className="w-full px-4 py-2 text-sm font-medium text-primary">{user.name}</div>
                 ) : (
                   <>
                     <Button variant="outline" className="w-full" asChild>

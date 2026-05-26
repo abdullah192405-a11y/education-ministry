@@ -27,6 +27,22 @@ export function gradeMatchesVisitorClassMode(
     return true;
 }
 
+export function getGradeOrganizationId(grade: {
+    organization_id?: string | null;
+    organizationId?: string | null;
+}): string | null {
+    const id = grade.organization_id ?? grade.organizationId;
+    return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/** Keep only educational grades that belong to the signed-in user's school/org. */
+export function filterEducationalGradesForOrganization<
+    T extends { organization_id?: string | null; organizationId?: string | null },
+>(grades: T[], organizationId: string | null | undefined): T[] {
+    if (!organizationId) return [];
+    return grades.filter((g) => getGradeOrganizationId(g) === organizationId);
+}
+
 export function filterGradesForPublicCatalog<
     T extends {
         class_type?: string | null;

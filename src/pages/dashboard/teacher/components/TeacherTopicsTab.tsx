@@ -831,15 +831,15 @@ const TeacherTopicsTab = ({
                 analysisRows: [
                     ...(lessonRatingSummary.total > 0
                         ? [
-                              {
-                                  label: t("dash.teacher.topics.lessonRating"),
-                                  value: `${lessonRatingSummary.average.toFixed(1)} / 5`,
-                              },
-                              {
-                                  label: t("dash.teacher.topics.ratingCount"),
-                                  value: lessonRatingSummary.total,
-                              },
-                          ]
+                            {
+                                label: t("dash.teacher.topics.lessonRating"),
+                                value: `${lessonRatingSummary.average.toFixed(1)} / 5`,
+                            },
+                            {
+                                label: t("dash.teacher.topics.ratingCount"),
+                                value: lessonRatingSummary.total,
+                            },
+                        ]
                         : []),
                     { label: t("dash.teacher.topics.median"), value: `${singleChallengeCollectedReport.medianScore}%` },
                     { label: t("dash.teacher.topics.lowestScore"), value: `${singleChallengeCollectedReport.lowestScore}%` },
@@ -1560,340 +1560,340 @@ const TeacherTopicsTab = ({
                                 </Card>
                             ))
                         ) : (
-                        <>
-                        {filteredTopics.map((topic, i) => {
-                            const topicIndex = topics.findIndex((t) => t.id === topic.id);
-                            return (
-                            <motion.div
-                                key={topic.id}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: i * 0.05 }}
-                                layout
-                            >
-                                <Card className={`hover:shadow-md transition-shadow ${deleteConfirmId === topic.id ? "ring-2 ring-destructive" : ""}`}>
-                                    <CardContent className="p-4 flex flex-col md:flex-row gap-4">
-                                        {!searchQuery.trim() && topics.length > 1 && topicIndex >= 0 && (
-                                            <div
-                                                className="flex md:flex-col items-center justify-center gap-1 shrink-0 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-1.5"
-                                                aria-label={t("dash.teacher.topics.lessonOrder")}
-                                            >
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-9 w-9 bg-background"
-                                                    disabled={topicIndex === 0 || reorderingTopicId !== null}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        void handleMoveTopic(topic.id, "up");
-                                                    }}
-                                                    title={t("dash.teacher.topics.moveUp")}
-                                                >
-                                                    <ChevronUp className="w-4 h-4" />
-                                                </Button>
-                                                <span className="text-xs font-bold text-primary tabular-nums">
-                                                    {topicIndex + 1}
-                                                </span>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-9 w-9 bg-background"
-                                                    disabled={topicIndex === topics.length - 1 || reorderingTopicId !== null}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        void handleMoveTopic(topic.id, "down");
-                                                    }}
-                                                    title={t("dash.teacher.topics.moveDown")}
-                                                >
-                                                    <ChevronDown className="w-4 h-4" />
-                                                </Button>
-                                            </div>
-                                        )}
-                                        {/* Thumbnail */}
-                                        <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0 relative group">
-                                            <img
-                                                src={topic.thumbnail}
-                                                alt={topic.title}
-                                                className="w-full h-full object-cover transition-transform group-hover:scale-110"
-                                            />
-                                            <button
-                                                onClick={() => handleTogglePublish(topic.id)}
-                                                className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${topic.status === "published"
-                                                    ? "bg-success text-success-foreground"
-                                                    : "bg-warning text-warning-foreground"
-                                                    }`}
-                                            >
-                                                {topic.status === "published" ? t("dash.teacher.topics.publishedBadge") : t("dash.teacher.topics.draft")}
-                                            </button>
-                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Link to={`/grade/${selectedGradeId}/subject/${selectedSubjectId}/topic/${topic.id}`}>
-                                                    <Button size="sm" variant="secondary" className="gap-2">
-                                                        <Eye className="w-4 h-4" />{t("dash.teacher.topics.preview")}</Button>
-                                                </Link>
-                                            </div>
-                                        </div>
-
-                                        {/* Info */}
-                                        <div className="flex-1 flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <h3 className="font-bold text-lg">{topic.title}</h3>
-                                                        </div>
-                                                        <p className="text-sm text-muted-foreground line-clamp-2">{topic.description}</p>
-                                                    </div>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="icon">
-                                                                <MoreVertical className="w-4 h-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem className="gap-2" onClick={() => handleEditTopic(topic)}>
-                                                                <Edit className="w-4 h-4" />{t("dash.common.edit")}</DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                className="gap-2 text-destructive"
-                                                                onClick={() => setDeleteConfirmId(topic.id)}
+                            <>
+                                {filteredTopics.map((topic, i) => {
+                                    const topicIndex = topics.findIndex((t) => t.id === topic.id);
+                                    return (
+                                        <motion.div
+                                            key={topic.id}
+                                            initial={{ opacity: 0, x: -20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: i * 0.05 }}
+                                            layout
+                                        >
+                                            <Card className={`hover:shadow-md transition-shadow ${deleteConfirmId === topic.id ? "ring-2 ring-destructive" : ""}`}>
+                                                <CardContent className="p-4 flex flex-col md:flex-row gap-4">
+                                                    {!searchQuery.trim() && topics.length > 1 && topicIndex >= 0 && (
+                                                        <div
+                                                            className="flex md:flex-col items-center justify-center gap-1 shrink-0 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-1.5"
+                                                            aria-label={t("dash.teacher.topics.lessonOrder")}
+                                                        >
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-9 w-9 bg-background"
+                                                                disabled={topicIndex === 0 || reorderingTopicId !== null}
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    void handleMoveTopic(topic.id, "up");
+                                                                }}
+                                                                title={t("dash.teacher.topics.moveUp")}
                                                             >
-                                                                <Trash className="w-4 h-4" />{t("dash.common.delete")}</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-
-                                                <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar className="w-4 h-4" />
-                                                        {topic.createdAt}
-                                                    </div>
-                                                    {topic.duration && (
-                                                        <div className="flex items-center gap-1">
-                                                            <Clock className="w-4 h-4" />
-                                                            {topic.duration}
+                                                                <ChevronUp className="w-4 h-4" />
+                                                            </Button>
+                                                            <span className="text-xs font-bold text-primary tabular-nums">
+                                                                {topicIndex + 1}
+                                                            </span>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-9 w-9 bg-background"
+                                                                disabled={topicIndex === topics.length - 1 || reorderingTopicId !== null}
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    void handleMoveTopic(topic.id, "down");
+                                                                }}
+                                                                title={t("dash.teacher.topics.moveDown")}
+                                                            >
+                                                                <ChevronDown className="w-4 h-4" />
+                                                            </Button>
                                                         </div>
                                                     )}
-                                                    <div className="flex items-center gap-1">
-                                                        <Video className="w-4 h-4" />
-                                                        {t("dash.teacher.topics.resourcesCount", { n: topic.mediaCount ?? 0 })}
+                                                    {/* Thumbnail */}
+                                                    <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0 relative group">
+                                                        <img
+                                                            src={topic.thumbnail}
+                                                            alt={topic.title}
+                                                            className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                        />
+                                                        <button
+                                                            onClick={() => handleTogglePublish(topic.id)}
+                                                            className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${topic.status === "published"
+                                                                ? "bg-success text-success-foreground"
+                                                                : "bg-warning text-warning-foreground"
+                                                                }`}
+                                                        >
+                                                            {topic.status === "published" ? t("dash.teacher.topics.publishedBadge") : t("dash.teacher.topics.draft")}
+                                                        </button>
+                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Link to={`/grade/${selectedGradeId}/subject/${selectedSubjectId}/topic/${topic.id}`}>
+                                                                <Button size="sm" variant="secondary" className="gap-2">
+                                                                    <Eye className="w-4 h-4" />{t("dash.teacher.topics.preview")}</Button>
+                                                            </Link>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <ListChecks className="w-4 h-4" />
-                                                        {t("dash.teacher.topics.questionsCount", { n: topic.quizCount ?? 0 })}
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <Eye className="w-4 h-4" />
-                                                        {t("dash.teacher.topics.viewsCount", { n: getTopicViewerCount(topic) })}
-                                                    </div>
-                                                </div>
-                                            </div>
 
-                                            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="gap-2"
-                                                    onClick={() => handleEditTopic(topic)}
-                                                >
-                                                    <Edit className="w-4 h-4" />{t("dash.teacher.topics.editContent")}</Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="gap-2 text-primary hover:text-primary"
-                                                    onClick={() => setSelectedTopicStats(topic)}
-                                                >
-                                                    <BarChart3 className="w-4 h-4" />{t("dash.teacher.topics.contentStats")}</Button>
-                                                <div className="flex flex-1 min-w-[min(100%,14rem)] gap-2">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
+                                                    {/* Info */}
+                                                    <div className="flex-1 flex flex-col justify-between">
+                                                        <div>
+                                                            <div className="flex items-start justify-between">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <h3 className="font-bold text-lg">{topic.title}</h3>
+                                                                    </div>
+                                                                    <p className="text-sm text-muted-foreground line-clamp-2">{topic.description}</p>
+                                                                </div>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="ghost" size="icon">
+                                                                            <MoreVertical className="w-4 h-4" />
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end">
+                                                                        <DropdownMenuItem className="gap-2" onClick={() => handleEditTopic(topic)}>
+                                                                            <Edit className="w-4 h-4" />{t("dash.common.edit")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 text-destructive"
+                                                                            onClick={() => setDeleteConfirmId(topic.id)}
+                                                                        >
+                                                                            <Trash className="w-4 h-4" />{t("dash.common.delete")}</DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </div>
+
+                                                            <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
+                                                                <div className="flex items-center gap-1">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    {topic.createdAt}
+                                                                </div>
+                                                                {topic.duration && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <Clock className="w-4 h-4" />
+                                                                        {topic.duration}
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex items-center gap-1">
+                                                                    <Video className="w-4 h-4" />
+                                                                    {t("dash.teacher.topics.resourcesCount", { n: topic.mediaCount ?? 0 })}
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <ListChecks className="w-4 h-4" />
+                                                                    {t("dash.teacher.topics.questionsCount", { n: topic.quizCount ?? 0 })}
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Eye className="w-4 h-4" />
+                                                                    {t("dash.teacher.topics.viewsCount", { n: getTopicViewerCount(topic) })}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
                                                             <Button
-                                                                className="flex-1 min-w-0 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                                                                disabled={topic.status === "draft"}
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="gap-2"
+                                                                onClick={() => handleEditTopic(topic)}
                                                             >
-                                                                <Gamepad2 className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.createChallenge")}</Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-52">
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "ACTIVITIES",
-                                                                    })
-                                                                }
-                                                            >
-                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "GAMES",
-                                                                    })
-                                                                }
-                                                            >
-                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer font-semibold"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "MIXED",
-                                                                    })
-                                                                }
-                                                            >
-                                                                <Target className="w-4 h-4 text-emerald-500 shrink-0" />
-                                                                {t("dash.teacher.topics.shareMixed")}
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
+                                                                <Edit className="w-4 h-4" />{t("dash.teacher.topics.editContent")}</Button>
                                                             <Button
-                                                                variant="outline"
-                                                                className="flex-1 min-w-0 gap-2 border-primary/35 text-primary hover:bg-primary/10"
-                                                                disabled={topic.status === "draft"}
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="gap-2 text-primary hover:text-primary"
+                                                                onClick={() => setSelectedTopicStats(topic)}
                                                             >
-                                                                <Calendar className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.scheduledChallenge")}</Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-56">
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "ACTIVITIES",
-                                                                        isScheduled: true,
-                                                                    })
-                                                                }
-                                                            >
-                                                                <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "GAMES",
-                                                                        isScheduled: true,
-                                                                    })
-                                                                }
-                                                            >
-                                                                <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                className="gap-2 cursor-pointer font-semibold"
-                                                                onClick={() =>
-                                                                    onCreateChallenge(topic.id, {
-                                                                        title: topic.title,
-                                                                        gradeId: selectedGradeId,
-                                                                        subjectId: selectedSubjectId,
-                                                                        category: "MIXED",
-                                                                        isScheduled: true,
-                                                                    })
-                                                                }
-                                                            >
-                                                                <Target className="w-4 h-4 text-emerald-500 shrink-0" />
-                                                                {t("dash.teacher.topics.shareMixed")}
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button
-                                                                variant="outline"
-                                                                className="flex-1 min-w-0 gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
-                                                                disabled={topic.status === "draft"}
-                                                            >
-                                                                <QrCode className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.singleQr")}</Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-56">
-                                                            {singleShareOptions.map((option) => (
-                                                                <DropdownMenuItem
-                                                                    key={option.category}
-                                                                    className="gap-2 cursor-pointer"
-                                                                    onClick={() => {
-                                                                        setSingleShareDialogTopic(topic);
-                                                                        setSingleShareCategory(option.category);
-                                                                    }}
+                                                                <BarChart3 className="w-4 h-4" />{t("dash.teacher.topics.contentStats")}</Button>
+                                                            <div className="flex flex-1 min-w-[min(100%,14rem)] gap-2">
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button
+                                                                            className="flex-1 min-w-0 gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                                                                            disabled={topic.status === "draft"}
+                                                                        >
+                                                                            <Gamepad2 className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.createChallenge")}</Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-52">
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "ACTIVITIES",
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "GAMES",
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer font-semibold"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "MIXED",
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <Target className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                                            {t("dash.teacher.topics.shareMixed")}
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            className="flex-1 min-w-0 gap-2 border-primary/35 text-primary hover:bg-primary/10"
+                                                                            disabled={topic.status === "draft"}
+                                                                        >
+                                                                            <Calendar className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.scheduledChallenge")}</Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-56">
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "ACTIVITIES",
+                                                                                    isScheduled: true,
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <ListChecks className="w-4 h-4 text-blue-500 shrink-0" />{t("dash.teacher.topics.interactiveActivities")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "GAMES",
+                                                                                    isScheduled: true,
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <Gamepad2 className="w-4 h-4 text-purple-500 shrink-0" />{t("dash.teacher.topics.gamifiedActivities")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2 cursor-pointer font-semibold"
+                                                                            onClick={() =>
+                                                                                onCreateChallenge(topic.id, {
+                                                                                    title: topic.title,
+                                                                                    gradeId: selectedGradeId,
+                                                                                    subjectId: selectedSubjectId,
+                                                                                    category: "MIXED",
+                                                                                    isScheduled: true,
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <Target className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                                            {t("dash.teacher.topics.shareMixed")}
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            className="flex-1 min-w-0 gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
+                                                                            disabled={topic.status === "draft"}
+                                                                        >
+                                                                            <QrCode className="w-4 h-4 shrink-0" />{t("dash.teacher.topics.singleQr")}</Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-56">
+                                                                        {singleShareOptions.map((option) => (
+                                                                            <DropdownMenuItem
+                                                                                key={option.category}
+                                                                                className="gap-2 cursor-pointer"
+                                                                                onClick={() => {
+                                                                                    setSingleShareDialogTopic(topic);
+                                                                                    setSingleShareCategory(option.category);
+                                                                                }}
+                                                                            >
+                                                                                <QrCode className="w-4 h-4 text-violet-600 shrink-0" />
+                                                                                {option.label}
+                                                                            </DropdownMenuItem>
+                                                                        ))}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </div>
+                                                        </div>
+
+                                                        {(singleResultsByTopicId.get(String(topic.id))?.length ?? 0) > 0 && (
+                                                            <div className="mt-4 pt-4 border-t border-dashed border-primary/20">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    dir={dir}
+                                                                    className="group relative h-auto w-full overflow-hidden rounded-2xl border-primary/25 bg-gradient-to-br from-primary/[0.09] via-primary/[0.02] to-transparent py-4 px-4 shadow-sm transition-all hover:border-primary/45 hover:shadow-md hover:from-primary/[0.12] sm:max-w-md"
+                                                                    onClick={() => setSingleChallengeResultsTopic(topic)}
                                                                 >
-                                                                    <QrCode className="w-4 h-4 text-violet-600 shrink-0" />
-                                                                    {option.label}
-                                                                </DropdownMenuItem>
-                                                            ))}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </div>
-
-                                            {(singleResultsByTopicId.get(String(topic.id))?.length ?? 0) > 0 && (
-                                                <div className="mt-4 pt-4 border-t border-dashed border-primary/20">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        dir={dir}
-                                                        className="group relative h-auto w-full overflow-hidden rounded-2xl border-primary/25 bg-gradient-to-br from-primary/[0.09] via-primary/[0.02] to-transparent py-4 px-4 shadow-sm transition-all hover:border-primary/45 hover:shadow-md hover:from-primary/[0.12] sm:max-w-md"
-                                                        onClick={() => setSingleChallengeResultsTopic(topic)}
-                                                    >
-                                                        <span className="flex w-full items-center justify-between gap-3">
-                                                            <span className="flex min-w-0 flex-1 items-center gap-3">
-                                                                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-inner ring-1 ring-primary/15">
-                                                                    <Trophy className="h-6 w-6" />
-                                                                </span>
-                                                                <span className="flex min-w-0 flex-col gap-0.5 text-start">
-                                                                    <span className="font-bold leading-tight text-foreground">{t("dash.teacher.topics.singleResultsTitle")}</span>
-                                                                    <span className="text-xs font-normal text-muted-foreground">
-                                                                        {t("dash.teacher.topics.attemptNamesScores")}
+                                                                    <span className="flex w-full items-center justify-between gap-3">
+                                                                        <span className="flex min-w-0 flex-1 items-center gap-3">
+                                                                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-inner ring-1 ring-primary/15">
+                                                                                <Trophy className="h-6 w-6" />
+                                                                            </span>
+                                                                            <span className="flex min-w-0 flex-col gap-0.5 text-start">
+                                                                                <span className="font-bold leading-tight text-foreground">{t("dash.teacher.topics.singleResultsTitle")}</span>
+                                                                                <span className="text-xs font-normal text-muted-foreground">
+                                                                                    {t("dash.teacher.topics.attemptNamesScores")}
+                                                                                </span>
+                                                                            </span>
+                                                                        </span>
+                                                                        <span className="flex shrink-0 items-center gap-2">
+                                                                            <Badge className="h-7 min-w-[1.75rem] justify-center rounded-full bg-primary px-2.5 text-xs font-bold text-primary-foreground shadow-sm">
+                                                                                {singleResultsByTopicId.get(String(topic.id))!.length}
+                                                                            </Badge>
+                                                                            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                                                                        </span>
                                                                     </span>
-                                                                </span>
-                                                            </span>
-                                                            <span className="flex shrink-0 items-center gap-2">
-                                                                <Badge className="h-7 min-w-[1.75rem] justify-center rounded-full bg-primary px-2.5 text-xs font-bold text-primary-foreground shadow-sm">
-                                                                    {singleResultsByTopicId.get(String(topic.id))!.length}
-                                                                </Badge>
-                                                                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-                                                            </span>
-                                                        </span>
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                            );
-                        })}
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        </motion.div>
+                                    );
+                                })}
 
-                        {/* Empty State */}
-                        {filteredTopics.length === 0 && (
-                            <Card className="p-12 text-center">
-                                <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                                <h3 className="text-xl font-bold mb-2">
-                                    {searchQuery ? t("dash.teacher.topics.noResults") : t("dash.teacher.topics.noLessons")}
-                                </h3>
-                                <p className="text-muted-foreground mb-4">
-                                    {searchQuery
-                                        ? t("dash.teacher.topics.noSearchResults", { query: searchQuery })
-                                        : t("dash.teacher.topics.noLessonsDesc")}
-                                </p>
-                                {!searchQuery && (
-                                    <Button onClick={handleCreateTopic} className="gap-2">
-                                        <Plus className="w-4 h-4" />{t("dash.teacher.topics.addNewLesson")}</Button>
+                                {/* Empty State */}
+                                {filteredTopics.length === 0 && (
+                                    <Card className="p-12 text-center">
+                                        <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+                                        <h3 className="text-xl font-bold mb-2">
+                                            {searchQuery ? t("dash.teacher.topics.noResults") : t("dash.teacher.topics.noLessons")}
+                                        </h3>
+                                        <p className="text-muted-foreground mb-4">
+                                            {searchQuery
+                                                ? t("dash.teacher.topics.noSearchResults", { query: searchQuery })
+                                                : t("dash.teacher.topics.noLessonsDesc")}
+                                        </p>
+                                        {!searchQuery && (
+                                            <Button onClick={handleCreateTopic} className="gap-2">
+                                                <Plus className="w-4 h-4" />{t("dash.teacher.topics.addNewLesson")}</Button>
+                                        )}
+                                    </Card>
                                 )}
-                            </Card>
-                        )}
-                        </>
+                            </>
                         )}
                     </div>
 
@@ -2854,8 +2854,8 @@ const TeacherTopicsTab = ({
                                                 pct >= 75
                                                     ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
                                                     : pct >= 50
-                                                      ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
-                                                      : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
+                                                        ? "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100"
+                                                        : "border-rose-200 bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100";
                                             return (
                                                 <li key={attemptKey} dir={dir} className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20">
                                                     <button

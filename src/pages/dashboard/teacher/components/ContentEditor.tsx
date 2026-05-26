@@ -740,7 +740,7 @@ const ContentEditor = ({
                             : t("dash.teacher.topics.editor.aiCaptionDefault"),
                     }));
                 },
-                () => {}
+                () => { }
             );
             setShowImagePromptDialog(false);
             setEditableImagePrompt("");
@@ -1741,7 +1741,7 @@ const ContentEditor = ({
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir={dir} className="text-right">
+                                                                <SelectContent dir={dir} className="text-right">
                                                                     <SelectItem value="kids">{t("dash.teacher.topics.editor.audience.children")}</SelectItem>
                                                                     <SelectItem value="teens">{t("dash.teacher.topics.editor.audience.teens")}</SelectItem>
                                                                     <SelectItem value="adults">{t("dash.teacher.topics.editor.audience.adults")}</SelectItem>
@@ -1764,7 +1764,7 @@ const ContentEditor = ({
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir={dir} className="text-right">
+                                                                <SelectContent dir={dir} className="text-right">
                                                                     <SelectItem value="infographic">{t("dash.teacher.topics.editor.theme.infographic")}</SelectItem>
                                                                     <SelectItem value="poster">{t("dash.teacher.topics.editor.theme.poster")}</SelectItem>
                                                                     <SelectItem value="storybook">{t("dash.teacher.topics.editor.theme.comic")}</SelectItem>
@@ -1786,7 +1786,7 @@ const ContentEditor = ({
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir={dir} className="text-right">
+                                                                <SelectContent dir={dir} className="text-right">
                                                                     <SelectItem value="playful">{t("dash.teacher.topics.editor.tone.playful")}</SelectItem>
                                                                     <SelectItem value="friendly">{t("dash.teacher.topics.editor.tone.friendly")}</SelectItem>
                                                                     <SelectItem value="formal">{t("dash.teacher.topics.editor.tone.formal")}</SelectItem>
@@ -1809,7 +1809,7 @@ const ContentEditor = ({
                                                                 <SelectTrigger className="h-9 text-right flex-row-reverse">
                                                                     <SelectValue placeholder={t("dash.teacher.topics.editor.orderLabel")} />
                                                                 </SelectTrigger>
-                                                            <SelectContent dir={dir} className="text-right">
+                                                                <SelectContent dir={dir} className="text-right">
                                                                     <SelectItem value="bright">{t("dash.teacher.topics.editor.color.bright")}</SelectItem>
                                                                     <SelectItem value="pastel">{t("dash.teacher.topics.editor.color.pastel")}</SelectItem>
                                                                     <SelectItem value="dark">{t("dash.teacher.topics.editor.color.dark")}</SelectItem>

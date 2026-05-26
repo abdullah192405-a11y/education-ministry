@@ -3,11 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, BookOpen, CheckCircle, GraduationCap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useGrades } from "@/hooks/useDatabase";
-import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
+import { usePublicGradeCatalog } from "@/hooks/usePublicGradeCatalog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { normalizeGradeClassType } from "@/lib/gradeClassType";
-import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
@@ -187,23 +184,23 @@ function SectionBlock({
 }
 
 const GradesSection = () => {
-    const { data: gradesData = [], isLoading } = useGrades();
-    const { mode: visitorGradeMode } = useCatalogGradeClassMode();
+    const {
+        educational,
+        enrichment,
+        showEducationalSection,
+        showEnrichmentSection,
+        isLoading,
+    } = usePublicGradeCatalog();
     const { t } = useTranslation();
 
-    const visible = filterGradesForPublicCatalog(gradesData as GradeRow[], visitorGradeMode);
-    const educational = visible.filter(
-        (g) => normalizeGradeClassType(g.class_type ?? g.classType) === "تعليمي",
-    );
-    const enrichment = visible.filter(
-        (g) => normalizeGradeClassType(g.class_type ?? g.classType) === "اثرائي",
-    );
+    const skeletonBlocks =
+        (showEducationalSection ? 1 : 0) + (showEnrichmentSection ? 1 : 0) || 1;
 
     if (isLoading) {
         return (
             <div className="py-20 md:py-32">
                 <div className="container mx-auto px-4 space-y-20">
-                    {[0, 1].map((block) => (
+                    {Array.from({ length: skeletonBlocks }).map((_, block) => (
                         <div key={block}>
                             <Skeleton className="h-12 w-72 mb-12" />
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -220,25 +217,25 @@ const GradesSection = () => {
 
     return (
         <div>
-            {visitorGradeMode !== "enrichment_only" && (
+            {showEducationalSection && (
                 <SectionBlock
                     title={t("gradesSection.educationalTitle")}
                     titleHighlight={t("gradesSection.educationalHighlight")}
                     description={t("gradesSection.educationalDescription")}
                     ctaLabel={t("gradesSection.educationalCta")}
                     ctaHref="/grades?kind=teaching"
-                    grades={educational}
+                    grades={educational as GradeRow[]}
                     emptyMessage={t("gradesSection.educationalEmpty")}
                 />
             )}
-            {visitorGradeMode !== "teaching_only" && (
+            {showEnrichmentSection && (
                 <SectionBlock
                     title={t("gradesSection.enrichmentTitle")}
                     titleHighlight={t("gradesSection.enrichmentHighlight")}
                     description={t("gradesSection.enrichmentDescription")}
                     ctaLabel={t("gradesSection.enrichmentCta")}
                     ctaHref="/grades?kind=enrichment"
-                    grades={enrichment}
+                    grades={enrichment as GradeRow[]}
                     emptyMessage={t("gradesSection.enrichmentEmpty")}
                 />
             )}

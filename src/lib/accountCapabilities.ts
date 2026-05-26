@@ -64,6 +64,19 @@ export function isIndividualFreeTier(user: UserRow | null | undefined): boolean 
     return user?.individual_tier === "INDIVIDUAL_FREE";
 }
 
+/** الصفوف التعليمية في الكتالوج العام: مستخدم مسجّل مربوط بمدرسة/مؤسسة (وليس باقة الأفراد). */
+export function canViewOrganizationEducationalGrades(user: UserRow | null | undefined): boolean {
+    if (!user) return false;
+    if (isIndividualFreeTier(user)) return false;
+    const oid = user.organization_id;
+    return typeof oid === "string" && oid.length > 0;
+}
+
+export function userOrganizationId(user: UserRow | null | undefined): string | null {
+    const oid = user?.organization_id;
+    return typeof oid === "string" && oid.length > 0 ? oid : null;
+}
+
 /** أدوات الرقابة والتتبع (تقارير، تحليلات تفصيلية، إلخ) — معطّلة للأفراد في INDIVIDUAL_FREE */
 export function hasMonitoringAndTracking(user: UserRow | null | undefined): boolean {
     if (isSuperadmin(user)) return true;

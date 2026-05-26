@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Users, Search, Filter, CheckCircle, GraduationCap, BookOpen } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useGrades } from "@/hooks/useDatabase";
-import { useCatalogGradeClassMode } from "@/hooks/useCatalogGradeClassMode";
+import { usePublicGradeCatalog } from "@/hooks/usePublicGradeCatalog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGradeClassType } from "@/lib/gradeClassType";
-import { filterGradesForPublicCatalog } from "@/lib/contentVisibility";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/translations";
 
@@ -25,8 +23,13 @@ const Grades = () => {
     const { t, dir } = useTranslation();
     const localeId = t("common.locale");
 
-    const { data: gradesData, isLoading, error } = useGrades();
-    const { mode: visitorGradeMode } = useCatalogGradeClassMode();
+    const {
+        catalogGrades,
+        showOrgEducational,
+        visitorGradeMode,
+        isLoading,
+        error,
+    } = usePublicGradeCatalog();
 
     /** When admin shows only one catalog type, URL kind tabs are hidden — ignore kind filter */
     const kind =
@@ -34,7 +37,10 @@ const Grades = () => {
             ? kindParam
             : null;
 
-    const showKindFilter = visitorGradeMode === "all";
+    const showTeachingTab = showOrgEducational && visitorGradeMode !== "enrichment_only";
+    const showEnrichmentTab = visitorGradeMode !== "teaching_only";
+    const showKindFilter =
+        visitorGradeMode === "all" && showTeachingTab && showEnrichmentTab;
 
     const levelOptions: ReadonlyArray<{ id: LevelOption; labelKey: TranslationKey; stageKey?: TranslationKey }> = [
         { id: "ALL", labelKey: "common.all" },
@@ -55,8 +61,6 @@ const Grades = () => {
                 return null;
         }
     };
-
-    const catalogGrades = filterGradesForPublicCatalog(gradesData || [], visitorGradeMode);
 
     const filteredGrades = catalogGrades.filter((grade) => {
         const classKind = normalizeGradeClassType(
