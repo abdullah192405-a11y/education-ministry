@@ -26,13 +26,13 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// scripts/challenge-report-pdf-entry.ts
-var challenge_report_pdf_entry_exports = {};
-__export(challenge_report_pdf_entry_exports, {
-  config: () => config,
-  default: () => handler
+// scripts/netlify-challenge-report-pdf-entry.ts
+var netlify_challenge_report_pdf_entry_exports = {};
+__export(netlify_challenge_report_pdf_entry_exports, {
+  handler: () => handler
 });
-module.exports = __toCommonJS(challenge_report_pdf_entry_exports);
+module.exports = __toCommonJS(netlify_challenge_report_pdf_entry_exports);
+var import_node_stream = require("node:stream");
 
 // server/challengeReportPdfHandler.ts
 var import_node_fs = require("node:fs");
@@ -2180,28 +2180,85 @@ async function handleChallengeReportPdfRequest(req, res, geminiApiKey) {
   }
 }
 
-// scripts/challenge-report-pdf-entry.ts
-var config = {
-  api: {
-    bodyParser: false
-  },
-  maxDuration: 60
-};
-async function handler(req, res) {
+// scripts/netlify-challenge-report-pdf-entry.ts
+function normalizeHeaders(headers) {
+  const out = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (value != null) out[key.toLowerCase()] = value;
+  }
+  return out;
+}
+function createRequest(event) {
+  const rawBody = event.body == null ? Buffer.alloc(0) : event.isBase64Encoded ? Buffer.from(event.body, "base64") : Buffer.from(event.body, "utf8");
+  const stream = import_node_stream.Readable.from(rawBody);
+  stream.method = event.httpMethod;
+  stream.headers = normalizeHeaders(event.headers);
+  return stream;
+}
+function createResponse() {
+  let statusCode = 200;
+  const headers = {};
+  const chunks = [];
+  const res = {
+    statusCode: 200,
+    headersSent: false,
+    setHeader(name, value) {
+      headers[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
+    },
+    getHeader(name) {
+      return headers[name.toLowerCase()];
+    },
+    end(chunk) {
+      if (chunk != null) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      res.headersSent = true;
+      finish();
+    }
+  };
+  let resolveCompletion;
+  const completion = new Promise((resolve) => {
+    resolveCompletion = resolve;
+  });
+  function finish() {
+    const bodyBuffer = Buffer.concat(chunks);
+    const contentType = headers["content-type"] ?? "text/plain; charset=utf-8";
+    const isBinary = contentType.includes("application/pdf");
+    resolveCompletion({
+      statusCode,
+      headers,
+      body: isBinary ? bodyBuffer.toString("base64") : bodyBuffer.toString("utf8"),
+      isBase64Encoded: isBinary ? true : void 0
+    });
+  }
+  Object.defineProperty(res, "statusCode", {
+    get() {
+      return statusCode;
+    },
+    set(value) {
+      statusCode = value;
+    }
+  });
+  return { res, completion };
+}
+async function handler(event) {
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const req = createRequest(event);
+  const { res, completion } = createResponse();
   try {
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     await handleChallengeReportPdfRequest(req, res, geminiApiKey);
   } catch (error) {
-    console.error("challenge-report-pdf handler failed:", error);
+    console.error("challenge-report-pdf Netlify handler failed:", error);
     if (!res.headersSent) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.end(error instanceof Error ? error.message : "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0645\u0644\u0641 PDF \u0644\u0644\u062A\u0642\u0631\u064A\u0631.");
     }
   }
+  return completion;
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  config
+  handler
 });
 //# sourceMappingURL=challenge-report-pdf.js.map

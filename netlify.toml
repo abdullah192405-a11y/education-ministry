@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/api/challenge-report-pdf"
+  to = "/.netlify/functions/challenge-report-pdf"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  # Functions are pre-bundled in postbuild (scripts/bundle-challenge-report-api.mjs).
+  node_bundler = "none"
+  external_node_modules = ["@sparticuz/chromium", "puppeteer-core", "puppeteer"]
+
+[functions."challenge-report-pdf"]
+  timeout = 60

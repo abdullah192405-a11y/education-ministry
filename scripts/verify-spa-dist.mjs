@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 const distDir = join(import.meta.dirname, "..", "dist");
-const required = ["index.html", ".htaccess", "loaderio-a94fe10a07b26dc8ba2281900b2dd1db.txt"];
+const required = [
+  "index.html",
+  ".htaccess",
+  "_redirects",
+  "loaderio-a94fe10a07b26dc8ba2281900b2dd1db.txt",
+];
 
 for (const file of required) {
   const path = join(distDir, file);
@@ -14,4 +19,4 @@ for (const file of required) {
   }
 }
 
-console.log("SPA dist OK: index.html and .htaccess are present in dist/.");
+console.log("SPA dist OK: index.html, .htaccess, and _redirects are present in dist/.");

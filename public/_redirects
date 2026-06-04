@@ -1,0 +1,3 @@
+# Netlify SPA fallback (also declared in netlify.toml; kept here for non-TOML deploys)
+/api/challenge-report-pdf /.netlify/functions/challenge-report-pdf 200
+/* /index.html 200
