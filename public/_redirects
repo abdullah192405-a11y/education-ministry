@@ -1,3 +1,9 @@
-# Netlify SPA fallback (also declared in netlify.toml; kept here for non-TOML deploys)
+# Force HTTP → HTTPS (301! = force even when a file exists)
+http://labforai.com https://labforai.com 301!
+http://labforai.com/* https://labforai.com/:splat 301!
+http://www.labforai.com https://www.labforai.com 301!
+http://www.labforai.com/* https://www.labforai.com/:splat 301!
+
+# Netlify SPA fallback (also declared in netlify.toml)
 /api/challenge-report-pdf /.netlify/functions/challenge-report-pdf 200
 /* /index.html 200
