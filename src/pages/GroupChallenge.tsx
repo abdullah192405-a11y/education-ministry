@@ -56,6 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import { useMutation } from "@tanstack/react-query";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
@@ -563,8 +564,8 @@ const GroupChallenge = () => {
         setIsSpinning(true);
         playWheelSpin();
 
-        const segments = currentQuestion.wheelSegments;
-        const labels = segments?.map(s => s.label) || currentQuestion.options || [];
+        const segments = normalizeWheelSegments(currentQuestion.wheelSegments);
+        const labels = getWheelLabels(segments, currentQuestion.options);
 
         if (labels.length === 0) return;
 
@@ -577,27 +578,14 @@ const GroupChallenge = () => {
             setWheelResult(resultIdx);
 
             let pointsForQuestion = 100;
-            let subQ: any = null;
+            let subQ: ReturnType<typeof buildWheelSubQuestion> | ReturnType<typeof getWheelSubQuestion> | null = null;
 
-            if (segments && segments[resultIdx]) {
-                const segment = segments[resultIdx];
-                pointsForQuestion = segment.points;
-
-                // Construct sub-question from segment
-                const segmentOptions = segment.options && segment.options.some(o => o && o.trim() !== "")
-                    ? segment.options
-                    : ["استمرار"];
-
-                subQ = {
-                    id: Date.now(),
-                    question: segment.question,
-                    correctAnswer: segment.correctAnswer ?? 0,
-                    options: segmentOptions,
-                    points: pointsForQuestion
-                };
+            const segment = segments[resultIdx];
+            if (segment) {
+                subQ = buildWheelSubQuestion(segment);
+                pointsForQuestion = subQ.points;
             } else {
-                // Legacy Fallback
-                const resultText = labels[resultIdx];
+                const resultText = String(labels[resultIdx] ?? "");
                 const pointsMatch = resultText.match(/\+(\d+)/);
                 if (pointsMatch) {
                     pointsForQuestion = parseInt(pointsMatch[1]);
@@ -607,7 +595,15 @@ const GroupChallenge = () => {
                 else if (resultText.includes("أسطوري")) pointsForQuestion = 500;
                 else if (resultText.includes("مكافأة")) pointsForQuestion = 300;
 
-                subQ = getWheelSubQuestion(resultText);
+                const legacy = getWheelSubQuestion(resultText);
+                subQ = {
+                    ...legacy,
+                    id: legacy.id ?? Date.now(),
+                    question: legacy.question || resultText,
+                    options: legacy.options?.length ? legacy.options : ["استمرار"],
+                    correctAnswer: typeof legacy.correctAnswer === "number" ? legacy.correctAnswer : 0,
+                    points: pointsForQuestion,
+                };
             }
 
             setWheelPoints(pointsForQuestion);
@@ -1108,7 +1104,8 @@ const GroupChallenge = () => {
 
     // Render Wheel
     const renderWheel = () => {
-        const labels = currentQuestion.wheelSegments?.map(s => s.label) || currentQuestion.options || [];
+        const segments = normalizeWheelSegments(currentQuestion.wheelSegments);
+        const labels = getWheelLabels(segments, currentQuestion.options);
         const segmentAngle = 360 / Math.max(1, labels.length);
         const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD"];
 
@@ -1194,8 +1191,15 @@ const GroupChallenge = () => {
                                 <h4 className="text-lg font-bold">{wheelSubQuestion.question}</h4>
                             </div>
 
+                            <QuestionAttachmentDisplay
+                                imageUrl={wheelSubQuestion.imageUrl}
+                                videoUrl={wheelSubQuestion.videoUrl}
+                                audioUrl={wheelSubQuestion.audioUrl}
+                                className="mb-6"
+                            />
+
                             <div className="grid grid-cols-1 gap-3">
-                                {wheelSubQuestion.options.map((opt: string, i: number) => {
+                                {(wheelSubQuestion.options ?? []).map((opt: string, i: number) => {
                                     const isSelected = selectedAnswer === i;
                                     const isCorrect = i === wheelSubQuestion.correctAnswer;
 
@@ -2287,11 +2291,13 @@ const GroupChallenge = () => {
                         {currentQuestion.question}
                     </h3>
 
-                    <QuestionAttachmentDisplay
-                        imageUrl={currentQuestion.imageUrl}
-                        videoUrl={currentQuestion.videoUrl}
-                        audioUrl={currentQuestion.audioUrl}
-                    />
+                    {currentQuestion.type !== "wheel_spin" && (
+                        <QuestionAttachmentDisplay
+                            imageUrl={currentQuestion.imageUrl}
+                            videoUrl={currentQuestion.videoUrl}
+                            audioUrl={currentQuestion.audioUrl}
+                        />
+                    )}
 
                     {/* Multiple Choice / True-False / Puzzle / Shooting */}
                     {["multiple_choice", "true_false", "puzzle", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (

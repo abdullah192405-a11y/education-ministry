@@ -18,6 +18,7 @@ import {
     Target, CircleDot, RotateCcw, Wand2, Database, FileUp, AlertTriangle,
 } from "lucide-react";
 import { QuestionAttachmentField } from "./QuestionAttachmentField";
+import type { QuestionAttachmentValue } from "./QuestionAttachmentField";
 import type { ActivityType, GameType, ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import AIQuestionGenerator from "./AIQuestionGenerator";
 import AIQuestionGeneratorFromResources from "./AIQuestionGeneratorFromResources";
@@ -617,21 +618,23 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                                                         </div>
                                                     </div>
 
-                                                    <QuestionAttachmentField
-                                                        key={item.id}
-                                                        value={{
-                                                            imageUrl: item.imageUrl,
-                                                            videoUrl: item.videoUrl,
-                                                            audioUrl: item.audioUrl,
-                                                        }}
-                                                        onChange={(attachment) =>
-                                                            updateItem(index, {
-                                                                imageUrl: attachment.imageUrl,
-                                                                videoUrl: attachment.videoUrl,
-                                                                audioUrl: attachment.audioUrl,
-                                                            })
-                                                        }
-                                                    />
+                                                    {item.type !== "wheel_spin" && (
+                                                        <QuestionAttachmentField
+                                                            key={item.id}
+                                                            value={{
+                                                                imageUrl: item.imageUrl,
+                                                                videoUrl: item.videoUrl,
+                                                                audioUrl: item.audioUrl,
+                                                            }}
+                                                            onChange={(attachment) =>
+                                                                updateItem(index, {
+                                                                    imageUrl: attachment.imageUrl,
+                                                                    videoUrl: attachment.videoUrl,
+                                                                    audioUrl: attachment.audioUrl,
+                                                                })
+                                                            }
+                                                        />
+                                                    )}
 
                                                     {renderTypeSpecificFields(item, index, updateItem, wheelSpinSoundUrl)}
 
@@ -1117,6 +1120,17 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
         updateItem(index, { wheelSegments: segments.filter((_, idx) => idx !== i) });
     };
 
+    const updateSegmentAttachment = (sIndex: number, attachment: QuestionAttachmentValue) => {
+        const newSegments = [...segments];
+        newSegments[sIndex] = {
+            ...newSegments[sIndex],
+            imageUrl: attachment.imageUrl,
+            videoUrl: attachment.videoUrl,
+            audioUrl: attachment.audioUrl,
+        };
+        updateItem(index, { wheelSegments: newSegments });
+    };
+
     return (
         <div className="space-y-4">
             <WheelSpinPreview segments={segments} wheelSpinSoundUrl={wheelSpinSoundUrl} />
@@ -1195,6 +1209,15 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
                                             className="h-8 text-sm"
                                         />
                                     </div>
+
+                                    <QuestionAttachmentField
+                                        value={{
+                                            imageUrl: segment.imageUrl,
+                                            videoUrl: segment.videoUrl,
+                                            audioUrl: segment.audioUrl,
+                                        }}
+                                        onChange={(attachment) => updateSegmentAttachment(i, attachment)}
+                                    />
 
                                     <div>
                                         <label className="text-xs text-muted-foreground mb-1 block">{t("dash.teacher.topics.qe.segmentOptions")}</label>

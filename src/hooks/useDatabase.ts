@@ -12,6 +12,7 @@ import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
 import { questionAttachmentFields } from "@/lib/questionAttachments";
+import { normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
     buildTeacherClassAccessFromRows,
     filterTopicsOwnedByTeacher,
@@ -34,7 +35,7 @@ export const mapChallengeQuestion = (q: any) => ({
     orderItems: q.order_items || q.orderItems || [],
     timeLimit: q.time_limit || q.timeLimit || 15,
     points: q.points || 100,
-    wheelSegments: q.wheel_segments || q.wheelSegments,
+    wheelSegments: normalizeWheelSegments(q.wheel_segments || q.wheelSegments),
     pairs: q.pairs || null,
     explanation: q.explanation || null,
 });

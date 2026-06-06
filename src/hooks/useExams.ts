@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { normalizeWheelSegments } from "@/lib/wheelSegments";
 
 // ============================================================================
 // Exam Category Labels (Arabic)
@@ -74,7 +75,7 @@ export const useTeacherExams = (hostId: string) => {
                             orderItems: q.order_items || q.orderItems || [],
                             timeLimit: q.time_limit || q.timeLimit || 15,
                             points: q.points || 100,
-                            wheelSegments: q.wheel_segments || q.wheelSegments,
+                            wheelSegments: normalizeWheelSegments(q.wheel_segments || q.wheelSegments),
                             pairs: q.pairs || null,
                             explanation: q.explanation || null,
                         }))
@@ -178,7 +179,7 @@ export const useExamByPin = (pin: string) => {
                     orderItems: q.order_items || q.orderItems || [],
                     timeLimit: q.time_limit || q.timeLimit || 15,
                     points: q.points || 100,
-                    wheelSegments: q.wheel_segments || q.wheelSegments,
+                    wheelSegments: normalizeWheelSegments(q.wheel_segments || q.wheelSegments),
                     pairs: q.pairs || null,
                     explanation: q.explanation || null,
                 }));

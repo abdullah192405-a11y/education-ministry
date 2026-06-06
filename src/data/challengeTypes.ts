@@ -73,6 +73,9 @@ export interface ChallengeQuestion {
         question: string;
         options?: string[];
         correctAnswer?: number;
+        imageUrl?: string;
+        videoUrl?: string;
+        audioUrl?: string;
     }[];
 }
 
