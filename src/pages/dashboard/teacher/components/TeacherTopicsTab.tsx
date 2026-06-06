@@ -1330,11 +1330,21 @@ const TeacherTopicsTab = ({
     };
 
     const handleDeleteTopic = (id: string) => {
+        const previousTopics = topics;
+        setTopics((prev) => prev.filter((t) => t.id !== id));
         deleteTopicMutation.mutate(id, {
             onSuccess: () => {
                 toast({ title: t("dash.teacher.topics.toast.deleted") });
                 setDeleteConfirmId(null);
-            }
+            },
+            onError: (error: unknown) => {
+                setTopics(previousTopics);
+                toast({
+                    title: t("dash.common.error"),
+                    description: error instanceof Error ? error.message : t("dash.teacher.topics.tryAgain"),
+                    variant: "destructive",
+                });
+            },
         });
     };
 

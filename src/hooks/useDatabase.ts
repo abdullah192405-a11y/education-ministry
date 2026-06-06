@@ -2646,6 +2646,8 @@ export const useCreateTopic = () => {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["subject", data.subject_id] });
             queryClient.invalidateQueries({ queryKey: ["teacher_profile"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
         }
     });
 };
@@ -2669,6 +2671,8 @@ export const useUpdateTopic = () => {
             queryClient.invalidateQueries({ queryKey: ["topic", data.id] });
             queryClient.invalidateQueries({ queryKey: ["subject", data.subject_id] });
             queryClient.invalidateQueries({ queryKey: ["grade"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
         }
     });
 };
@@ -2713,6 +2717,9 @@ export const useDeleteTopic = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["subject"] });
             queryClient.invalidateQueries({ queryKey: ["teacher_profile"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
+            queryClient.invalidateQueries({ queryKey: ["topic"] });
         }
     });
 };
@@ -2869,6 +2876,7 @@ export const useSaveTopicMedia = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic", variables.topicId] });
             queryClient.invalidateQueries({ queryKey: ["subject"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
         }
     });
 };
@@ -2883,6 +2891,7 @@ export const useDeleteTopicMedia = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic", variables.topicId] });
             queryClient.invalidateQueries({ queryKey: ["subject"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
         }
     });
 };
@@ -2946,6 +2955,7 @@ export const useSaveChallengeQuestions = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic", variables.topicId] });
             queryClient.invalidateQueries({ queryKey: ["subject"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
         }
     });
 };
@@ -2960,6 +2970,7 @@ export const useDeleteChallengeQuestion = () => {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ["topic", variables.topicId] });
             queryClient.invalidateQueries({ queryKey: ["subject"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
         }
     });
 };
