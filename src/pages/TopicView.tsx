@@ -240,6 +240,24 @@ const TopicView = () => {
         ];
     }, [additionalUpcomingSessions, featuredLiveSession, media, t]);
 
+    const sortedDiscussions = useMemo(() => {
+        const list = [...discussions];
+        if (discussionSort === "oldest") {
+            return list.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        }
+        if (discussionSort === "mostReplies") {
+            return list.sort(
+                (a: any, b: any) => (b.replies?.length || 0) - (a.replies?.length || 0),
+            );
+        }
+        return list;
+    }, [discussions, discussionSort]);
+
+    const totalReplies = useMemo(
+        () => discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0),
+        [discussions],
+    );
+
     if (isLoading) {
         return (
             <div className="min-h-screen font-cairo" dir={dir}>
@@ -540,29 +558,11 @@ const TopicView = () => {
         }));
     };
 
-    const sortedDiscussions = useMemo(() => {
-        const list = [...discussions];
-        if (discussionSort === "oldest") {
-            return list.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        }
-        if (discussionSort === "mostReplies") {
-            return list.sort(
-                (a: any, b: any) => (b.replies?.length || 0) - (a.replies?.length || 0),
-            );
-        }
-        return list;
-    }, [discussions, discussionSort]);
-
     const getDiscussionPreview = (content: string) => {
         const trimmed = content.trim();
         if (!trimmed) return t("topicView.posts.stickerOnly");
         return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
     };
-
-    const totalReplies = useMemo(
-        () => discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0),
-        [discussions],
-    );
 
     const getMediaIcon = (type: string) => {
         switch (type) {
