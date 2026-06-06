@@ -2,13 +2,46 @@
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Medal, Star, Crown } from "lucide-react";
-import { useGlobalLeaderboard } from "@/hooks/useDatabase";
+import { useGradeLeaderboard, useStudentProfile, useTeacherProfile, useUser } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "@/contexts/LanguageContext";
 
 const LeaderboardSection = () => {
-    const { data: results = [], isLoading } = useGlobalLeaderboard(5);
+    const { data: user, isLoading: isLoadingUser } = useUser();
     const { t } = useTranslation();
+
+    const role = user?.role?.toUpperCase() ?? "";
+    const isStudent = role === "STUDENT" || user?.role === "طالب";
+    const isTeacher = role === "TEACHER" || user?.role === "معلم" || user?.role === "معلمة";
+
+    const { data: studentProfile, isLoading: isLoadingStudentProfile } = useStudentProfile(
+        isStudent ? user?.id || "" : "",
+    );
+    const { data: teacherProfile, isLoading: isLoadingTeacherProfile } = useTeacherProfile(
+        isTeacher ? user?.id || "" : "",
+    );
+
+    const gradeId = isStudent
+        ? studentProfile?.grade_id
+        : isTeacher
+          ? teacherProfile?.grade_id
+          : undefined;
+    const gradeName = isStudent
+        ? studentProfile?.grade?.name
+        : isTeacher
+          ? teacherProfile?.grade?.name
+          : undefined;
+
+    const { data: results = [], isLoading } = useGradeLeaderboard(gradeId, 5, {
+        enabled: !!user && !!gradeId,
+    });
+
+    const isResolvingGrade =
+        isLoadingUser ||
+        (isStudent && isLoadingStudentProfile) ||
+        (isTeacher && isLoadingTeacherProfile);
+
+    if (isResolvingGrade || !user || !gradeId) return null;
 
     if (isLoading) {
         return (
@@ -62,7 +95,9 @@ const LeaderboardSection = () => {
                         {t("leaderboard.title")} <span className="text-primary">{t("leaderboard.titleHighlight")}</span>
                     </h2>
                     <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                        {t("leaderboard.description")}
+                        {gradeName
+                            ? t("leaderboard.descriptionClass", { gradeName })
+                            : t("leaderboard.description")}
                     </p>
                 </motion.div>
 

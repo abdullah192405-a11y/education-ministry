@@ -18,6 +18,7 @@ import {
     type TeacherClassAccess,
     type TeacherGradeAccessEntry,
 } from "@/lib/teacherClassAccess";
+import { getLevelFromScore } from "@/data/challengeTypes";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
 export const mapChallengeQuestion = (q: any) => ({
@@ -1276,9 +1277,10 @@ export const useRecentChallengeResults = (userId: string, limit = 10) => {
     });
 };
 
-export const useGlobalLeaderboard = (limit = 5) => {
+export const useGlobalLeaderboard = (limit = 5, options?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: ["global_leaderboard", limit],
+        enabled: options?.enabled ?? true,
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("challenge_results")
@@ -1291,6 +1293,42 @@ export const useGlobalLeaderboard = (limit = 5) => {
 
             if (error) throw error;
             return data;
+        },
+    });
+};
+
+export const useGradeLeaderboard = (
+    gradeId: string | undefined,
+    limit = 5,
+    options?: { enabled?: boolean },
+) => {
+    return useQuery({
+        queryKey: ["grade_leaderboard", gradeId, limit],
+        enabled: (options?.enabled ?? true) && !!gradeId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("student_profiles")
+                .select(`
+          *,
+          user:users (*)
+        `)
+                .eq("grade_id", gradeId!)
+                .order("total_points", { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+
+            return (data ?? []).map((profile) => {
+                const averageScore = profile.average_score ?? 0;
+                return {
+                    id: profile.id,
+                    user_id: profile.user_id,
+                    user: profile.user,
+                    score: profile.total_points ?? 0,
+                    level: getLevelFromScore(averageScore).level,
+                    accuracy: Math.round(averageScore),
+                };
+            });
         },
     });
 };
