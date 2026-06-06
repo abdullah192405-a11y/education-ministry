@@ -9,8 +9,17 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
-    CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Play, Eye, Clock,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Play, Eye, Clock,
     BookOpen, Gamepad2,
     FileText, Image as ImageIcon, AlignLeft, Video,
     Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
@@ -112,6 +121,9 @@ const TopicView = () => {
         type: string;
     } | null>>({});
     const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+    const [discussionsOpen, setDiscussionsOpen] = useState(false);
+    const [openDiscussionId, setOpenDiscussionId] = useState<string>("");
+    const [discussionSort, setDiscussionSort] = useState<"newest" | "oldest" | "mostReplies">("newest");
     const [topicRatingGuestId] = useState(() => getOrCreateTopicRatingGuestId());
     const hasIncrementedView = useRef(false);
     const discussionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -400,6 +412,7 @@ const TopicView = () => {
             setDiscussionSticker("");
             setDiscussionAttachment(null);
             setIsDiscussionComposerOpen(false);
+            setDiscussionsOpen(true);
             toast({ title: t("topicView.toast.publishedSuccess") });
         } catch (err: unknown) {
             console.error("Failed to add discussion:", err);
@@ -526,6 +539,30 @@ const TopicView = () => {
             [discussionId]: !current,
         }));
     };
+
+    const sortedDiscussions = useMemo(() => {
+        const list = [...discussions];
+        if (discussionSort === "oldest") {
+            return list.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        }
+        if (discussionSort === "mostReplies") {
+            return list.sort(
+                (a: any, b: any) => (b.replies?.length || 0) - (a.replies?.length || 0),
+            );
+        }
+        return list;
+    }, [discussions, discussionSort]);
+
+    const getDiscussionPreview = (content: string) => {
+        const trimmed = content.trim();
+        if (!trimmed) return t("topicView.posts.stickerOnly");
+        return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
+    };
+
+    const totalReplies = useMemo(
+        () => discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0),
+        [discussions],
+    );
 
     const getMediaIcon = (type: string) => {
         switch (type) {
@@ -1008,23 +1045,38 @@ const TopicView = () => {
                                 transition={{ delay: 0.4 }}
                                 className="max-w-4xl mx-auto mt-8"
                             >
-                                <Card className="border-primary/30 shadow-sm bg-gradient-to-b from-primary/[0.05] via-background to-background">
-                                    <CardContent className="p-6 md:p-8 space-y-7">
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <div className="flex items-center gap-2">
-                                                <MessageCircle className="w-5 h-5 text-primary" />
-                                                <h3 className="text-xl font-bold">{t("topicView.discussions.title")}</h3>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
-                                                    {discussions.length} {t("topicView.discussions.countSuffix")}
-                                                </span>
-                                                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 font-medium">
-                                                    {discussions.reduce((acc: number, d: any) => acc + (d.replies?.length || 0), 0)} {t("topicView.discussions.repliesSuffix")}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground">
+                                <Card className="border-primary/30 shadow-sm bg-gradient-to-b from-primary/[0.05] via-background to-background overflow-hidden">
+                                    <Collapsible open={discussionsOpen} onOpenChange={setDiscussionsOpen}>
+                                        <CollapsibleTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="w-full p-6 md:p-8 flex items-center justify-between gap-4 text-start hover:bg-muted/20 transition-colors"
+                                            >
+                                                <div className="space-y-2 min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <MessageCircle className="w-5 h-5 text-primary shrink-0" />
+                                                        <h3 className="text-xl font-bold">{t("topicView.discussions.title")}</h3>
+                                                        <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                                                            {discussions.length} {t("topicView.discussions.countSuffix")}
+                                                        </span>
+                                                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-medium">
+                                                            {totalReplies} {t("topicView.discussions.repliesSuffix")}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {discussionsOpen
+                                                            ? t("topicView.discussions.collapseHint")
+                                                            : t("topicView.discussions.expandHint")}
+                                                    </p>
+                                                </div>
+                                                <ChevronDown
+                                                    className={`w-5 h-5 text-muted-foreground shrink-0 transition-transform duration-200 ${discussionsOpen ? "rotate-180" : ""}`}
+                                                />
+                                            </button>
+                                        </CollapsibleTrigger>
+
+                                        <CollapsibleContent className="px-6 md:px-8 pb-6 md:pb-8 space-y-6 border-t border-primary/10">
+                                        <p className="text-sm text-muted-foreground pt-4">
                                             {t("topicView.discussions.intro")}
                                         </p>
                                         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
@@ -1159,22 +1211,50 @@ const TopicView = () => {
                                         </Dialog>
 
                                         <div className="space-y-4 rounded-xl border bg-background p-4">
-                                            <div className="flex items-center justify-between border-b pb-2">
-                                                <h4 className="text-sm font-bold">{t("topicView.posts.title")}</h4>
-                                                <span className="text-xs text-muted-foreground">{t("topicView.posts.orderHint")}</span>
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                                                <div>
+                                                    <h4 className="text-sm font-bold">{t("topicView.posts.title")}</h4>
+                                                    <span className="text-xs text-muted-foreground">{t("topicView.posts.clickToExpand")}</span>
+                                                </div>
+                                                <Select
+                                                    value={discussionSort}
+                                                    onValueChange={(value) =>
+                                                        setDiscussionSort(value as "newest" | "oldest" | "mostReplies")
+                                                    }
+                                                >
+                                                    <SelectTrigger className="w-full sm:w-[200px]">
+                                                        <SelectValue placeholder={t("topicView.discussions.sortLabel")} />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="newest">{t("topicView.discussions.sortNewest")}</SelectItem>
+                                                        <SelectItem value="oldest">{t("topicView.discussions.sortOldest")}</SelectItem>
+                                                        <SelectItem value="mostReplies">{t("topicView.discussions.sortMostReplies")}</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
                                             {discussionsLoading ? (
                                                 <Skeleton className="h-24 w-full" />
-                                            ) : discussions.length === 0 ? (
+                                            ) : sortedDiscussions.length === 0 ? (
                                                 <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
                                                     {t("topicView.posts.empty")}
                                                 </div>
                                             ) : (
-                                                discussions.map((discussion: any) => (
-                                                    <div key={discussion.id} className="rounded-2xl border-2 border-muted/60 p-4 md:p-5 space-y-4 bg-background">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="flex items-start gap-3 min-w-0">
-                                                                    <Avatar className="h-10 w-10 border">
+                                                <Accordion
+                                                    type="single"
+                                                    collapsible
+                                                    value={openDiscussionId}
+                                                    onValueChange={setOpenDiscussionId}
+                                                    className="space-y-2"
+                                                >
+                                                {sortedDiscussions.map((discussion: any) => (
+                                                    <AccordionItem
+                                                        key={discussion.id}
+                                                        value={discussion.id}
+                                                        className="rounded-2xl border-2 border-muted/60 px-4 bg-background overflow-hidden"
+                                                    >
+                                                        <AccordionTrigger className="hover:no-underline py-4 [&>svg]:ms-3">
+                                                            <div className="flex items-start gap-3 min-w-0 flex-1 text-start">
+                                                                <Avatar className="h-10 w-10 border shrink-0">
                                                                     <AvatarImage
                                                                         src={getUserAvatarSrc(discussion.user)}
                                                                         alt={discussion.user?.name || t("topicView.user.student")}
@@ -1187,26 +1267,33 @@ const TopicView = () => {
                                                                         />
                                                                     </AvatarFallback>
                                                                 </Avatar>
-                                                                <div className="min-w-0">
+                                                                <div className="min-w-0 flex-1">
                                                                     <div className="flex flex-wrap items-center gap-2">
                                                                         <p className="font-semibold truncate">{discussion.user?.name || t("topicView.user.student")}</p>
-                                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                                                                        {getUserRoleLabel(discussion.user)}
-                                                                    </span>
-                                                                    {getStudentClassLabel(discussion.user) ? (
-                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/20 text-secondary-foreground">
-                                                                            {getStudentClassLabel(discussion.user)}
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                                                            {getUserRoleLabel(discussion.user)}
                                                                         </span>
-                                                                    ) : null}
-                                                                </div>
+                                                                    </div>
+                                                                    <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                                                        {discussion.sticker && !discussion.content.trim()
+                                                                            ? discussion.sticker
+                                                                            : getDiscussionPreview(discussion.content)}
+                                                                    </p>
                                                                     <p className="text-xs text-muted-foreground mt-1">{formatRelativeTime(discussion.created_at)}</p>
                                                                 </div>
+                                                                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full shrink-0">
+                                                                    {discussion.replies?.length || 0} {t("topicView.discussions.repliesSuffix")}
+                                                                </span>
                                                             </div>
-                                                            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                                                                {discussion.replies?.length || 0} {t("topicView.discussions.repliesSuffix")}
-                                                            </span>
-                                                        </div>
+                                                        </AccordionTrigger>
+                                                        <AccordionContent className="pb-4">
+                                                    <div className="space-y-4 pt-2 border-t border-dashed">
                                                         <p className="leading-7 whitespace-pre-wrap text-[15px]">{discussion.content.trim()}</p>
+                                                        {getStudentClassLabel(discussion.user) ? (
+                                                            <span className="inline-flex text-[10px] px-2 py-0.5 rounded-full bg-secondary/20 text-secondary-foreground">
+                                                                {getStudentClassLabel(discussion.user)}
+                                                            </span>
+                                                        ) : null}
                                                         {discussion.sticker ? <div className="text-3xl">{discussion.sticker}</div> : null}
                                                         {discussion.attachment_url ? (
                                                             <div className="rounded-lg border p-2 bg-muted/20">
@@ -1422,10 +1509,14 @@ const TopicView = () => {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                ))
+                                                        </AccordionContent>
+                                                    </AccordionItem>
+                                                ))}
+                                                </Accordion>
                                             )}
                                         </div>
-                                    </CardContent>
+                                        </CollapsibleContent>
+                                    </Collapsible>
                                 </Card>
                             </motion.div>
                         )}
