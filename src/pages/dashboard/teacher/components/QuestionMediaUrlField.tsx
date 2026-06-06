@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, X, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
@@ -21,7 +21,7 @@ type QuestionMediaUrlFieldProps = {
     url?: string;
     onUrlChange: (url: string | undefined) => void;
     icon: LucideIcon;
-    titleKey: string;
+    titleKey?: string;
     descKey: string;
     uploadKey: string;
     removeKey: string;
@@ -130,7 +130,7 @@ export const QuestionMediaUrlField = ({
                 <img
                     src={url}
                     alt=""
-                    className="max-h-40 max-w-full rounded-md border object-contain bg-background"
+                    className="max-h-44 w-full rounded-md border object-contain bg-background"
                     onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none";
                     }}
@@ -140,7 +140,7 @@ export const QuestionMediaUrlField = ({
         if (kind === "video") {
             if (getYouTubeId(url)) {
                 return (
-                    <div className="relative aspect-video w-full max-w-md rounded-md overflow-hidden border bg-black">
+                    <div className="relative aspect-video w-full rounded-md overflow-hidden border bg-black">
                         <iframe
                             src={getYouTubeEmbedUrl(url).replace("autoplay=1", "autoplay=0")}
                             title=""
@@ -151,14 +151,51 @@ export const QuestionMediaUrlField = ({
                     </div>
                 );
             }
-            return <video src={url} controls playsInline className="max-h-40 max-w-full rounded-md border bg-black" />;
+            return <video src={url} controls playsInline className="max-h-44 w-full rounded-md border bg-black" />;
         }
-        return <audio src={url} controls className="w-full max-w-md" />;
+        return <audio src={url} controls className="w-full" />;
     };
 
-    const fields = (
+    const uploadControls = (
         <>
-            {!embedded ? (
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept={config.accept}
+                className="hidden"
+                onChange={handleFile}
+            />
+            <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative sm:flex-1">
+                    <Link2 className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                        value={url || ""}
+                        onChange={(e) => {
+                            const v = e.target.value.trim();
+                            onUrlChange(v ? v : undefined);
+                        }}
+                        placeholder="https://..."
+                        dir="ltr"
+                        className="ps-10 font-mono text-sm"
+                    />
+                </div>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    className="gap-2 shrink-0"
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {t(url ? "dash.teacher.topics.qe.changeResource" : uploadKey)}
+                </Button>
+            </div>
+        </>
+    );
+
+    const fields = (
+        <div className="space-y-3">
+            {!embedded && titleKey ? (
                 <div className="flex items-start gap-2">
                     <div className="mt-0.5 rounded-md bg-background p-1.5 border">
                         <Icon className="w-4 h-4 text-muted-foreground" />
@@ -171,54 +208,37 @@ export const QuestionMediaUrlField = ({
             ) : (
                 <p className="text-xs text-muted-foreground">{t(descKey)}</p>
             )}
-            <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                    value={url || ""}
-                    onChange={(e) => {
-                        const v = e.target.value.trim();
-                        onUrlChange(v ? v : undefined);
-                    }}
-                    placeholder="https://..."
-                    dir="ltr"
-                    className="sm:flex-1 font-mono text-sm"
-                />
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={config.accept}
-                    className="hidden"
-                    onChange={handleFile}
-                />
-                <Button
-                    type="button"
-                    variant="secondary"
-                    className="gap-2 shrink-0"
-                    disabled={isUploading}
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {t(uploadKey)}
-                </Button>
-            </div>
+
             {url ? (
-                <div className="flex flex-col sm:flex-row sm:items-start gap-3 pt-1">
-                    {renderPreview()}
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive shrink-0"
-                        onClick={() => onUrlChange(undefined)}
-                    >
-                        {t(removeKey)}
-                    </Button>
+                <div className="rounded-lg border bg-background p-3 space-y-3">
+                    <div className="relative">
+                        {renderPreview()}
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-2 end-2 h-7 w-7 shadow-sm"
+                            onClick={() => onUrlChange(undefined)}
+                            title={t(removeKey)}
+                        >
+                            <X className="w-4 h-4" />
+                        </Button>
+                    </div>
+                    <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                            {t("dash.teacher.topics.qe.changeResource")}
+                        </p>
+                        {uploadControls}
+                    </div>
                 </div>
-            ) : null}
-        </>
+            ) : (
+                uploadControls
+            )}
+        </div>
     );
 
     if (embedded) {
-        return <div className="space-y-3 pt-1 border-t">{fields}</div>;
+        return fields;
     }
 
     return (
