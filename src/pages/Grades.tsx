@@ -40,11 +40,8 @@ const Grades = () => {
             : null;
 
     const showTeachingTab = showEducationalSection && visitorGradeMode !== "enrichment_only";
-    const showEnrichmentTab = showEnrichmentSection && visitorGradeMode !== "teaching_only";
-    const showKindFilter =
-        showTeachingTab &&
-        showEnrichmentTab &&
-        (visitorGradeMode === "all" || memberScope.isScoped);
+    const showEnrichmentTab = visitorGradeMode !== "teaching_only";
+    const showKindFilter = showTeachingTab && showEnrichmentTab;
 
     /** Scoped members default to their class type when URL has no kind */
     const effectiveKind =

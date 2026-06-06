@@ -59,8 +59,7 @@ export function usePublicGradeCatalog() {
 
         const showEducationalSection =
             educational.length > 0 && visitorGradeMode !== "enrichment_only";
-        const showEnrichmentSection =
-            enrichment.length > 0 && visitorGradeMode !== "teaching_only";
+        const showEnrichmentSection = visitorGradeMode !== "teaching_only";
 
         return {
             enrichment,

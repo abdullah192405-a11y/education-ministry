@@ -22,30 +22,26 @@ const Header = () => {
 
   const contentNavItems: { label: string; href: string }[] = [];
 
-  if (!user) {
-    contentNavItems.push({
-      label: t("header.enrichmentChannels"),
-      href: "/grades?kind=enrichment",
-    });
-  } else if (isClassMember) {
-    if (memberScope.memberClassTypes.has("تعليمي")) {
+  if (user) {
+    if (isClassMember) {
+      if (memberScope.memberClassTypes.has("تعليمي")) {
+        contentNavItems.push({
+          label: t("header.educationalContent"),
+          href: "/grades?kind=teaching",
+        });
+      }
+    } else {
       contentNavItems.push({
         label: t("header.educationalContent"),
         href: "/grades?kind=teaching",
       });
     }
-    if (memberScope.memberClassTypes.has("اثرائي")) {
-      contentNavItems.push({
-        label: t("header.enrichmentChannels"),
-        href: "/grades?kind=enrichment",
-      });
-    }
-  } else {
-    contentNavItems.push({
-      label: t("header.educationalContent"),
-      href: "/grades?kind=teaching",
-    });
   }
+
+  contentNavItems.push({
+    label: t("header.enrichmentChannels"),
+    href: "/grades?kind=enrichment",
+  });
 
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
