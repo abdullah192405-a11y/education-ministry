@@ -25,8 +25,10 @@ const Grades = () => {
 
     const {
         catalogGrades,
-        showOrgEducational,
+        showEducationalSection,
+        showEnrichmentSection,
         visitorGradeMode,
+        memberScope,
         isLoading,
         error,
     } = usePublicGradeCatalog();
@@ -37,10 +39,23 @@ const Grades = () => {
             ? kindParam
             : null;
 
-    const showTeachingTab = showOrgEducational && visitorGradeMode !== "enrichment_only";
-    const showEnrichmentTab = visitorGradeMode !== "teaching_only";
+    const showTeachingTab = showEducationalSection && visitorGradeMode !== "enrichment_only";
+    const showEnrichmentTab = showEnrichmentSection && visitorGradeMode !== "teaching_only";
     const showKindFilter =
-        visitorGradeMode === "all" && showTeachingTab && showEnrichmentTab;
+        showTeachingTab &&
+        showEnrichmentTab &&
+        (visitorGradeMode === "all" || memberScope.isScoped);
+
+    /** Scoped members default to their class type when URL has no kind */
+    const effectiveKind =
+        kind ??
+        (memberScope.isScoped
+            ? showTeachingTab && !showEnrichmentTab
+                ? "teaching"
+                : !showTeachingTab && showEnrichmentTab
+                  ? "enrichment"
+                  : null
+            : null);
 
     const levelOptions: ReadonlyArray<{ id: LevelOption; labelKey: TranslationKey; stageKey?: TranslationKey }> = [
         { id: "ALL", labelKey: "common.all" },
@@ -67,8 +82,8 @@ const Grades = () => {
             (grade as { class_type?: string; classType?: string }).class_type ??
                 (grade as { class_type?: string; classType?: string }).classType,
         );
-        if (kind === "teaching" && classKind !== "تعليمي") return false;
-        if (kind === "enrichment" && classKind !== "اثرائي") return false;
+        if (effectiveKind === "teaching" && classKind !== "تعليمي") return false;
+        if (effectiveKind === "enrichment" && classKind !== "اثرائي") return false;
 
         const search = searchTerm.toLowerCase();
         const matchesSearch = !search ||
@@ -91,8 +106,8 @@ const Grades = () => {
         }
     };
 
-    const isEducational = visitorGradeMode === "teaching_only" || (visitorGradeMode === "all" && kind === "teaching");
-    const isEnrichment = visitorGradeMode === "enrichment_only" || (visitorGradeMode === "all" && kind === "enrichment");
+    const isEducational = visitorGradeMode === "teaching_only" || (visitorGradeMode === "all" && effectiveKind === "teaching");
+    const isEnrichment = visitorGradeMode === "enrichment_only" || (visitorGradeMode === "all" && effectiveKind === "enrichment");
 
     return (
         <div className="min-h-screen font-cairo" dir={dir}>
@@ -121,23 +136,25 @@ const Grades = () => {
                             )}
                         </h1>
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                            {isEnrichment
-                                ? t("gradesPage.descEnrichment")
-                                : isEducational
-                                  ? t("gradesPage.descEducation")
-                                  : t("gradesPage.descDefault")}
+                            {memberScope.isScoped && memberScope.primaryGradeName
+                                ? t("gradesPage.descMemberClass", { gradeName: memberScope.primaryGradeName })
+                                : isEnrichment
+                                  ? t("gradesPage.descEnrichment")
+                                  : isEducational
+                                    ? t("gradesPage.descEducation")
+                                    : t("gradesPage.descDefault")}
                         </p>
                     </motion.div>
 
                     {showKindFilter && (
                         <div className="flex flex-wrap gap-2 justify-center mb-10">
-                            <Button asChild variant={kind == null ? "default" : "outline"} size="sm" className="rounded-full">
+                            <Button asChild variant={effectiveKind == null ? "default" : "outline"} size="sm" className="rounded-full">
                                 <Link to="/grades">{t("common.all")}</Link>
                             </Button>
-                            <Button asChild variant={kind === "teaching" ? "default" : "outline"} size="sm" className="rounded-full">
+                            <Button asChild variant={effectiveKind === "teaching" ? "default" : "outline"} size="sm" className="rounded-full">
                                 <Link to="/grades?kind=teaching">{t("gradesPage.tabEducational")}</Link>
                             </Button>
-                            <Button asChild variant={kind === "enrichment" ? "default" : "outline"} size="sm" className="rounded-full">
+                            <Button asChild variant={effectiveKind === "enrichment" ? "default" : "outline"} size="sm" className="rounded-full">
                                 <Link to="/grades?kind=enrichment">{t("gradesPage.tabEnrichment")}</Link>
                             </Button>
                         </div>

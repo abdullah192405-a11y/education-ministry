@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import AnnouncementBar from "./AnnouncementBar";
 import { useUser } from "@/hooks/useDatabase";
+import { useMemberGradeScope } from "@/hooks/useMemberGradeScope";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { LogIn, User, Menu, X } from "lucide-react";
@@ -11,12 +12,40 @@ import { LogIn, User, Menu, X } from "lucide-react";
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useUser();
+  const memberScope = useMemberGradeScope();
   const { t } = useTranslation();
 
-  const contentNavLabel = user
-    ? t("header.educationalContent")
-    : t("header.enrichmentChannels");
-  const contentNavHref = user ? "/grades?kind=teaching" : "/grades?kind=enrichment";
+  const role = user?.role?.toUpperCase() ?? "";
+  const isStudent = role === "STUDENT" || user?.role === "طالب";
+  const isTeacher = role === "TEACHER" || user?.role === "معلم" || user?.role === "معلمة";
+  const isClassMember = memberScope.isScoped && (isStudent || isTeacher);
+
+  const contentNavItems: { label: string; href: string }[] = [];
+
+  if (!user) {
+    contentNavItems.push({
+      label: t("header.enrichmentChannels"),
+      href: "/grades?kind=enrichment",
+    });
+  } else if (isClassMember) {
+    if (memberScope.memberClassTypes.has("تعليمي")) {
+      contentNavItems.push({
+        label: t("header.educationalContent"),
+        href: "/grades?kind=teaching",
+      });
+    }
+    if (memberScope.memberClassTypes.has("اثرائي")) {
+      contentNavItems.push({
+        label: t("header.enrichmentChannels"),
+        href: "/grades?kind=enrichment",
+      });
+    }
+  } else {
+    contentNavItems.push({
+      label: t("header.educationalContent"),
+      href: "/grades?kind=teaching",
+    });
+  }
 
   const getDashboardPath = () => {
     if (!user?.role) return "/dashboard/student";
@@ -31,7 +60,7 @@ const Header = () => {
 
   const navItems = [
     { label: t("common.home"), href: "/" },
-    { label: contentNavLabel, href: contentNavHref },
+    ...contentNavItems,
     { label: t("orgsSection.partnersTitle"), href: "/partners" },
     ...(user ? [{ label: t("common.dashboard"), href: dashboardPath }] : []),
   ];

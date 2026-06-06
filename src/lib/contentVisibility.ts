@@ -43,6 +43,15 @@ export function filterEducationalGradesForOrganization<
     return grades.filter((g) => getGradeOrganizationId(g) === organizationId);
 }
 
+/** When a student/teacher is scoped to specific grades, keep only those rows. */
+export function filterGradesForMemberScope<T extends { id?: string | null }>(
+    grades: T[],
+    gradeIds: Set<string> | null | undefined,
+): T[] {
+    if (!gradeIds?.size) return grades;
+    return grades.filter((g) => g.id != null && gradeIds.has(String(g.id)));
+}
+
 export function filterGradesForPublicCatalog<
     T extends {
         class_type?: string | null;
