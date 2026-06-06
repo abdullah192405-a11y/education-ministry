@@ -18,7 +18,7 @@ import {
 /**
  * Public catalog: enrichment (platform) for everyone; educational grades only for
  * signed-in school/org members, scoped to their organization.
- * Students/teachers see only their assigned class(es).
+ * Students/teachers see only their assigned class(es) for تعليمي content; اثرائي stays platform-wide.
  */
 export function usePublicGradeCatalog() {
     const { data: gradesData = [], isLoading: loadingGrades, error } = useGrades();
@@ -52,9 +52,12 @@ export function usePublicGradeCatalog() {
         });
 
         if (memberScope.isScoped && memberScope.gradeIds?.size) {
-            enrichment = filterGradesForMemberScope(enrichment, memberScope.gradeIds);
             educational = filterGradesForMemberScope(educational, memberScope.gradeIds);
-            catalogGrades = filterGradesForMemberScope(catalogGrades, memberScope.gradeIds);
+            catalogGrades = catalogGrades.filter((g) => {
+                const kind = normalizeGradeClassType(g.class_type ?? g.classType);
+                if (kind === "اثرائي") return true;
+                return memberScope.gradeIds!.has(String(g.id));
+            });
         }
 
         const showEducationalSection =

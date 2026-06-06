@@ -133,7 +133,7 @@ const Grades = () => {
                             )}
                         </h1>
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                            {memberScope.isScoped && memberScope.primaryGradeName
+                            {memberScope.isScoped && memberScope.primaryGradeName && isEducational
                                 ? t("gradesPage.descMemberClass", { gradeName: memberScope.primaryGradeName })
                                 : isEnrichment
                                   ? t("gradesPage.descEnrichment")
