@@ -22,13 +22,24 @@ import {
 import { getLevelFromScore } from "@/data/challengeTypes";
 
 // --- Shared Mapper: DB snake_case → Frontend camelCase for challenge questions ---
+/** Read correct answer from either camelCase or snake_case question fields. */
+export const resolveQuestionCorrectAnswer = (q: {
+    correctAnswer?: number | string | number[] | null;
+    correct_answer?: number | string | null;
+}): number | string | number[] | null | undefined => {
+    const raw = q.correctAnswer ?? q.correct_answer;
+    if (raw == null || raw === "") return raw;
+    if (typeof raw === "number") return raw;
+    if (Array.isArray(raw)) return raw;
+    const asNumber = Number(raw);
+    return Number.isNaN(asNumber) ? raw : asNumber;
+};
+
 export const mapChallengeQuestion = (q: any) => ({
     ...q,
     type: q.type?.toLowerCase() || "multiple_choice",
     typeTitle: q.type_title || q.typeTitle,
-    correctAnswer: q.correct_answer != null
-        ? (isNaN(Number(q.correct_answer)) ? q.correct_answer : Number(q.correct_answer))
-        : q.correctAnswer,
+    correctAnswer: resolveQuestionCorrectAnswer(q),
     imageUrl: q.image_url || q.imageUrl,
     videoUrl: q.video_url || q.videoUrl,
     audioUrl: q.audio_url || q.audioUrl,
@@ -2930,7 +2941,10 @@ export const useSaveChallengeQuestions = () => {
                 type_title: q.typeTitle || null,
                 question: q.question || "",
                 options: q.options || [],
-                correct_answer: q.correctAnswer != null ? String(q.correctAnswer) : null,
+                correct_answer: (() => {
+                    const ca = resolveQuestionCorrectAnswer(q);
+                    return ca != null && ca !== "" ? String(ca) : null;
+                })(),
                 ...questionAttachmentFields(q),
                 pairs: q.pairs || null,
                 order_items: q.orderItems || [],

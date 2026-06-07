@@ -51,6 +51,15 @@ export type QuestionGameEditorHandle = {
 
 const serializeChallengeItems = (items: ChallengeQuestion[]) => JSON.stringify(items);
 
+const getCorrectAnswerIndex = (correctAnswer: ChallengeQuestion["correctAnswer"]): number => {
+    if (typeof correctAnswer === "number" && !Number.isNaN(correctAnswer)) return correctAnswer;
+    if (typeof correctAnswer === "string") {
+        const parsed = Number(correctAnswer);
+        if (!Number.isNaN(parsed)) return parsed;
+    }
+    return 0;
+};
+
 const getActivityTypes = (t: TFunction) => [
     { type: "multiple_choice" as const, label: t("dash.teacher.topics.qe.multipleChoice"), icon: CheckCircle, description: t("dash.teacher.topics.qe.multipleChoiceDesc") },
     { type: "true_false" as const, label: t("dash.teacher.topics.qe.trueFalse"), icon: XCircle, description: t("dash.teacher.topics.qe.trueFalseDesc") },
@@ -710,6 +719,7 @@ interface FieldProps {
 
 const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
+    const correctIndex = getCorrectAnswerIndex(item.correctAnswer);
     return (
         <div>
             <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.optionsClickCorrect")}</label>
@@ -717,12 +727,13 @@ const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => {
                 {(item.options || []).map((opt, i) => (
                     <div key={i} className="flex items-center gap-2">
                         <Button
-                            variant={item.correctAnswer === i ? "default" : "outline"}
+                            type="button"
+                            variant={correctIndex === i ? "default" : "outline"}
                             size="icon"
                             className="h-9 w-9 flex-shrink-0"
                             onClick={() => updateItem(index, { correctAnswer: i })}
                         >
-                            {item.correctAnswer === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                            {correctIndex === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
                         </Button>
                         <Input
                             value={opt}
@@ -732,7 +743,7 @@ const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => {
                                 updateItem(index, { options: opts });
                             }}
                             placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
-                            className={item.correctAnswer === i ? "border-primary" : ""}
+                            className={correctIndex === i ? "border-primary" : ""}
                         />
                     </div>
                 ))}
@@ -743,12 +754,14 @@ const MultipleChoiceFields = ({ item, index, updateItem }: FieldProps) => {
 
 const TrueFalseFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
+    const correctIndex = getCorrectAnswerIndex(item.correctAnswer);
     return (
         <div>
             <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.correctAnswer")}</label>
             <div className="flex gap-4">
                 <Button
-                    variant={item.correctAnswer === 0 ? "default" : "outline"}
+                    type="button"
+                    variant={correctIndex === 0 ? "default" : "outline"}
                     className="flex-1 h-12 text-lg gap-2"
                     onClick={() => updateItem(index, { correctAnswer: 0 })}
                 >
@@ -756,7 +769,8 @@ const TrueFalseFields = ({ item, index, updateItem }: FieldProps) => {
                     {t("dash.teacher.topics.qe.trueLabel")}
                 </Button>
                 <Button
-                    variant={item.correctAnswer === 1 ? "default" : "outline"}
+                    type="button"
+                    variant={correctIndex === 1 ? "default" : "outline"}
                     className="flex-1 h-12 text-lg gap-2"
                     onClick={() => updateItem(index, { correctAnswer: 1 })}
                 >
@@ -903,6 +917,7 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
 
 const ShootingFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
+    const correctIndex = getCorrectAnswerIndex(item.correctAnswer);
     return (
         <div>
             <label className="text-sm font-medium mb-2 block">
@@ -912,12 +927,13 @@ const ShootingFields = ({ item, index, updateItem }: FieldProps) => {
                 {(item.options || []).map((opt, i) => (
                     <div key={i} className="flex items-center gap-2">
                         <Button
-                            variant={item.correctAnswer === i ? "destructive" : "outline"}
+                            type="button"
+                            variant={correctIndex === i ? "destructive" : "outline"}
                             size="icon"
                             className="h-9 w-9 flex-shrink-0"
                             onClick={() => updateItem(index, { correctAnswer: i })}
                         >
-                            {item.correctAnswer === i ? <Target className="w-4 h-4" /> : i + 1}
+                            {correctIndex === i ? <Target className="w-4 h-4" /> : i + 1}
                         </Button>
                         <Input
                             value={opt}
@@ -927,7 +943,7 @@ const ShootingFields = ({ item, index, updateItem }: FieldProps) => {
                                 updateItem(index, { options: opts });
                             }}
                             placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
-                            className={item.correctAnswer === i ? "border-destructive" : ""}
+                            className={correctIndex === i ? "border-destructive" : ""}
                         />
                     </div>
                 ))}
@@ -1222,15 +1238,18 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
                                     <div>
                                         <label className="text-xs text-muted-foreground mb-1 block">{t("dash.teacher.topics.qe.segmentOptions")}</label>
                                         <div className="space-y-2">
-                                            {segmentOptions.map((opt, oIdx) => (
+                                            {segmentOptions.map((opt, oIdx) => {
+                                                const segmentCorrectIndex = getCorrectAnswerIndex(segment.correctAnswer);
+                                                return (
                                                 <div key={oIdx} className="flex items-center gap-2">
                                                     <Button
-                                                        variant={(segment.correctAnswer || 0) === oIdx ? "default" : "outline"}
+                                                        type="button"
+                                                        variant={segmentCorrectIndex === oIdx ? "default" : "outline"}
                                                         size="icon"
                                                         className="h-8 w-8 flex-shrink-0"
                                                         onClick={() => updateSegment(i, 'correctAnswer', oIdx)}
                                                     >
-                                                        {(segment.correctAnswer || 0) === oIdx ? <CheckCircle className="w-4 h-4" /> : <span className="text-xs">{oIdx + 1}</span>}
+                                                        {segmentCorrectIndex === oIdx ? <CheckCircle className="w-4 h-4" /> : <span className="text-xs">{oIdx + 1}</span>}
                                                     </Button>
                                                     <Input
                                                         value={opt}
@@ -1239,7 +1258,8 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
                                                         className="h-8 text-sm"
                                                     />
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -1261,7 +1281,7 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
 const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
     const options = item.options || [];
-    const correctAnswerIndex = typeof item.correctAnswer === "number" ? item.correctAnswer : 0;
+    const correctAnswerIndex = getCorrectAnswerIndex(item.correctAnswer);
 
     const addOption = () => {
         updateItem(index, { options: [...options, ""] });
@@ -1291,6 +1311,7 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
                     {options.map((opt, i) => (
                         <div key={i} className="flex items-center gap-2">
                             <Button
+                                type="button"
                                 variant={correctAnswerIndex === i ? "default" : "outline"}
                                 size="icon"
                                 className="h-9 w-9 flex-shrink-0"

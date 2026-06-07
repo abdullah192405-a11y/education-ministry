@@ -756,36 +756,6 @@ const ContentEditor = ({
         }
     };
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            await onSave({
-                id: content?.id || Date.now(),
-                title,
-                description,
-                thumbnail,
-                targetAudience,
-                duration,
-                correctSoundUrl: correctSoundUrl || null,
-                wrongSoundUrl: wrongSoundUrl || null,
-                answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
-                wheelSpinSoundUrl: resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
-                discussionsEnabled,
-                collectSingleChallengeParticipantData,
-                studentChallengePreset,
-                media: mediaList,
-                quiz: [], // Legacy - keeping for compatibility
-                views: content?.views || 0,
-                createdAt: content?.createdAt || new Date().toISOString().split('T')[0],
-                challengeItems,
-                pendingLiveSessions,
-                mediaDirty,
-            });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
     // Media handlers
     const saveMedia = async () => {
         if (newMedia.type === "live") {
@@ -933,6 +903,47 @@ const ContentEditor = ({
         setChallengeItems(items);
         setShowQuestionEditor(false);
         handleQuestionsDirtyChange(false);
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            const latestChallengeItems =
+                showQuestionEditor && questionEditorRef.current
+                    ? questionEditorRef.current.getItems()
+                    : challengeItems;
+
+            if (showQuestionEditor && questionEditorRef.current) {
+                setChallengeItems(latestChallengeItems);
+                questionEditorRef.current.resetDirtyBaseline();
+                handleQuestionsDirtyChange(false);
+            }
+
+            await onSave({
+                id: content?.id || Date.now(),
+                title,
+                description,
+                thumbnail,
+                targetAudience,
+                duration,
+                correctSoundUrl: correctSoundUrl || null,
+                wrongSoundUrl: wrongSoundUrl || null,
+                answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
+                wheelSpinSoundUrl: resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
+                discussionsEnabled,
+                collectSingleChallengeParticipantData,
+                studentChallengePreset,
+                media: mediaList,
+                quiz: [], // Legacy - keeping for compatibility
+                views: content?.views || 0,
+                createdAt: content?.createdAt || new Date().toISOString().split('T')[0],
+                challengeItems: latestChallengeItems,
+                pendingLiveSessions,
+                mediaDirty,
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const registerQuestionEditorCloseGuard = useCallback(

@@ -50,6 +50,7 @@ import {
     useTeacherTopicContentReport,
     useResetTopicSingleChallengeResults,
     useTopicRatings,
+    mapChallengeQuestion,
 } from "@/hooks/useDatabase";
 import { aggregateTopicLessonRatings } from "@/lib/topicRatingStats";
 import { localizeLessonRatingSummary } from "@/lib/lessonRatingLabels";
@@ -414,10 +415,7 @@ const TeacherTopicsTab = ({
             pdfBase64: m.pdf_base64 || m.pdfBase64,
         })),
         quiz: topic.quizQuestions || topic.quiz || [],
-        challengeItems: (topic.challengeItems || topic.challenge_questions || []).map((q: any) => ({
-            ...q,
-            type: q.type?.toLowerCase() || "multiple_choice",
-        })),
+        challengeItems: (topic.challengeItems || topic.challenge_questions || []).map(mapChallengeQuestion),
     });
 
     // State

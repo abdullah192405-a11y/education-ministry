@@ -40,7 +40,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { useUser, useTeacherAllTopics, useTeacherProfile } from "@/hooks/useDatabase";
+import { useUser, useTeacherAllTopics, useTeacherProfile, resolveQuestionCorrectAnswer } from "@/hooks/useDatabase";
 import {
     useTeacherExams,
     useCreateExam,
@@ -800,7 +800,10 @@ const ManageQuestionsDialog = ({
                     type: String(q.type).toUpperCase(),
                     question: q.question,
                     options: q.options || [],
-                    correct_answer: String(q.correctAnswer ?? 0),
+                    correct_answer: (() => {
+                        const ca = resolveQuestionCorrectAnswer(q);
+                        return ca != null && ca !== "" ? String(ca) : "0";
+                    })(),
                     ...questionAttachmentFields(q),
                     pairs: q.pairs || null,
                     order_items: q.orderItems || [],
