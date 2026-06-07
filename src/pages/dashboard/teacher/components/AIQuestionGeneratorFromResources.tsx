@@ -16,7 +16,7 @@ import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
-import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
+import { normalizeAiChallengeItem, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import type { TranslationKey } from "@/lib/i18n/translations";
@@ -411,23 +411,28 @@ const AIQuestionGeneratorFromResources = ({
 
     const normalizeGeneratedItems = (items: Record<string, unknown>[]): Record<string, unknown>[] => {
         return items.map((item) => {
-            const type = String(item.type || "");
-            const question = String(item.question || "").trim();
-            const explanation = String(item.explanation || "").trim();
-            const rawAnswer = item.correctAnswer;
+            const normalized = normalizeAiChallengeItem(item);
+            const type = String(normalized.type || "");
+            const question = String(normalized.question || "").trim();
+            const explanation = String(normalized.explanation || "").trim();
+            const rawAnswer = normalized.correctAnswer;
             const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : "";
-            const options = Array.isArray(item.options)
-                ? item.options.map((v) => String(v ?? "").trim()).filter(Boolean)
+            const options = Array.isArray(normalized.options)
+                ? normalized.options.map((v) => String(v ?? "").trim()).filter(Boolean)
                 : [];
-            const orderItems = Array.isArray(item.orderItems)
-                ? item.orderItems.map((v) => String(v ?? "").trim()).filter(Boolean)
+            const orderItems = Array.isArray(normalized.orderItems)
+                ? normalized.orderItems.map((v) => String(v ?? "").trim()).filter(Boolean)
                 : [];
+
+            if (type === "wheel_spin") {
+                return normalized;
+            }
 
             if (type === "qa" || type === "know_dont_know") {
                 const fallbackAnswer =
                     explanation || aiGenContext.qaFallbackAnswer(language, question);
                 return {
-                    ...item,
+                    ...normalized,
                     correctAnswer: answerAsText || fallbackAnswer,
                     explanation: explanation || aiGenContext.qaFallbackExplanation(language),
                 };
@@ -451,7 +456,7 @@ const AIQuestionGeneratorFromResources = ({
                     normalizedAnswer = isFalse ? 1 : 0;
                 }
                 return {
-                    ...item,
+                    ...normalized,
                     options: options.length >= 2 ? options.slice(0, 2) : [t("dash.teacher.topics.qe.trueLabel"), t("dash.teacher.topics.qe.falseLabel")],
                     correctAnswer: normalizedAnswer,
                 };
@@ -470,12 +475,12 @@ const AIQuestionGeneratorFromResources = ({
                         ? options
                         : fromAnswerText;
                 return {
-                    ...item,
+                    ...normalized,
                     orderItems: normalizedOrder,
                 };
             }
 
-            return item;
+            return normalized;
         });
     };
 

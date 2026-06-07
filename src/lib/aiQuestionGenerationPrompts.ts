@@ -46,7 +46,7 @@ Repair rules:
 - No markdown or commentary.
 - Every item must include type, question, points, and timeLimit.
 - matching must include pairs.
-- wheel_spin must include 4–6 wheelSegments with question, options, and answer.
+- wheel_spin = ONE game with 4–6 wheelSegments; each segment has exactly ONE question and 2–4 options (correctAnswer index). Never put multiple questions in one segment or in the parent question field.
 - shooting must include options (4) and correctAnswer.
 - puzzle must include options and correctAnswer.
 - All question, option, explanation, and label strings must be in English.
@@ -62,7 +62,7 @@ ${generatedText}`;
 - لا تستخدم markdown أو شرح.
 - كل عنصر يجب أن يحتوي type وquestion وpoints وtimeLimit.
 - matching يجب أن يحتوي pairs.
-- wheel_spin يجب أن يحتوي wheelSegments من 4 إلى 6 عناصر مع question وخيارات وإجابة.
+- wheel_spin = لعبة واحدة تحتوي wheelSegments من 4 إلى 6 شرائح؛ كل شريحة سؤال واحد فقط مع 2–4 خيارات (correctAnswer رقم الخيار). لا تضع عدة أسئلة في شريحة واحدة أو في حقل question الرئيسي.
 - shooting يجب أن يحتوي options (4) وcorrectAnswer.
 - puzzle يجب أن يحتوي options وcorrectAnswer.
 - اجعل correctAnswer مناسباً لنوع السؤال.
@@ -190,6 +190,18 @@ Example format:
     ],
     "points": 150,
     "timeLimit": 45
+  },
+  {
+    "type": "wheel_spin",
+    "question": "Spin the wheel!",
+    "points": 100,
+    "timeLimit": 30,
+    "wheelSegments": [
+      {"label": "Easy", "points": 50, "question": "What is...?", "options": ["A", "B", "C", "D"], "correctAnswer": 0},
+      {"label": "Medium", "points": 100, "question": "Which...?", "options": ["X", "Y", "Z", "W"], "correctAnswer": 1},
+      {"label": "Hard", "points": 150, "question": "How...?", "options": ["1", "2", "3", "4"], "correctAnswer": 2},
+      {"label": "Bonus", "points": 200, "question": "Why...?", "options": ["P", "Q", "R", "S"], "correctAnswer": 0}
+    ]
   }
 ]
 
@@ -198,7 +210,8 @@ Important:
 - Output exactly ${p.batchCount} items in this batch; each type must be one of: ${allowedJson}.
 - Write standalone questions; do not use phrases like "as shown in the image" or "in the video above".
 - For qa and know_dont_know always set correctAnswer to clear text; add a short explanation when helpful.
-- For wheel_spin include 4–6 complete wheelSegments; for shooting use 4 options with one correct answer.
+- For wheel_spin: ONE item with 4–6 wheelSegments; each segment = ONE question + its own options. Never bundle multiple Q&A in one segment.
+- For shooting use 4 options with one correct answer.
 - Points 50–200; timeLimit 15–60 seconds.
 - Valid JSON only.`;
 }
@@ -244,12 +257,25 @@ ${availableTypes}
     "explanation": "الشرح...",
     "points": 100,
     "timeLimit": 30
+  },
+  {
+    "type": "wheel_spin",
+    "question": "أدر العجلة!",
+    "points": 100,
+    "timeLimit": 30,
+    "wheelSegments": [
+      {"label": "سهل", "points": 50, "question": "ما هو...؟", "options": ["أ", "ب", "ج", "د"], "correctAnswer": 0},
+      {"label": "متوسط", "points": 100, "question": "أي...؟", "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"], "correctAnswer": 1},
+      {"label": "صعب", "points": 150, "question": "كيف...؟", "options": ["1", "2", "3", "4"], "correctAnswer": 2},
+      {"label": "إضافي", "points": 200, "question": "لماذا...؟", "options": ["أ", "ب", "ج", "د"], "correctAnswer": 0}
+    ]
   }
 ]
 
 ملاحظات مهمة:
 - التزم بنسبة 100% بالمحتوى المرفق.
 - أخرج بالضبط ${p.batchCount} عناصر في هذه الدفعة؛ كل type من: ${allowedJson}.
+- لـ wheel_spin: عنصر واحد يحتوي 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته فقط. لا تضع عدة أسئلة في شريحة واحدة.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON.`;
 }

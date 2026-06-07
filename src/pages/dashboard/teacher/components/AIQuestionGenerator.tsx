@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
-import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
+import { normalizeAiChallengeItem, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { aiGenContext, buildUploadGenerationPrompt, buildAudioTranscriptionPrompt } from "@/lib/aiQuestionGenerationPrompts";
 import { cn } from "@/lib/utils";
@@ -382,7 +382,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
 
             const items = parseAiGeneratedChallengeItems(generatedText);
             const questions = items.map((item: any, index: number) => ({
-                ...item,
+                ...normalizeAiChallengeItem(item as Record<string, unknown>),
                 id: item.id || Date.now() + index,
             })) as ChallengeQuestion[];
 
