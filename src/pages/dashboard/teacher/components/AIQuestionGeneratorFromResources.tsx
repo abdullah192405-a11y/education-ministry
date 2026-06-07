@@ -78,7 +78,7 @@ const AIQuestionGeneratorFromResources = ({
     const [progress, setProgress] = useState("");
     const [processingPhase, setProcessingPhase] = useState<"idle" | "extracting" | "analyzing" | "generating">("idle");
     const [generateType, setGenerateType] = useState<GenerateMode>("both");
-    const [targetCount, setTargetCount] = useState(10);
+    const [targetCount, setTargetCount] = useState(0);
     const [selectedChallengeTypes, setSelectedChallengeTypes] = useState<ChallengeType[]>([]);
     const { toast } = useToast();
     const { t, dir, language, isRtl, textAlign } = useDashboardLocale();
@@ -544,6 +544,15 @@ const AIQuestionGeneratorFromResources = ({
             return;
         }
 
+        if (targetCount < 1) {
+            toast({
+                title: t("dash.teacher.aiGen.toast.noTargetCount"),
+                description: t("dash.teacher.aiGen.toast.noTargetCountDesc"),
+                variant: "destructive",
+            });
+            return;
+        }
+
         const allowedTypes = getAllowedTypesForMode(generateType, selectedChallengeTypes);
         if (allowedTypes.length === 0) {
             toast({
@@ -996,13 +1005,18 @@ const AIQuestionGeneratorFromResources = ({
                             <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.targetCount")}</Label>
                             <Input
                                 type="number"
-                                min={1}
+                                min={0}
                                 max={80}
                                 value={targetCount}
                                 onChange={(e) => {
-                                    const value = Number(e.target.value || 0);
+                                    const raw = e.target.value;
+                                    if (raw === "") {
+                                        setTargetCount(0);
+                                        return;
+                                    }
+                                    const value = Number(raw);
                                     if (!Number.isFinite(value)) return;
-                                    setTargetCount(Math.max(1, Math.min(80, Math.floor(value))));
+                                    setTargetCount(Math.max(0, Math.min(80, Math.floor(value))));
                                 }}
                                 disabled={isProcessing}
                             />
@@ -1135,7 +1149,7 @@ const AIQuestionGeneratorFromResources = ({
                             <>
                                 <Button
                                     onClick={handleGenerate}
-                                    disabled={!prompt.trim() || selectedMedia.length === 0 || isProcessing}
+                                    disabled={!prompt.trim() || targetCount < 1 || selectedMedia.length === 0 || isProcessing}
                                     className="gap-2 bg-gradient-to-l from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                 >
                                     {isProcessing ? (
@@ -1163,7 +1177,7 @@ const AIQuestionGeneratorFromResources = ({
                                 </Button>
                                 <Button
                                     onClick={handleGenerate}
-                                    disabled={!prompt.trim() || selectedMedia.length === 0 || isProcessing}
+                                    disabled={!prompt.trim() || targetCount < 1 || selectedMedia.length === 0 || isProcessing}
                                     className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                 >
                                     {isProcessing ? (

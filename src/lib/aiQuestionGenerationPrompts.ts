@@ -321,7 +321,8 @@ function getTypeInstructionsAr(genType: AiGenerateMode): { typeInstruction: stri
 export function buildUploadGenerationPrompt(
     language: Language,
     fileContent: string,
-    userPrompt: string
+    userPrompt: string,
+    itemCount: number
 ): string {
     if (isEn(language)) {
         return `You are an expert assistant that creates educational questions and interactive games in English.
@@ -335,6 +336,9 @@ ${fileContent}
 
 Teacher request:
 ${userPrompt}
+
+Items required: ${itemCount}
+Output exactly ${itemCount} items — no more, no fewer.
 
 Analyze the full source (extracted text and page images). OCR page images when needed.
 
@@ -361,6 +365,9 @@ ${fileContent}
 
 طلب المعلم:
 ${userPrompt}
+
+عدد العناصر المطلوب: ${itemCount}
+أخرج بالضبط ${itemCount} عنصراً — لا أكثر ولا أقل.
 
 تنبيه هام: قم بتحليل **كامل** المحتوى المقدم. إذا كانت هناك صور لصفحات PDF، قم بإجراء تحليل بصري (OCR) دقيق لها.
 

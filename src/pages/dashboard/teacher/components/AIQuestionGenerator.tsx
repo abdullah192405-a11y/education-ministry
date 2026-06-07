@@ -52,6 +52,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
     const imageInputRef = useRef<HTMLInputElement>(null);
     const audioInputRef = useRef<HTMLInputElement>(null);
     const [prompt, setPrompt] = useState("");
+    const [targetCount, setTargetCount] = useState(0);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState("");
     const { toast } = useToast();
@@ -189,6 +190,15 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             toast({
                 title: t("dash.teacher.aiGen.toast.noPrompt"),
                 description: t("dash.teacher.aiGen.toast.noPromptDesc"),
+                variant: "destructive",
+            });
+            return;
+        }
+
+        if (targetCount < 1) {
+            toast({
+                title: t("dash.teacher.aiGen.toast.noTargetCount"),
+                description: t("dash.teacher.aiGen.toast.noTargetCountDesc"),
                 variant: "destructive",
             });
             return;
@@ -350,7 +360,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                     ? aiGenContext.scannedPdfNoText(language)
                     : extractedText;
 
-            parts.push({ text: buildUploadGenerationPrompt(language, sourceContextForPrompt, prompt) });
+            parts.push({ text: buildUploadGenerationPrompt(language, sourceContextForPrompt, prompt, targetCount) });
 
             setProgress(t("dash.teacher.aiGen.upload.progress.generating"));
             const data = (await generateGeminiContent(apiKey, {
@@ -381,7 +391,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             }
 
             const items = parseAiGeneratedChallengeItems(generatedText);
-            const questions = items.map((item: any, index: number) => ({
+            const questions = items.slice(0, targetCount).map((item: any, index: number) => ({
                 ...item,
                 id: item.id || Date.now() + index,
             })) as ChallengeQuestion[];
@@ -534,6 +544,29 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                             dir={dir}
                             className={cn("resize-none", textAlign)}
                         />
+                        <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.targetCount")}</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                max={80}
+                                value={targetCount}
+                                onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === "") {
+                                        setTargetCount(0);
+                                        return;
+                                    }
+                                    const value = Number(raw);
+                                    if (!Number.isFinite(value)) return;
+                                    setTargetCount(Math.max(0, Math.min(80, Math.floor(value))));
+                                }}
+                                disabled={isProcessing}
+                            />
+                            <p className={cn("text-xs text-muted-foreground", textAlign)}>
+                                {t("dash.teacher.aiGen.resources.targetCountHint")}
+                            </p>
+                        </div>
                         <div className={cn("text-xs text-muted-foreground", textAlign)}>
                             {t("dash.teacher.aiGen.promptTip")}
                         </div>
@@ -582,7 +615,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                             <>
                                 <Button
                                     onClick={handleGenerate}
-                                    disabled={!prompt.trim() || isProcessing || (inputType === "video" && !videoUrl.trim())}
+                                    disabled={!prompt.trim() || targetCount < 1 || isProcessing || (inputType === "video" && !videoUrl.trim())}
                                     className={cn(
                                         "gap-2 bg-gradient-to-l from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                     )}
@@ -622,7 +655,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                                 </Button>
                                 <Button
                                     onClick={handleGenerate}
-                                    disabled={!prompt.trim() || isProcessing || (inputType === "video" && !videoUrl.trim())}
+                                    disabled={!prompt.trim() || targetCount < 1 || isProcessing || (inputType === "video" && !videoUrl.trim())}
                                     className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                                 >
                                     {isProcessing ? (
