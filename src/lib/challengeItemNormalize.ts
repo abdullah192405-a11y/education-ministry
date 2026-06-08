@@ -271,7 +271,7 @@ export function normalizeTrueFalseQuestionItem(
     const options = Array.isArray(item.options)
         ? item.options.map(cleanText).filter(Boolean)
         : [];
-    const rawAnswer = item.correctAnswer ?? item.correct_answer;
+    const rawAnswer = item.correctAnswer ?? item.correct_answer ?? item.answer;
 
     let normalizedAnswer = 0;
     if (typeof rawAnswer === "number") {
@@ -304,7 +304,7 @@ export function normalizeOpenAnswerItem(
 ): Record<string, unknown> {
     const question = cleanText(item.question);
     const explanation = cleanText(item.explanation);
-    const rawAnswer = item.correctAnswer ?? item.correct_answer;
+    const rawAnswer = item.correctAnswer ?? item.correct_answer ?? item.answer;
     const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : cleanText(rawAnswer);
 
     return {

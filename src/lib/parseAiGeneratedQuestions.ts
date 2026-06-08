@@ -293,10 +293,11 @@ export function normalizeGeneratedChallengeItems(
 ): Record<string, unknown>[] {
     return items.map((item) => {
         const normalized = normalizeAiChallengeItem(item);
-        const type = String(normalized.type || "");
+        const type = String(normalized.type || "").toLowerCase();
         const question = String(normalized.question || "").trim();
         const explanation = String(normalized.explanation || "").trim();
-        const rawAnswer = normalized.correctAnswer;
+        const rawAnswer =
+            normalized.correctAnswer ?? normalized.correct_answer ?? normalized.answer;
         const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : "";
         const itemOptions = Array.isArray(normalized.options)
             ? normalized.options.map((value) => String(value ?? "").trim()).filter(Boolean)

@@ -2949,7 +2949,7 @@ export const useSaveChallengeQuestions = () => {
                 type_title: normalized.typeTitle || null,
                 question: normalized.question || "",
                 options: normalized.options || [],
-                correct_answer: formatCorrectAnswerForDb(normalized),
+                correct_answer: formatCorrectAnswerForDb(normalized) ?? "0",
                 ...questionAttachmentFields(normalized),
                 pairs: normalized.pairs || null,
                 order_items: normalized.orderItems || [],

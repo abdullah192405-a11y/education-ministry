@@ -383,6 +383,8 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             const items = parseAiGeneratedChallengeItems(generatedText);
             const normalizedItems = normalizeGeneratedChallengeItems(items, {
                 language,
+                trueLabel: t("dash.teacher.topics.qe.trueLabel"),
+                falseLabel: t("dash.teacher.topics.qe.falseLabel"),
                 qaFallbackAnswer: (question) => aiGenContext.qaFallbackAnswer(language, question),
                 qaFallbackExplanation: aiGenContext.qaFallbackExplanation(language),
             });
