@@ -126,7 +126,7 @@ const getDefaultItem = (type: ActivityType | GameType, t: TFunction): Partial<Ch
                 points: 100
             };
         case "puzzle":
-            return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0, timeLimit: 45, points: 200 };
+            return { ...baseItem, options: ["", "", "", ""], correctAnswer: "", timeLimit: 45, points: 200 };
         default:
             return baseItem;
     }
@@ -1281,44 +1281,40 @@ const WheelSpinFields = ({ item, index, updateItem, wheelSpinSoundUrl }: FieldPr
 const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
     const options = item.options || [];
-    const correctAnswerIndex = getCorrectAnswerIndex(item.correctAnswer);
+    const correctWord =
+        typeof item.correctAnswer === "string" && item.correctAnswer.trim()
+            ? item.correctAnswer
+            : typeof item.correctAnswer === "number" && options[item.correctAnswer]
+              ? options[item.correctAnswer]
+              : "";
 
     const addOption = () => {
         updateItem(index, { options: [...options, ""] });
     };
 
     const removeOption = (optionIndex: number) => {
-        const newOptions = options.filter((_, i) => i !== optionIndex);
-        let newCorrectAnswer = correctAnswerIndex;
-
-        if (optionIndex === correctAnswerIndex) {
-            newCorrectAnswer = 0;
-        } else if (optionIndex < correctAnswerIndex) {
-            newCorrectAnswer = correctAnswerIndex - 1;
-        }
-
-        updateItem(index, {
-            options: newOptions,
-            correctAnswer: Math.max(0, Math.min(newCorrectAnswer, Math.max(newOptions.length - 1, 0))),
-        });
+        updateItem(index, { options: options.filter((_, i) => i !== optionIndex) });
     };
 
     return (
         <div className="space-y-4">
             <div>
+                <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.puzzleCorrectWord")}</label>
+                <Input
+                    value={correctWord}
+                    onChange={(e) => updateItem(index, { correctAnswer: e.target.value })}
+                    placeholder={t("dash.teacher.topics.qe.puzzleCorrectWordPlaceholder")}
+                />
+                <p className="text-xs text-muted-foreground mt-2">{t("dash.teacher.topics.qe.puzzleCorrectWordHint")}</p>
+            </div>
+            <div>
                 <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.puzzleOptions")}</label>
                 <div className="space-y-2">
                     {options.map((opt, i) => (
                         <div key={i} className="flex items-center gap-2">
-                            <Button
-                                type="button"
-                                variant={correctAnswerIndex === i ? "default" : "outline"}
-                                size="icon"
-                                className="h-9 w-9 flex-shrink-0"
-                                onClick={() => updateItem(index, { correctAnswer: i })}
-                            >
-                                {correctAnswerIndex === i ? <CheckCircle className="w-4 h-4" /> : i + 1}
-                            </Button>
+                            <span className="w-9 h-9 rounded-md bg-muted flex items-center justify-center text-sm font-bold shrink-0">
+                                {i + 1}
+                            </span>
                             <Input
                                 value={opt}
                                 onChange={(e) => {
@@ -1326,7 +1322,7 @@ const PuzzleFields = ({ item, index, updateItem }: FieldProps) => {
                                     opts[i] = e.target.value;
                                     updateItem(index, { options: opts });
                                 }}
-                                placeholder={t("dash.teacher.topics.qe.optionN", { n: i + 1 })}
+                                placeholder={t("dash.teacher.topics.qe.puzzleLetterN", { n: i + 1 })}
                             />
                             <Button
                                 variant="ghost"

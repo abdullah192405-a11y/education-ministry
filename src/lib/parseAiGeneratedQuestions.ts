@@ -3,6 +3,11 @@
  * Handles markdown fences, prose around JSON, balanced brackets, and minor JSON glitches.
  */
 
+import {
+    normalizeAiMatchingItem,
+    normalizeAiOrderItem,
+    normalizePuzzleItem,
+} from "@/lib/challengeItemNormalize";
 import { normalizeWheelSegment, type WheelSegment } from "@/lib/wheelSegments";
 
 const WHEEL_DEFAULT_LABELS = ["سهل", "متوسط", "صعب", "إضافي", "أسطوري", "تحدي"];
@@ -262,9 +267,11 @@ export function normalizeAiWheelSpinItem(item: Record<string, unknown>): Record<
 }
 
 export function normalizeAiChallengeItem(item: Record<string, unknown>): Record<string, unknown> {
-    if (String(item.type || "") === "wheel_spin") {
-        return normalizeAiWheelSpinItem(item);
-    }
+    const type = String(item.type || "");
+    if (type === "wheel_spin") return normalizeAiWheelSpinItem(item);
+    if (type === "matching") return normalizeAiMatchingItem(item);
+    if (type === "order_questions") return normalizeAiOrderItem(item);
+    if (type === "puzzle") return normalizePuzzleItem(item);
     return item;
 }
 

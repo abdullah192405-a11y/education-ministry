@@ -55,6 +55,11 @@ import {
 } from "@/lib/challengeShareMessage";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import {
+    getPuzzleCorrectAnswer,
+    shuffleOrderItems,
+    shufflePuzzleOptions,
+} from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
     resolveWheelSpinSoundUrl,
@@ -146,6 +151,9 @@ const SingleChallenge = () => {
 
     // For ordering questions
     const [orderItems, setOrderItems] = useState<string[]>([]);
+
+    // For puzzle — shuffled letter tiles
+    const [puzzleTiles, setPuzzleTiles] = useState<string[]>([]);
 
     // For matching questions
     const [matchedPairs, setMatchedPairs] = useState<{ leftIndex: number; rightIndex: number }[]>([]);
@@ -282,10 +290,11 @@ const SingleChallenge = () => {
         // play('background'); // Actually, let's just let it loop from handleStartGame
 
         // Reset question-specific states
-        if (question.type === "order_questions" && question.orderItems) {
-            // Shuffle the order items
-            const shuffled = [...question.orderItems].sort(() => Math.random() - 0.5);
-            setOrderItems(shuffled);
+        if (question.type === "order_questions") {
+            setOrderItems(shuffleOrderItems(question));
+        }
+        if (question.type === "puzzle") {
+            setPuzzleTiles(shufflePuzzleOptions(question));
         }
         if (question.type === "matching" && question.pairs) {
             // Shuffle right side for matching
@@ -1433,12 +1442,12 @@ const SingleChallenge = () => {
         return (
             <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center mb-4">
-                    اختر عنصراً من اليمين ثم طابقه مع العنصر المناسب من اليسار
+                    اختر عنصراً من العمود الأول، ثم طابقه مع العنصر المناسب من العمود الثاني
                 </p>
                 <div className="grid grid-cols-2 gap-6">
                     {/* Left Column */}
                     <div className="space-y-3">
-                        <div className="text-sm font-medium text-center mb-2 text-primary">المصدر</div>
+                        <div className="text-sm font-medium text-center mb-2 text-primary">العمود الأول</div>
                         {pairs.map((pair, index) => {
                             const isMatched = matchedPairs.some(p => p.leftIndex === index);
                             const isSelected = selectedLeft === index;
@@ -1466,7 +1475,7 @@ const SingleChallenge = () => {
 
                     {/* Right Column (Shuffled) */}
                     <div className="space-y-3">
-                        <div className="text-sm font-medium text-center mb-2 text-secondary">الوقاية</div>
+                        <div className="text-sm font-medium text-center mb-2 text-secondary">العمود الثاني</div>
                         {shuffledRight.map((item, shuffledIndex) => {
                             const isMatched = matchedPairs.some(p => p.rightIndex === item.originalIndex);
 
@@ -1564,7 +1573,7 @@ const SingleChallenge = () => {
                     );
                 })}
 
-                {!showResult && (
+                {!showResult && orderItems.length >= 2 && (
                     <Button
                         onClick={handleOrderSubmit}
                         className="w-full mt-4"
@@ -1572,6 +1581,12 @@ const SingleChallenge = () => {
                     >
                         تأكيد الترتيب
                     </Button>
+                )}
+
+                {showResult && selectedAnswer === "wrong" && correctItems.length > 0 && (
+                    <p className="text-center text-sm text-muted-foreground mt-2">
+                        الترتيب الصحيح: {correctItems.join(" ← ")}
+                    </p>
                 )}
             </div>
         );
@@ -1664,56 +1679,56 @@ const SingleChallenge = () => {
 
     // Render Puzzle
     const renderPuzzle = () => {
-        // We reuse 'userAnswer' state for the constructed string
+        const targetWord = getPuzzleCorrectAnswer(currentQuestion);
+
         const handlePuzzleOptionClick = (option: string) => {
-            if (showResult) return;
-            setUserAnswer(prev => prev + option);
+            if (showResult || !option.trim()) return;
+            setUserAnswer((prev) => prev + option);
         };
 
         const handlePuzzleBackspace = () => {
+            if (showResult) return;
+            setUserAnswer((prev) => prev.slice(0, -1));
+        };
+
+        const handlePuzzleClear = () => {
             if (showResult) return;
             setUserAnswer("");
         };
 
         const handlePuzzleSubmit = () => {
-            if (showResult || !userAnswer) return;
+            if (showResult || !userAnswer.trim() || !targetWord) return;
 
             const timeTaken = (Date.now() - questionStartTime) / 1000;
             setTotalTime(prev => prev + timeTaken);
             setShowResult(true);
 
-            // Normalize for comparison
-            const correct = currentQuestion.correctAnswer?.toString().trim();
-            const user = userAnswer.trim();
-            const isCorrect = user === correct;
+            const isCorrect = userAnswer.trim() === targetWord.trim();
 
             setSelectedAnswer(isCorrect ? "correct" : "wrong");
+            play(isCorrect ? "correct" : "wrong");
             processAnswer(isCorrect, timeTaken);
         };
 
         return (
             <div className="space-y-8 max-w-xl mx-auto">
-                {/* Constructed Answer Display */}
                 <div
-                    className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors ${showResult
+                    className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showResult
                         ? selectedAnswer === "correct"
                             ? "border-green-500 text-green-700 bg-green-50"
                             : "border-red-500 text-red-700 bg-red-50"
                         : "border-dashed border-primary/30"
                         }`}
-                    onClick={handlePuzzleBackspace}
-                    title="انقر للمسح"
                 >
                     {userAnswer || <span className="text-muted-foreground/30 text-lg font-normal">اضغط على الحروف لتكوين الكلمة</span>}
                 </div>
 
-                {/* Options (Letters/Segments) Grid */}
                 <div className="grid grid-cols-4 gap-3 md:gap-4">
-                    {currentQuestion.options?.map((option, index) => (
+                    {puzzleTiles.map((option, index) => (
                         <Button
-                            key={index}
+                            key={`${option}-${index}`}
                             onClick={() => handlePuzzleOptionClick(option)}
-                            disabled={showResult}
+                            disabled={showResult || !option.trim()}
                             variant="outline"
                             className="h-16 text-2xl font-bold rounded-xl hover:scale-105 active:scale-95 transition-transform"
                         >
@@ -1722,28 +1737,36 @@ const SingleChallenge = () => {
                     ))}
                 </div>
 
-                {/* Submit / Reset Actions */}
                 {!showResult && (
                     <div className="flex gap-3">
                         <Button
                             onClick={handlePuzzleBackspace}
                             variant="ghost"
+                            className="flex-1 h-12 text-muted-foreground hover:bg-muted"
+                            disabled={!userAnswer}
+                        >
+                            <ArrowUp className="w-4 h-4 ml-2 rotate-180" />
+                            حذف آخر حرف
+                        </Button>
+                        <Button
+                            onClick={handlePuzzleClear}
+                            variant="ghost"
                             className="flex-1 h-12 text-red-500 hover:text-red-600 hover:bg-red-50"
+                            disabled={!userAnswer}
                         >
                             <Trash2 className="w-4 h-4 ml-2" />
-                            مسح
+                            مسح الكل
                         </Button>
                         <Button
                             onClick={handlePuzzleSubmit}
                             className="flex-[2] h-12 text-lg"
-                            disabled={!userAnswer}
+                            disabled={!userAnswer.trim() || !targetWord}
                         >
                             تحقق
                         </Button>
                     </div>
                 )}
 
-                {/* Result Feedback */}
                 {showResult && (
                     <div className="text-center animate-in fade-in slide-in-from-bottom-4">
                         {selectedAnswer === "correct" ? (
@@ -1758,7 +1781,7 @@ const SingleChallenge = () => {
                                     إجابة خاطئة
                                 </div>
                                 <div className="text-muted-foreground">
-                                    الإجابة الصحيحة هي: <span className="font-bold text-foreground">{currentQuestion.correctAnswer as string}</span>
+                                    الإجابة الصحيحة هي: <span className="font-bold text-foreground">{targetWord}</span>
                                 </div>
                             </div>
                         )}

@@ -12,7 +12,7 @@ import {
     CheckCircle2, XCircle, Play, Copy, Share2, Check,
     Sparkles, Medal, Star, ArrowLeft, ArrowRight, Volume2, VolumeX,
     ArrowUp, ArrowDown, Music, Lock as LockIcon, Activity, Gamepad2,
-    Calendar, RefreshCw, BarChart3
+    Calendar, RefreshCw, BarChart3, Trash2
 } from "lucide-react";
 import {
     useTopic,
@@ -56,6 +56,11 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import {
+    getPuzzleCorrectAnswer,
+    shuffleOrderItems,
+    shufflePuzzleOptions,
+} from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import { useMutation } from "@tanstack/react-query";
 import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
@@ -161,6 +166,7 @@ const GroupChallenge = () => {
     const [players, setPlayers] = useState<Player[]>([]);
     const [playerAnswers, setPlayerAnswers] = useState<Record<string, { answered: boolean, points: number, isCorrect: boolean }>>({});
     const [orderItems, setOrderItems] = useState<string[]>([]);
+    const [puzzleTiles, setPuzzleTiles] = useState<string[]>([]);
     const [matchedPairs, setMatchedPairs] = useState<{ leftIndex: number; rightIndex: number }[]>([]);
     const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
     const [shuffledRight, setShuffledRight] = useState<{ text: string; originalIndex: number }[]>([]);
@@ -248,8 +254,11 @@ const GroupChallenge = () => {
         setShowCorrectAnswer(false);
         setPlayerAnswers({});
 
-        if (q?.type === "order_questions" && q.orderItems) {
-            setOrderItems([...q.orderItems].sort(() => Math.random() - 0.5));
+        if (q?.type === "order_questions") {
+            setOrderItems(shuffleOrderItems(q));
+        }
+        if (q?.type === "puzzle") {
+            setPuzzleTiles(shufflePuzzleOptions(q));
         }
         if (q?.type === "matching" && q.pairs) {
             const rightItems = q.pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
@@ -1246,12 +1255,12 @@ const GroupChallenge = () => {
         return (
             <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center mb-4">
-                    اختر عنصراً من اليمين ثم طابقه مع العنصر المناسب من اليسار
+                    اختر عنصراً من العمود الأول، ثم طابقه مع العنصر المناسب من العمود الثاني
                 </p>
                 <div className="grid grid-cols-2 gap-6">
                     {/* Left Column */}
                     <div className="space-y-3">
-                        <div className="text-sm font-medium text-center mb-2 text-primary">المصدر</div>
+                        <div className="text-sm font-medium text-center mb-2 text-primary">العمود الأول</div>
                         {pairs.map((pair, index) => {
                             const isMatched = matchedPairs.some(p => p.leftIndex === index);
                             const isSelected = selectedLeft === index;
@@ -1279,7 +1288,7 @@ const GroupChallenge = () => {
 
                     {/* Right Column (Shuffled) */}
                     <div className="space-y-3">
-                        <div className="text-sm font-medium text-center mb-2 text-secondary">الوقاية</div>
+                        <div className="text-sm font-medium text-center mb-2 text-secondary">العمود الثاني</div>
                         {shuffledRight.map((item, shuffledIndex) => {
                             const isMatched = matchedPairs.some(p => p.rightIndex === item.originalIndex);
 
@@ -1390,6 +1399,83 @@ const GroupChallenge = () => {
                             </>
                         ) : "تأكيد الترتيب"}
                     </Button>
+                )}
+            </div>
+        );
+    };
+
+    const renderPuzzle = () => {
+        const targetWord = getPuzzleCorrectAnswer(currentQuestion);
+        const puzzleLocked = showQuestionResult || selectedAnswer !== null || isHost;
+
+        const submitPuzzle = () => {
+            if (puzzleLocked || !userAnswer.trim() || !targetWord) return;
+            const isCorrect = userAnswer.trim() === targetWord.trim();
+            setSelectedAnswer(isCorrect ? "correct" : "wrong");
+            play(isCorrect ? "correct" : "wrong");
+            processAnswer(isCorrect, undefined, userAnswer);
+        };
+
+        return (
+            <div className="space-y-8 max-w-xl mx-auto">
+                <div
+                    className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showQuestionResult
+                        ? selectedAnswer === "correct"
+                            ? "border-green-500 text-green-700 bg-green-50"
+                            : "border-red-500 text-red-700 bg-red-50"
+                        : "border-dashed border-primary/30"
+                        }`}
+                >
+                    {userAnswer || <span className="text-muted-foreground/30 text-lg font-normal">اضغط على الحروف لتكوين الكلمة</span>}
+                </div>
+
+                <div className="grid grid-cols-4 gap-3 md:gap-4">
+                    {puzzleTiles.map((option, index) => (
+                        <Button
+                            key={`${option}-${index}`}
+                            onClick={() => !puzzleLocked && option.trim() && setUserAnswer((prev) => prev + option)}
+                            disabled={puzzleLocked || !option.trim()}
+                            variant="outline"
+                            className="h-16 text-2xl font-bold rounded-xl hover:scale-105 active:scale-95 transition-transform"
+                        >
+                            {option}
+                        </Button>
+                    ))}
+                </div>
+
+                {!puzzleLocked && (
+                    <div className="flex gap-3">
+                        <Button
+                            onClick={() => setUserAnswer((prev) => prev.slice(0, -1))}
+                            variant="ghost"
+                            className="flex-1 h-12"
+                            disabled={!userAnswer}
+                        >
+                            حذف آخر حرف
+                        </Button>
+                        <Button
+                            onClick={() => setUserAnswer("")}
+                            variant="ghost"
+                            className="flex-1 h-12 text-red-500 hover:bg-red-50"
+                            disabled={!userAnswer}
+                        >
+                            <Trash2 className="w-4 h-4 ml-2" />
+                            مسح الكل
+                        </Button>
+                        <Button
+                            onClick={submitPuzzle}
+                            className="flex-[2] h-12 text-lg"
+                            disabled={!userAnswer.trim() || !targetWord}
+                        >
+                            تحقق
+                        </Button>
+                    </div>
+                )}
+
+                {showQuestionResult && selectedAnswer !== "correct" && targetWord && (
+                    <p className="text-center text-muted-foreground">
+                        الإجابة الصحيحة: <span className="font-bold text-foreground">{targetWord}</span>
+                    </p>
                 )}
             </div>
         );
@@ -2300,7 +2386,7 @@ const GroupChallenge = () => {
                     )}
 
                     {/* Multiple Choice / True-False / Puzzle / Shooting */}
-                    {["multiple_choice", "true_false", "puzzle", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
+                    {["multiple_choice", "true_false", "shooting"].includes(currentQuestion.type) && currentQuestion.options && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {currentQuestion.options.map((option, index) => {
                                 const isSelected = selectedAnswer === index;
@@ -2364,6 +2450,7 @@ const GroupChallenge = () => {
                     {currentQuestion.type === "know_dont_know" && renderKnowDontKnow()}
                     {currentQuestion.type === "order_questions" && renderOrderQuestions()}
                     {currentQuestion.type === "matching" && renderMatching()}
+                    {currentQuestion.type === "puzzle" && renderPuzzle()}
                     {currentQuestion.type === "wheel_spin" && renderWheel()}
                     {currentQuestion.type === "qa" && renderQA()}
 

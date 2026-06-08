@@ -424,7 +424,7 @@ const AIQuestionGeneratorFromResources = ({
                 ? normalized.orderItems.map((v) => String(v ?? "").trim()).filter(Boolean)
                 : [];
 
-            if (type === "wheel_spin") {
+            if (type === "wheel_spin" || type === "matching" || type === "puzzle") {
                 return normalized;
             }
 

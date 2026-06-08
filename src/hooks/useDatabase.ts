@@ -12,6 +12,7 @@ import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
 import { questionAttachmentFields } from "@/lib/questionAttachments";
+import { normalizeChallengeQuestionFields } from "@/lib/challengeItemNormalize";
 import { normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
     buildTeacherClassAccessFromRows,
@@ -35,21 +36,22 @@ export const resolveQuestionCorrectAnswer = (q: {
     return Number.isNaN(asNumber) ? raw : asNumber;
 };
 
-export const mapChallengeQuestion = (q: any) => ({
-    ...q,
-    type: q.type?.toLowerCase() || "multiple_choice",
-    typeTitle: q.type_title || q.typeTitle,
-    correctAnswer: resolveQuestionCorrectAnswer(q),
-    imageUrl: q.image_url || q.imageUrl,
-    videoUrl: q.video_url || q.videoUrl,
-    audioUrl: q.audio_url || q.audioUrl,
-    orderItems: q.order_items || q.orderItems || [],
-    timeLimit: q.time_limit || q.timeLimit || 15,
-    points: q.points || 100,
-    wheelSegments: normalizeWheelSegments(q.wheel_segments || q.wheelSegments),
-    pairs: q.pairs || null,
-    explanation: q.explanation || null,
-});
+export const mapChallengeQuestion = (q: any) =>
+    normalizeChallengeQuestionFields({
+        ...q,
+        type: q.type?.toLowerCase() || "multiple_choice",
+        typeTitle: q.type_title || q.typeTitle,
+        correctAnswer: resolveQuestionCorrectAnswer(q),
+        imageUrl: q.image_url || q.imageUrl,
+        videoUrl: q.video_url || q.videoUrl,
+        audioUrl: q.audio_url || q.audioUrl,
+        orderItems: q.order_items || q.orderItems || [],
+        timeLimit: q.time_limit || q.timeLimit || 15,
+        points: q.points || 100,
+        wheelSegments: normalizeWheelSegments(q.wheel_segments || q.wheelSegments),
+        pairs: q.pairs || null,
+        explanation: q.explanation || null,
+    });
 
 // --- Education Hierarchy ---
 

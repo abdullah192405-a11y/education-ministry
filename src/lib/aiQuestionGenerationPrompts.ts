@@ -45,10 +45,11 @@ Required: ${typeHint}
 Repair rules:
 - No markdown or commentary.
 - Every item must include type, question, points, and timeLimit.
-- matching must include pairs.
+- matching must include pairs with left and right (3–6 pairs).
+- order_questions must include orderItems array in correct order (3–6 items).
+- puzzle: options = letter tiles; correctAnswer = full target word string (not index).
 - wheel_spin = ONE game with 4–6 wheelSegments; each segment has exactly ONE question and 2–4 options (correctAnswer index). Never put multiple questions in one segment or in the parent question field.
 - shooting must include options (4) and correctAnswer.
-- puzzle must include options and correctAnswer.
 - All question, option, explanation, and label strings must be in English.
 - Make correctAnswer appropriate for the question type.
 
@@ -61,10 +62,11 @@ ${generatedText}`;
 قواعد الإصلاح:
 - لا تستخدم markdown أو شرح.
 - كل عنصر يجب أن يحتوي type وquestion وpoints وtimeLimit.
-- matching يجب أن يحتوي pairs.
+- matching يجب أن يحتوي pairs مع left و right (3–6 أزواج).
+- order_questions يجب أن يحتوي orderItems بالترتيب الصحيح (3–6 عناصر).
+- puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص.
 - wheel_spin = لعبة واحدة تحتوي wheelSegments من 4 إلى 6 شرائح؛ كل شريحة سؤال واحد فقط مع 2–4 خيارات (correctAnswer رقم الخيار). لا تضع عدة أسئلة في شريحة واحدة أو في حقل question الرئيسي.
 - shooting يجب أن يحتوي options (4) وcorrectAnswer.
-- puzzle يجب أن يحتوي options وcorrectAnswer.
 - اجعل correctAnswer مناسباً لنوع السؤال.
 
 النص المراد إصلاحه:
@@ -192,6 +194,21 @@ Example format:
     "timeLimit": 45
   },
   {
+    "type": "order_questions",
+    "question": "Put the steps in the correct order",
+    "orderItems": ["Step 1", "Step 2", "Step 3", "Step 4"],
+    "points": 150,
+    "timeLimit": 45
+  },
+  {
+    "type": "puzzle",
+    "question": "Build the word from the letters",
+    "options": ["p", "e", "n"],
+    "correctAnswer": "pen",
+    "points": 150,
+    "timeLimit": 30
+  },
+  {
     "type": "wheel_spin",
     "question": "Spin the wheel!",
     "points": 100,
@@ -210,6 +227,9 @@ Important:
 - Output exactly ${p.batchCount} items in this batch; each type must be one of: ${allowedJson}.
 - Write standalone questions; do not use phrases like "as shown in the image" or "in the video above".
 - For qa and know_dont_know always set correctAnswer to clear text; add a short explanation when helpful.
+- For matching always use pairs with left/right (3–6 pairs).
+- For order_questions always use orderItems array in correct order (3–6 items).
+- For puzzle: options = letter/syllable tiles; correctAnswer = the full target word as a string (not an index).
 - For wheel_spin: ONE item with 4–6 wheelSegments; each segment = ONE question + its own options. Never bundle multiple Q&A in one segment.
 - For shooting use 4 options with one correct answer.
 - Points 50–200; timeLimit 15–60 seconds.
@@ -259,6 +279,21 @@ ${availableTypes}
     "timeLimit": 30
   },
   {
+    "type": "order_questions",
+    "question": "رتّب الخطوات بالترتيب الصحيح",
+    "orderItems": ["الخطوة 1", "الخطوة 2", "الخطوة 3", "الخطوة 4"],
+    "points": 150,
+    "timeLimit": 45
+  },
+  {
+    "type": "puzzle",
+    "question": "رتّب الحروف لتكوين كلمة",
+    "options": ["م", "ل", "ق"],
+    "correctAnswer": "قلم",
+    "points": 150,
+    "timeLimit": 30
+  },
+  {
     "type": "wheel_spin",
     "question": "أدر العجلة!",
     "points": 100,
@@ -275,6 +310,9 @@ ${availableTypes}
 ملاحظات مهمة:
 - التزم بنسبة 100% بالمحتوى المرفق.
 - أخرج بالضبط ${p.batchCount} عناصر في هذه الدفعة؛ كل type من: ${allowedJson}.
+- matching: استخدم pairs مع left و right (3–6 أزواج).
+- order_questions: استخدم orderItems بالترتيب الصحيح (3–6 عناصر).
+- puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص (وليس رقم index).
 - لـ wheel_spin: عنصر واحد يحتوي 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته فقط. لا تضع عدة أسئلة في شريحة واحدة.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON.`;
