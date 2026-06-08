@@ -9,11 +9,25 @@ const AR_OPTION_MARKER =
     /(?:^|[\s,،])([أإابتثجحخدذرزسشصضطظعغفقكلمنهوي])(?:[\)\.\:：\-]|(?=\s))/g;
 const EN_OPTION_MARKER = /(?:^|\n|\s)([A-D])(?:[\)\.\:]\s*|\s+)/gi;
 
-const PAIR_LINE_SEP =
-    /\s*(?:[-–—=→⟶➔]|(?:\s*:\s*)|(?:\s*：\s*)|(?:\s*=>\s*))\s*/;
-
 const COLUMN_HEADER =
     /^(?:العمود\s*(?:الأول|الثاني|الأيسر|الأيمن)?|column\s*[ab12]?|left\s*column|right\s*column|اليسار|اليمين|left|right)\s*[:：]?\s*$/i;
+
+const FIRST_COLUMN_HEADER =
+    /(?:^|\n)\s*(?:العمود\s*(?:الأول|الأيسر)|column\s*a|left\s*(?:column)?|اليسار|left)\s*[:：]?\s*\n/i;
+
+const SECOND_COLUMN_SPLIT =
+    /\n\s*(?:العمود\s*(?:الثاني|الأيمن)|column\s*b|right\s*(?:column)?|اليمين|right)\s*[:：]?\s*\n/i;
+
+const PAIR_LINE_SPLITTERS: RegExp[] = [
+    /\s+[-–—]\s+/,
+    /\s*[:：]\s*/,
+    /\s*→\s*/,
+    /\s*⟶\s*/,
+    /\s*➔\s*/,
+    /\s*=>\s*/,
+    /\s*=\s+/,
+    /\t+/,
+];
 
 export function splitTextIntoQuestionBlocks(text: string): string[] {
     const trimmed = text.trim();
@@ -86,35 +100,83 @@ export function extractOptionsFromText(body: string): { question: string; option
 }
 
 function cleanLine(line: string): string {
-    return line.replace(/^\d+[\.\):、]\s*/, "").trim();
+    return line
+        .replace(/^\d+[\.\):、]\s*/, "")
+        .replace(/^[•\-–]\s*/, "")
+        .replace(/^(?:[أإابتثجحخدذرزسشصضطظعغفقكلمنهويA-D])[\)\.\:：\-]\s*/i, "")
+        .trim();
 }
 
-export function parsePairFromLine(line: string): ParsedMatchingPair | null {
+function splitPairParts(line: string): [string, string] | null {
     const trimmed = cleanLine(line);
-    if (!trimmed || COLUMN_HEADER.test(trimmed)) return null;
+    if (!trimmed) return null;
 
-    const parts = trimmed.split(PAIR_LINE_SEP).map((p) => p.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-        const left = parts[0];
-        const right = parts.slice(1).join(" - ").trim();
-        if (left && right && left.length <= 200 && right.length <= 200) {
-            return { left, right };
-        }
+    for (const sep of PAIR_LINE_SPLITTERS) {
+        const match = trimmed.match(sep);
+        if (!match || match.index === undefined || match.index <= 0) continue;
+        const left = trimmed.slice(0, match.index).trim();
+        const right = trimmed.slice(match.index + match[0].length).trim();
+        if (left && right) return [left, right];
     }
 
     const pipeParts = trimmed.split(/\s*\|\s*/);
     if (pipeParts.length === 2) {
         const left = pipeParts[0].trim();
         const right = pipeParts[1].trim();
-        if (left && right) return { left, right };
+        if (left && right) return [left, right];
     }
 
     return null;
 }
 
+export function parsePairFromLine(line: string): ParsedMatchingPair | null {
+    const trimmed = cleanLine(line);
+    if (!trimmed || COLUMN_HEADER.test(trimmed)) return null;
+
+    const parts = splitPairParts(trimmed);
+    if (!parts) return null;
+
+    const [left, right] = parts;
+    if (left.length > 200 || right.length > 200) return null;
+    return { left, right };
+}
+
+function listLinesFromBlock(block: string): string[] {
+    return block
+        .split(/\n+/)
+        .map((l) => cleanLine(l))
+        .filter((l) => l.length > 0 && !COLUMN_HEADER.test(l));
+}
+
+/** Parse two separate column lists (common AI output for matching). */
+export function parseTwoColumnListsFromText(text: string): ParsedMatchingPair[] {
+    const normalized = text.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return [];
+
+    const sections = normalized.split(SECOND_COLUMN_SPLIT);
+    if (sections.length < 2) return [];
+
+    const leftBlock = sections[0].replace(FIRST_COLUMN_HEADER, "").trim();
+    const rightBlock = sections.slice(1).join("\n").trim();
+
+    const leftItems = listLinesFromBlock(leftBlock);
+    const rightItems = listLinesFromBlock(rightBlock);
+    const count = Math.min(leftItems.length, rightItems.length);
+
+    if (count < 2) return [];
+
+    return Array.from({ length: count }, (_, i) => ({
+        left: leftItems[i],
+        right: rightItems[i],
+    }));
+}
+
 export function parseMatchingPairsFromText(text: string): ParsedMatchingPair[] {
     const trimmed = text.trim();
     if (!trimmed) return [];
+
+    const fromColumns = parseTwoColumnListsFromText(trimmed);
+    if (fromColumns.length >= 2) return fromColumns.slice(0, 8);
 
     const lines = trimmed.split(/\n+/).map((l) => l.trim()).filter(Boolean);
     const fromLines = lines

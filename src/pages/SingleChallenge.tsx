@@ -60,8 +60,10 @@ import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
     getLetterArrangementAnswer,
     getLetterArrangementTiles,
+    getMatchingPairsForPlay,
     isLetterArrangementOrderQuestion,
     isLetterArrangementQuestion,
+    normalizeChallengeQuestionFields,
     PUZZLE_SPACE_INDEX,
     puzzleStackEntryLength,
     puzzleUsedTileIndices,
@@ -212,7 +214,9 @@ const SingleChallenge = () => {
                 }
             }
 
-            setQuestions(loadedQuestions);
+            setQuestions(
+                loadedQuestions.map((q) => normalizeChallengeQuestionFields({ ...q }) as ChallengeQuestion)
+            );
         }
     }, [content, category]);
 
@@ -306,12 +310,18 @@ const SingleChallenge = () => {
             setPuzzleTiles(getLetterArrangementTiles(question));
             setPuzzleClickStack([]);
         }
-        if (question.type === "matching" && question.pairs) {
-            // Shuffle right side for matching
-            const rightItems = question.pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
-            setShuffledRight(rightItems.sort(() => Math.random() - 0.5));
-            setMatchedPairs([]);
-            setSelectedLeft(null);
+        if (question.type === "matching") {
+            const pairs = getMatchingPairsForPlay(question);
+            if (pairs.length >= 2) {
+                const rightItems = pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
+                setShuffledRight(rightItems.sort(() => Math.random() - 0.5));
+                setMatchedPairs([]);
+                setSelectedLeft(null);
+            } else {
+                setShuffledRight([]);
+                setMatchedPairs([]);
+                setSelectedLeft(null);
+            }
         }
     };
 
@@ -411,7 +421,7 @@ const SingleChallenge = () => {
             setMatchedPairs(newMatchedPairs);
             play("match_pair");
 
-            if (newMatchedPairs.length === currentQuestion.pairs?.length) {
+            if (newMatchedPairs.length === getMatchingPairsForPlay(currentQuestion).length) {
                 const timeTaken = (Date.now() - questionStartTime) / 1000;
                 setTotalTime(prev => prev + timeTaken);
                 setShowResult(true);
@@ -1432,7 +1442,15 @@ const SingleChallenge = () => {
 
     // Render Matching Game
     const renderMatching = () => {
-        const pairs = currentQuestion.pairs || [];
+        const pairs = getMatchingPairsForPlay(currentQuestion);
+
+        if (pairs.length < 2) {
+            return (
+                <p className="text-center text-sm text-muted-foreground py-6">
+                    لا توجد أزواج مطابقة صالحة في هذا السؤال. يرجى تعديل السؤال من لوحة المعلم.
+                </p>
+            );
+        }
 
         return (
             <div className="space-y-4">

@@ -61,8 +61,10 @@ import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
     getLetterArrangementAnswer,
     getLetterArrangementTiles,
+    getMatchingPairsForPlay,
     isLetterArrangementOrderQuestion,
     isLetterArrangementQuestion,
+    normalizeChallengeQuestionFields,
     PUZZLE_SPACE_INDEX,
     puzzleStackEntryLength,
     puzzleUsedTileIndices,
@@ -112,7 +114,7 @@ const GroupChallenge = () => {
                 if (filtered.length > 0) loaded = filtered;
             }
 
-            return loaded;
+            return loaded.map((q) => normalizeChallengeQuestionFields({ ...q }) as ChallengeQuestion);
         }
         return [];
     }, [content, effectiveCategory]);
@@ -270,9 +272,14 @@ const GroupChallenge = () => {
             setPuzzleTiles(getLetterArrangementTiles(q));
             setPuzzleClickStack([]);
         }
-        if (q?.type === "matching" && q.pairs) {
-            const rightItems = q.pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
-            setShuffledRight(rightItems.sort(() => Math.random() - 0.5));
+        if (q?.type === "matching") {
+            const pairs = getMatchingPairsForPlay(q);
+            if (pairs.length >= 2) {
+                const rightItems = pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
+                setShuffledRight(rightItems.sort(() => Math.random() - 0.5));
+            } else {
+                setShuffledRight([]);
+            }
             setMatchedPairs([]);
             setSelectedLeft(null);
         }
@@ -557,7 +564,7 @@ const GroupChallenge = () => {
             const newPairs = [...matchedPairs, { leftIndex: selectedLeft, rightIndex: right.originalIndex }];
             setMatchedPairs(newPairs);
             play("match_pair");
-            if (newPairs.length === currentQuestion.pairs?.length) {
+            if (newPairs.length === getMatchingPairsForPlay(currentQuestion).length) {
                 setSelectedAnswer("complete");
                 play("correct");
                 processAnswer(true, undefined, "جميع الأربطة صحيحة");
@@ -1251,7 +1258,15 @@ const GroupChallenge = () => {
 
     // Render Matching Game
     const renderMatching = () => {
-        const pairs = currentQuestion.pairs || [];
+        const pairs = getMatchingPairsForPlay(currentQuestion);
+
+        if (pairs.length < 2) {
+            return (
+                <p className="text-center text-sm text-muted-foreground py-6">
+                    لا توجد أزواج مطابقة صالحة في هذا السؤال. يرجى تعديل السؤال من لوحة المعلم.
+                </p>
+            );
+        }
 
         return (
             <div className="space-y-4">

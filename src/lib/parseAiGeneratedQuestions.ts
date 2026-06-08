@@ -218,15 +218,28 @@ function normalizeAiChoiceFromBundledText(item: Record<string, unknown>): Record
 }
 
 export function normalizeAiChallengeItem(item: Record<string, unknown>): Record<string, unknown> {
-    const type = String(item.type || "");
-    if (type === "wheel_spin") return normalizeAiWheelSpinItem(item);
-    if (type === "matching") return normalizeAiMatchingItem(item);
-    if (type === "order_questions") return normalizeAiOrderItem(item);
-    if (type === "puzzle") return normalizePuzzleItem(item);
-    if (type === "multiple_choice" || type === "shooting") {
-        return normalizeAiChoiceFromBundledText(item);
+    const rawType = String(item.type || "").trim();
+    const type = rawType.toLowerCase().replace(/\s+/g, "_");
+
+    const normalizedType =
+        type === "match" || type === "matching_game" || type === "مطابقة"
+            ? "matching"
+            : type === "order" || type === "ordering" || type === "ترتيب"
+              ? "order_questions"
+              : type === "wheel" || type === "spin_wheel" || type === "عجلة_الحظ"
+                ? "wheel_spin"
+                : type;
+
+    const withType = normalizedType ? { ...item, type: normalizedType } : item;
+
+    if (normalizedType === "wheel_spin") return normalizeAiWheelSpinItem(withType);
+    if (normalizedType === "matching") return normalizeAiMatchingItem(withType);
+    if (normalizedType === "order_questions") return normalizeAiOrderItem(withType);
+    if (normalizedType === "puzzle") return normalizePuzzleItem(withType);
+    if (normalizedType === "multiple_choice" || normalizedType === "shooting") {
+        return normalizeAiChoiceFromBundledText(withType);
     }
-    return item;
+    return withType;
 }
 
 export type NormalizeGeneratedChallengeItemOptions = {

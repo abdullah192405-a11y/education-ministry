@@ -27,6 +27,7 @@ import type { TFunction } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import UnsavedQuestionsDialog from "./UnsavedQuestionsDialog";
+import { normalizeChallengeQuestionFields } from "@/lib/challengeItemNormalize";
 
 type ItemCategory = "activity" | "game";
 type AIMode = "upload" | "resources" | null;
@@ -224,7 +225,12 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
     };
 
     const handleAIGenerate = (generatedQuestions: ChallengeQuestion[]) => {
-        setQuestionItems((prev) => [...prev, ...generatedQuestions]);
+        setQuestionItems((prev) => [
+            ...prev,
+            ...generatedQuestions.map(
+                (q) => normalizeChallengeQuestionFields({ ...q }) as ChallengeQuestion
+            ),
+        ]);
         setAIMode(null);
         remindToSave();
     };

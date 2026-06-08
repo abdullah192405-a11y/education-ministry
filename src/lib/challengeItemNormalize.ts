@@ -3,6 +3,7 @@ import {
     parseMatchingPairsFromText,
     parseOrderItemsFromText,
     parsePairFromLine,
+    parseTwoColumnListsFromText,
     splitMatchingQuestionTitle,
 } from "@/lib/aiChallengeTextParsing";
 import { normalizeWheelSegment, normalizeWheelSegments } from "@/lib/wheelSegments";
@@ -25,26 +26,157 @@ function splitListText(text: string): string[] {
 }
 
 function parsePairEntry(raw: unknown): MatchingPair | null {
+    if (typeof raw === "string") {
+        return parsePairFromLine(raw);
+    }
+
     if (Array.isArray(raw) && raw.length >= 2) {
         const left = cleanText(raw[0]);
         const right = cleanText(raw[1]);
         return left && right ? { left, right } : null;
     }
+
     if (!raw || typeof raw !== "object") return null;
+
     const r = raw as Record<string, unknown>;
     const left = cleanText(
-        r.left ?? r.source ?? r.term ?? r.item1 ?? r.a ?? r.rightColumn ?? r.columnA ?? r.from
+        r.left ??
+            r.source ??
+            r.term ??
+            r.item1 ??
+            r.a ??
+            r.key ??
+            r.prompt ??
+            r.question ??
+            r.rightColumn ??
+            r.columnA ??
+            r.from
     );
     const right = cleanText(
-        r.right ?? r.target ?? r.definition ?? r.item2 ?? r.b ?? r.leftColumn ?? r.columnB ?? r.to
+        r.right ??
+            r.target ??
+            r.definition ??
+            r.value ??
+            r.answer ??
+            r.item2 ??
+            r.b ??
+            r.leftColumn ??
+            r.columnB ??
+            r.to
     );
-    return left && right ? { left, right } : null;
+
+    if (left && right) return { left, right };
+
+    const keys = Object.keys(r).filter((k) => !["id", "points", "type"].includes(k));
+    if (keys.length === 1) {
+        const key = keys[0];
+        const value = cleanText(r[key]);
+        if (key && value) return { left: key, right: value };
+    }
+
+    return null;
+}
+
+function toStringList(raw: unknown): string[] {
+    if (Array.isArray(raw)) {
+        return raw.map(cleanText).filter(Boolean);
+    }
+    if (typeof raw === "string" && raw.trim()) {
+        return splitListText(raw);
+    }
+    return [];
+}
+
+function normalizeTwoColumnArrays(item: Record<string, unknown>): MatchingPair[] {
+    const leftItems = toStringList(
+        item.leftColumn ??
+            item.left_column ??
+            item.columnA ??
+            item.column_a ??
+            item.leftItems ??
+            item.left_items ??
+            item.terms ??
+            item.sources ??
+            item.leftList ??
+            item.left
+    );
+    const rightItems = toStringList(
+        item.rightColumn ??
+            item.right_column ??
+            item.columnB ??
+            item.column_b ??
+            item.rightItems ??
+            item.right_items ??
+            item.definitions ??
+            item.targets ??
+            item.rightList ??
+            item.right
+    );
+
+    if (leftItems.length >= 2 && leftItems.length === rightItems.length) {
+        return leftItems.map((left, i) => ({ left, right: rightItems[i] }));
+    }
+
+    return [];
 }
 
 export function normalizeMatchingPairs(raw: unknown): MatchingPair[] {
     if (!raw) return [];
-    const entries = Array.isArray(raw) ? raw : typeof raw === "object" ? Object.values(raw as object) : [];
-    return entries.map(parsePairEntry).filter((p): p is MatchingPair => p !== null);
+
+    if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (!trimmed) return [];
+
+        if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+            try {
+                return normalizeMatchingPairs(JSON.parse(trimmed));
+            } catch {
+                // fall through to text parsing
+            }
+        }
+
+        const fromText = parseMatchingPairsFromText(trimmed);
+        if (fromText.length >= 2) return fromText;
+
+        const single = parsePairFromLine(trimmed);
+        return single ? [single] : [];
+    }
+
+    if (Array.isArray(raw)) {
+        return raw
+            .map((entry) => parsePairEntry(entry))
+            .filter((p): p is MatchingPair => p !== null && Boolean(p.left) && Boolean(p.right));
+    }
+
+    if (typeof raw === "object") {
+        const entries = Object.values(raw as object);
+        const fromEntries = entries
+            .map((entry) => parsePairEntry(entry))
+            .filter((p): p is MatchingPair => p !== null && Boolean(p.left) && Boolean(p.right));
+        if (fromEntries.length >= 2) return fromEntries;
+
+        const single = parsePairEntry(raw);
+        return single ? [single] : [];
+    }
+
+    return [];
+}
+
+function dedupeValidPairs(pairs: MatchingPair[]): MatchingPair[] {
+    const seen = new Set<string>();
+    const out: MatchingPair[] = [];
+
+    for (const pair of pairs) {
+        const left = cleanText(pair.left);
+        const right = cleanText(pair.right);
+        if (!left || !right) continue;
+        const key = `${left}|||${right}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ left, right });
+    }
+
+    return out;
 }
 
 export function normalizeOrderItems(item: Record<string, unknown>): string[] {
@@ -175,17 +307,39 @@ export function normalizePuzzleItem(item: Record<string, unknown>): Record<strin
     };
 }
 
+/** Valid matching pairs for editor display and student gameplay. */
+export function getMatchingPairsForPlay(
+    question: Pick<ChallengeQuestion, "type" | "pairs" | "question" | "options" | "explanation">
+): MatchingPair[] {
+    if (String(question.type || "").toLowerCase() !== "matching") return [];
+
+    const normalized = normalizeAiMatchingItem(question as Record<string, unknown>);
+    const pairs = Array.isArray(normalized.pairs) ? (normalized.pairs as MatchingPair[]) : [];
+    return pairs.filter((p) => cleanText(p?.left) && cleanText(p?.right));
+}
+
 export function normalizeAiMatchingItem(item: Record<string, unknown>): Record<string, unknown> {
-    const rawPairs = item.pairs ?? item.matchingPairs ?? item.match_pairs ?? item.matching_pairs;
-    let pairs = normalizeMatchingPairs(rawPairs);
+    const rawPairs =
+        item.pairs ??
+        item.matchingPairs ??
+        item.match_pairs ??
+        item.matching_pairs ??
+        item.items ??
+        item.matches ??
+        item.data;
+
+    let pairs = dedupeValidPairs(normalizeMatchingPairs(rawPairs));
     const question = cleanText(item.question);
+    const explanation = cleanText(item.explanation);
+
+    if (pairs.length < 2) {
+        const fromColumns = normalizeTwoColumnArrays(item);
+        if (fromColumns.length >= 2) pairs = fromColumns;
+    }
 
     if (pairs.length < 2 && Array.isArray(item.options)) {
         const fromOptionStrings = item.options
-            .map((raw) => {
-                if (typeof raw === "string") return parsePairFromLine(raw);
-                return parsePairEntry(raw);
-            })
+            .map((raw) => parsePairEntry(raw))
             .filter((p): p is MatchingPair => p !== null);
 
         if (fromOptionStrings.length >= 2) {
@@ -207,6 +361,12 @@ export function normalizeAiMatchingItem(item: Record<string, unknown>): Record<s
         if (fromQuestion.length >= 2) pairs = fromQuestion;
     }
 
+    if (pairs.length < 2 && explanation) {
+        const fromExplanation = parseMatchingPairsFromText(explanation);
+        if (fromExplanation.length >= 2) pairs = fromExplanation;
+    }
+
+    pairs = dedupeValidPairs(pairs);
     const matchingQuestion = splitMatchingQuestionTitle(question, pairs.length >= 2);
 
     return {
