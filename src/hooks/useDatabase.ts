@@ -12,7 +12,7 @@ import { getSupportTicketTypeLabel } from "@/lib/supportTicketTypes";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
 import { buildTopicRatingRaterKey } from "@/lib/topicRatingGuest";
 import { questionAttachmentFields } from "@/lib/questionAttachments";
-import { normalizeChallengeQuestionFields } from "@/lib/challengeItemNormalize";
+import { normalizeChallengeQuestionFields, formatCorrectAnswerForDb } from "@/lib/challengeItemNormalize";
 import { normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
     buildTeacherClassAccessFromRows,
@@ -2937,27 +2937,31 @@ export const useSaveChallengeQuestions = () => {
             };
 
             // Insert new challenge questions
-            const questionsPayload = questions.map((q, index) => ({
+            const questionsPayload = questions.map((q, index) => {
+                const normalized = normalizeChallengeQuestionFields({
+                    ...q,
+                    type: String(q.type || "").toLowerCase(),
+                });
+
+                return {
                 topic_id: topicId,
-                type: typeMap[q.type] || q.type?.toUpperCase() || "MULTIPLE_CHOICE",
-                type_title: q.typeTitle || null,
-                question: q.question || "",
-                options: q.options || [],
-                correct_answer: (() => {
-                    const ca = resolveQuestionCorrectAnswer(q);
-                    return ca != null && ca !== "" ? String(ca) : null;
-                })(),
-                ...questionAttachmentFields(q),
-                pairs: q.pairs || null,
-                order_items: q.orderItems || [],
-                explanation: q.explanation || null,
-                points: q.points || 100,
-                time_limit: q.timeLimit || 15,
-                wheel_segments: q.wheelSegments || null,
+                type: typeMap[normalized.type] || String(normalized.type || "").toUpperCase() || "MULTIPLE_CHOICE",
+                type_title: normalized.typeTitle || null,
+                question: normalized.question || "",
+                options: normalized.options || [],
+                correct_answer: formatCorrectAnswerForDb(normalized),
+                ...questionAttachmentFields(normalized),
+                pairs: normalized.pairs || null,
+                order_items: normalized.orderItems || [],
+                explanation: normalized.explanation || null,
+                points: normalized.points || 100,
+                time_limit: normalized.timeLimit || 15,
+                wheel_segments: normalized.wheelSegments || null,
                 sort_order: index,
                 is_active: true,
                 updated_at: now,
-            }));
+            };
+            });
 
             const { data, error } = await supabase
                 .from("challenge_questions")

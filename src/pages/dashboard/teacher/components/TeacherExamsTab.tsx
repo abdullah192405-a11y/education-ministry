@@ -40,7 +40,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { useUser, useTeacherAllTopics, useTeacherProfile, resolveQuestionCorrectAnswer } from "@/hooks/useDatabase";
+import { useUser, useTeacherAllTopics, useTeacherProfile } from "@/hooks/useDatabase";
+import { formatCorrectAnswerForDb, normalizeChallengeQuestionFields } from "@/lib/challengeItemNormalize";
 import {
     useTeacherExams,
     useCreateExam,
@@ -796,23 +797,24 @@ const ManageQuestionsDialog = ({
 
             // Map and Save new/updated questions
             const questionsToUpsert = updatedQuestions.map((q: any) => {
+                const normalized = normalizeChallengeQuestionFields({
+                    ...q,
+                    type: String(q.type || "").toLowerCase(),
+                });
                 const upsertData: any = {
-                    type: String(q.type).toUpperCase(),
-                    question: q.question,
-                    options: q.options || [],
-                    correct_answer: (() => {
-                        const ca = resolveQuestionCorrectAnswer(q);
-                        return ca != null && ca !== "" ? String(ca) : "0";
-                    })(),
-                    ...questionAttachmentFields(q),
-                    pairs: q.pairs || null,
-                    order_items: q.orderItems || [],
-                    explanation: q.explanation || null,
-                    points: q.points || 100,
-                    time_limit: q.timeLimit || 20,
-                    wheel_segments: q.wheelSegments || null,
-                    is_active: q.isActive ?? true,
-                    sort_order: q.sortOrder || 0,
+                    type: String(normalized.type).toUpperCase(),
+                    question: normalized.question,
+                    options: normalized.options || [],
+                    correct_answer: formatCorrectAnswerForDb(normalized) ?? "0",
+                    ...questionAttachmentFields(normalized),
+                    pairs: normalized.pairs || null,
+                    order_items: normalized.orderItems || [],
+                    explanation: normalized.explanation || null,
+                    points: normalized.points || 100,
+                    time_limit: normalized.timeLimit || 20,
+                    wheel_segments: normalized.wheelSegments || null,
+                    is_active: normalized.isActive ?? true,
+                    sort_order: normalized.sortOrder || 0,
                 };
 
                 // Only include ID if it's an existing string UUID from DB

@@ -1,4 +1,5 @@
 import type { ChallengeQuestion } from "@/data/challengeTypes";
+import { normalizeWheelSegment, normalizeWheelSegments } from "@/lib/wheelSegments";
 
 export type MatchingPair = { left: string; right: string };
 
@@ -194,6 +195,166 @@ export function normalizeAiOrderItem(item: Record<string, unknown>): Record<stri
     };
 }
 
+const OPTION_LETTER_TO_INDEX: Record<string, number> = {
+    a: 0, b: 1, c: 2, d: 3, e: 4, f: 5,
+    أ: 0, ا: 0, إ: 0, آ: 0,
+    ب: 1,
+    ج: 2, ح: 2,
+    د: 3,
+    ه: 4, و: 4,
+    ز: 5,
+};
+
+/** Resolve a correct-answer value to a zero-based option index. */
+export function resolveIndexedCorrectAnswer(correctAnswer: unknown, options: string[]): number {
+    const filledOptions = options.map(cleanText).filter(Boolean);
+    if (filledOptions.length === 0) return 0;
+
+    if (typeof correctAnswer === "number" && !Number.isNaN(correctAnswer)) {
+        if (correctAnswer >= 0 && correctAnswer < filledOptions.length) return correctAnswer;
+        if (correctAnswer >= 1 && correctAnswer <= filledOptions.length) return correctAnswer - 1;
+        return 0;
+    }
+
+    if (typeof correctAnswer === "boolean") {
+        return correctAnswer ? 0 : 1;
+    }
+
+    const text = cleanText(correctAnswer);
+    if (!text) return 0;
+
+    const asNum = Number(text);
+    if (!Number.isNaN(asNum)) {
+        if (asNum >= 0 && asNum < filledOptions.length) return asNum;
+        if (asNum >= 1 && asNum <= filledOptions.length) return asNum - 1;
+    }
+
+    const letterKey = text.replace(/[\)\.\:：\-]/g, "").trim().toLowerCase();
+    const letterIndex = OPTION_LETTER_TO_INDEX[letterKey] ?? OPTION_LETTER_TO_INDEX[letterKey.charAt(0)];
+    if (letterIndex !== undefined && letterIndex < filledOptions.length) return letterIndex;
+
+    const normalizedText = text.toLowerCase();
+    const exactIndex = filledOptions.findIndex((option) => option.toLowerCase() === normalizedText);
+    if (exactIndex >= 0) return exactIndex;
+
+    const partialIndex = filledOptions.findIndex((option) => {
+        const normalizedOption = option.toLowerCase();
+        return normalizedOption.includes(normalizedText) || normalizedText.includes(normalizedOption);
+    });
+    if (partialIndex >= 0) return partialIndex;
+
+    return 0;
+}
+
+export function normalizeChoiceQuestionItem(item: Record<string, unknown>): Record<string, unknown> {
+    const options = Array.isArray(item.options)
+        ? item.options.map((option) => String(option ?? ""))
+        : [];
+    const correctAnswer = resolveIndexedCorrectAnswer(
+        item.correctAnswer ?? item.correct_answer ?? item.answer,
+        options
+    );
+
+    return {
+        ...item,
+        options,
+        correctAnswer,
+    };
+}
+
+export function normalizeTrueFalseQuestionItem(
+    item: Record<string, unknown>,
+    labels?: { true: string; false: string }
+): Record<string, unknown> {
+    const trueLabel = labels?.true ?? "صح";
+    const falseLabel = labels?.false ?? "خطأ";
+    const options = Array.isArray(item.options)
+        ? item.options.map(cleanText).filter(Boolean)
+        : [];
+    const rawAnswer = item.correctAnswer ?? item.correct_answer;
+
+    let normalizedAnswer = 0;
+    if (typeof rawAnswer === "number") {
+        normalizedAnswer = rawAnswer === 1 ? 1 : 0;
+    } else if (typeof rawAnswer === "boolean") {
+        normalizedAnswer = rawAnswer ? 0 : 1;
+    } else if (typeof rawAnswer === "string") {
+        const low = rawAnswer.trim().toLowerCase();
+        const isFalse =
+            low === "1" ||
+            low === "false" ||
+            low.includes("false") ||
+            low.includes("incorrect") ||
+            low.includes("wrong") ||
+            low.includes("خطأ");
+        normalizedAnswer = isFalse ? 1 : 0;
+    }
+
+    return {
+        ...item,
+        type: "true_false",
+        options: options.length >= 2 ? options.slice(0, 2) : [trueLabel, falseLabel],
+        correctAnswer: normalizedAnswer,
+    };
+}
+
+export function normalizeOpenAnswerItem(
+    item: Record<string, unknown>,
+    fallbackAnswer = ""
+): Record<string, unknown> {
+    const question = cleanText(item.question);
+    const explanation = cleanText(item.explanation);
+    const rawAnswer = item.correctAnswer ?? item.correct_answer;
+    const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : cleanText(rawAnswer);
+
+    return {
+        ...item,
+        correctAnswer: answerAsText || fallbackAnswer || explanation,
+        explanation: explanation || item.explanation || null,
+    };
+}
+
+export function normalizeWheelSpinQuestionItem(item: Record<string, unknown>): Record<string, unknown> {
+    const segments = normalizeWheelSegments(item.wheelSegments ?? item.wheel_segments).map((segment) => {
+        const normalized = normalizeWheelSegment(segment);
+        return {
+            ...normalized,
+            correctAnswer: resolveIndexedCorrectAnswer(normalized.correctAnswer, normalized.options ?? []),
+        };
+    });
+
+    return {
+        ...item,
+        type: "wheel_spin",
+        wheelSegments: segments,
+        options: undefined,
+    };
+}
+
+/** Serialize the correct answer for DB storage after normalization. */
+export function formatCorrectAnswerForDb(
+    question: Pick<ChallengeQuestion, "type" | "correctAnswer" | "options" | "orderItems">
+): string | null {
+    const type = String(question.type || "").toLowerCase();
+
+    if (type === "order_questions" || type === "matching" || type === "wheel_spin") {
+        return null;
+    }
+
+    if (type === "multiple_choice" || type === "true_false" || type === "shooting") {
+        return String(resolveIndexedCorrectAnswer(question.correctAnswer, question.options ?? []));
+    }
+
+    if (type === "puzzle") {
+        const word = getPuzzleCorrectAnswer(question);
+        return word || null;
+    }
+
+    const raw = question.correctAnswer;
+    if (raw == null || raw === "") return null;
+    return String(raw);
+}
+
 export function normalizeChallengeQuestionFields<T extends Record<string, unknown>>(q: T): T & ChallengeQuestion {
     const type = String(q.type || "").toLowerCase();
     let normalized: Record<string, unknown> = { ...q, type };
@@ -204,6 +365,12 @@ export function normalizeChallengeQuestionFields<T extends Record<string, unknow
         normalized = normalizeAiOrderItem(normalized);
     } else if (type === "puzzle") {
         normalized = normalizePuzzleItem(normalized);
+    } else if (type === "multiple_choice" || type === "shooting") {
+        normalized = normalizeChoiceQuestionItem(normalized);
+    } else if (type === "true_false") {
+        normalized = normalizeTrueFalseQuestionItem(normalized);
+    } else if (type === "wheel_spin") {
+        normalized = normalizeWheelSpinQuestionItem(normalized);
     }
 
     return normalized as T & ChallengeQuestion;

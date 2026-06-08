@@ -6,7 +6,10 @@
 import {
     normalizeAiMatchingItem,
     normalizeAiOrderItem,
+    normalizeChoiceQuestionItem,
+    normalizeOpenAnswerItem,
     normalizePuzzleItem,
+    normalizeTrueFalseQuestionItem,
 } from "@/lib/challengeItemNormalize";
 import { normalizeWheelSegment, type WheelSegment } from "@/lib/wheelSegments";
 
@@ -273,6 +276,77 @@ export function normalizeAiChallengeItem(item: Record<string, unknown>): Record<
     if (type === "order_questions") return normalizeAiOrderItem(item);
     if (type === "puzzle") return normalizePuzzleItem(item);
     return item;
+}
+
+export type NormalizeGeneratedChallengeItemOptions = {
+    language?: "ar" | "en";
+    trueLabel?: string;
+    falseLabel?: string;
+    qaFallbackAnswer?: (question: string) => string;
+    qaFallbackExplanation?: string;
+};
+
+/** Normalize AI-generated items so correct answers match what the editor and DB expect. */
+export function normalizeGeneratedChallengeItems(
+    items: Record<string, unknown>[],
+    options: NormalizeGeneratedChallengeItemOptions = {}
+): Record<string, unknown>[] {
+    return items.map((item) => {
+        const normalized = normalizeAiChallengeItem(item);
+        const type = String(normalized.type || "");
+        const question = String(normalized.question || "").trim();
+        const explanation = String(normalized.explanation || "").trim();
+        const rawAnswer = normalized.correctAnswer;
+        const answerAsText = typeof rawAnswer === "string" ? rawAnswer.trim() : "";
+        const itemOptions = Array.isArray(normalized.options)
+            ? normalized.options.map((value) => String(value ?? "").trim()).filter(Boolean)
+            : [];
+        const orderItems = Array.isArray(normalized.orderItems)
+            ? normalized.orderItems.map((value) => String(value ?? "").trim()).filter(Boolean)
+            : [];
+
+        if (type === "wheel_spin" || type === "matching" || type === "puzzle") {
+            return normalized;
+        }
+
+        if (type === "qa" || type === "know_dont_know") {
+            const fallbackAnswer = explanation || options.qaFallbackAnswer?.(question) || "";
+            const open = normalizeOpenAnswerItem(normalized, fallbackAnswer);
+            return {
+                ...open,
+                correctAnswer: answerAsText || open.correctAnswer,
+                explanation: explanation || options.qaFallbackExplanation || open.explanation,
+            };
+        }
+
+        if (type === "true_false") {
+            return normalizeTrueFalseQuestionItem(normalized, {
+                true: options.trueLabel,
+                false: options.falseLabel,
+            });
+        }
+
+        if (type === "order_questions") {
+            const fromAnswerText = answerAsText
+                ? answerAsText.split(/\n|،|,|>/).map((value) => value.trim()).filter(Boolean)
+                : [];
+            const normalizedOrder = orderItems.length > 1
+                ? orderItems
+                : itemOptions.length > 1
+                    ? itemOptions
+                    : fromAnswerText;
+            return {
+                ...normalized,
+                orderItems: normalizedOrder,
+            };
+        }
+
+        if (type === "multiple_choice" || type === "shooting") {
+            return normalizeChoiceQuestionItem(normalized);
+        }
+
+        return normalized;
+    });
 }
 
 function stripBom(s: string): string {
