@@ -7,6 +7,8 @@ interface PuzzleLetterBoardProps {
     onTileClick: (tile: string, index: number) => void;
     disabled?: boolean;
     answerSlot?: React.ReactNode;
+    showSpaceButton?: boolean;
+    onSpaceClick?: () => void;
 }
 
 export function PuzzleLetterBoard({
@@ -15,6 +17,8 @@ export function PuzzleLetterBoard({
     onTileClick,
     disabled = false,
     answerSlot,
+    showSpaceButton = false,
+    onSpaceClick,
 }: PuzzleLetterBoardProps) {
     const usedSet = new Set(usedIndices);
 
@@ -47,6 +51,22 @@ export function PuzzleLetterBoard({
                         </motion.button>
                     );
                 })}
+                {showSpaceButton && onSpaceClick && (
+                    <motion.button
+                        type="button"
+                        disabled={disabled}
+                        onClick={onSpaceClick}
+                        whileHover={!disabled ? { scale: 1.05, y: -2 } : undefined}
+                        whileTap={!disabled ? { scale: 0.95 } : undefined}
+                        className={cn(
+                            "min-w-[4.5rem] h-14 px-4 rounded-xl border-2 text-base font-bold transition-all outline-none",
+                            "border-secondary/40 bg-secondary/10 hover:border-secondary hover:bg-secondary/20 cursor-pointer",
+                            disabled && "cursor-not-allowed opacity-50"
+                        )}
+                    >
+                        مسافة
+                    </motion.button>
+                )}
             </div>
         </div>
     );

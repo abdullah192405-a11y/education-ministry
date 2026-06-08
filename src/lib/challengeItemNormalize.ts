@@ -148,9 +148,9 @@ export function normalizePuzzleItem(item: Record<string, unknown>): Record<strin
 
     if (correctAnswer && options.length >= 2) {
         const lettersOnly = options.every((o) => o.length <= 2);
-        if (lettersOnly && !correctAnswer.split("").every((ch) => options.includes(ch))) {
-            const fromWord = correctAnswer.split("").filter(Boolean);
-            if (fromWord.length >= 2) options = fromWord;
+        const answerLetters = correctAnswer.replace(/\s/g, "").split("");
+        if (lettersOnly && !answerLetters.every((ch) => options.includes(ch))) {
+            if (answerLetters.length >= 2) options = answerLetters;
         }
     }
 
@@ -383,6 +383,17 @@ export function shuffleArray<T>(items: T[]): T[] {
 export function shufflePuzzleOptions(question: Pick<ChallengeQuestion, "options">): string[] {
     const opts = (question.options ?? []).map(cleanText).filter(Boolean);
     return shuffleArray(opts);
+}
+
+/** Sentinel in puzzle click stack for a manually inserted space (multi-word answers). */
+export const PUZZLE_SPACE_INDEX = -1;
+
+export function puzzleUsedTileIndices(clickStack: number[]): number[] {
+    return clickStack.filter((index) => index >= 0);
+}
+
+export function puzzleStackEntryLength(entry: number, tiles: string[]): number {
+    return entry === PUZZLE_SPACE_INDEX ? 1 : (tiles[entry]?.length ?? 0);
 }
 
 export function shuffleOrderItems(question: Pick<ChallengeQuestion, "orderItems">): string[] {

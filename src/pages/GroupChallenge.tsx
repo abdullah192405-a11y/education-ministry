@@ -60,6 +60,9 @@ import { OrderPuzzleBoard } from "@/components/challenge/OrderPuzzleBoard";
 import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
     getPuzzleCorrectAnswer,
+    PUZZLE_SPACE_INDEX,
+    puzzleStackEntryLength,
+    puzzleUsedTileIndices,
     shuffleOrderPieces,
     shufflePuzzleOptions,
     type OrderPiece,
@@ -1369,16 +1372,24 @@ const GroupChallenge = () => {
             setUserAnswer((prev) => prev + puzzleTiles[index]);
         };
 
+        const handlePuzzleSpace = () => {
+            if (puzzleLocked) return;
+            setPuzzleClickStack((prev) => [...prev, PUZZLE_SPACE_INDEX]);
+            setUserAnswer((prev) => prev + " ");
+        };
+
         return (
             <div className="space-y-6 max-w-xl mx-auto">
                 <PuzzleLetterBoard
                     tiles={puzzleTiles}
-                    usedIndices={puzzleClickStack}
+                    usedIndices={puzzleUsedTileIndices(puzzleClickStack)}
                     onTileClick={handlePuzzleOptionClick}
                     disabled={puzzleLocked}
+                    showSpaceButton
+                    onSpaceClick={handlePuzzleSpace}
                     answerSlot={
                         <div
-                            className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showQuestionResult
+                            className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 whitespace-pre-wrap ${showQuestionResult
                                 ? selectedAnswer === "correct"
                                     ? "border-green-500 text-green-700 bg-green-50"
                                     : "border-red-500 text-red-700 bg-red-50"
@@ -1387,7 +1398,7 @@ const GroupChallenge = () => {
                         >
                             {userAnswer || (
                                 <span className="text-muted-foreground/30 text-lg font-normal">
-                                    اضغط على قطع الأحجية لتكوين الكلمة
+                                    اضغط على الحروف لتكوين الإجابة — استخدم «مسافة» بين الكلمات
                                 </span>
                             )}
                         </div>
@@ -1399,9 +1410,9 @@ const GroupChallenge = () => {
                         <Button
                             onClick={() => {
                                 if (puzzleClickStack.length === 0) return;
-                                const lastIndex = puzzleClickStack[puzzleClickStack.length - 1];
+                                const lastEntry = puzzleClickStack[puzzleClickStack.length - 1];
                                 setPuzzleClickStack((prev) => prev.slice(0, -1));
-                                setUserAnswer((prev) => prev.slice(0, -puzzleTiles[lastIndex].length));
+                                setUserAnswer((prev) => prev.slice(0, -puzzleStackEntryLength(lastEntry, puzzleTiles)));
                             }}
                             variant="ghost"
                             className="flex-1 h-12"
@@ -2326,7 +2337,7 @@ const GroupChallenge = () => {
                             {currentQuestion.type === "order_questions" && "رتّب الإجابات"}
                             {currentQuestion.type === "matching" && "طابق العناصر"}
                             {currentQuestion.type === "know_dont_know" && "أعرف / لا أعرف"}
-                            {currentQuestion.type === "puzzle" && "أكمل الجملة"}
+                            {currentQuestion.type === "puzzle" && "رتّب الحروف"}
                             {currentQuestion.type === "shooting" && "⚡ سريع!"}
                             {currentQuestion.type === "wheel_spin" && "🎡 عجلة الحظ"}
                         </span>
