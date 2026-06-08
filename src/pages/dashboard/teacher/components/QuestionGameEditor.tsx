@@ -872,46 +872,50 @@ const MatchingFields = ({ item, index, updateItem }: FieldProps) => {
         updateItem(index, { pairs: pairs.filter((_, idx) => idx !== i) });
     };
 
+    const updatePairSide = (i: number, side: "left" | "right", value: string) => {
+        const newPairs = [...pairs];
+        newPairs[i] = { ...newPairs[i], [side]: value };
+        updateItem(index, { pairs: newPairs });
+    };
+
     return (
         <div>
             <label className="text-sm font-medium mb-2 block">{t("dash.teacher.topics.qe.matchingPairs")}</label>
             <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2 text-xs font-medium text-muted-foreground">
-                    <span>{t("dash.teacher.topics.qe.rightColumn")}</span>
-                    <span>{t("dash.teacher.topics.qe.leftColumn")}</span>
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-center">
+                    <span className="text-xs font-medium text-muted-foreground">
+                        {t("dash.teacher.topics.qe.rightColumn")}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                        {t("dash.teacher.topics.qe.leftColumn")}
+                    </span>
+                    <span className="w-9" aria-hidden="true" />
+                    {pairs.map((pair, i) => (
+                        <div key={i} className="contents">
+                            <Input
+                                value={pair.left}
+                                onChange={(e) => updatePairSide(i, "left", e.target.value)}
+                                placeholder={t("dash.teacher.topics.qe.sourceN", { n: i + 1 })}
+                                className="min-w-0"
+                            />
+                            <Input
+                                value={pair.right}
+                                onChange={(e) => updatePairSide(i, "right", e.target.value)}
+                                placeholder={t("dash.teacher.topics.qe.matchN", { n: i + 1 })}
+                                className="min-w-0"
+                            />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive shrink-0"
+                                onClick={() => removePair(i)}
+                                disabled={pairs.length <= 2}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    ))}
                 </div>
-                {pairs.map((pair, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                        <Input
-                            value={pair.left}
-                            onChange={(e) => {
-                                const newPairs = [...pairs];
-                                newPairs[i] = { ...newPairs[i], left: e.target.value };
-                                updateItem(index, { pairs: newPairs });
-                            }}
-                            placeholder={t("dash.teacher.topics.qe.sourceN", { n: i + 1 })}
-                        />
-                        <ArrowLeftRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                        <Input
-                            value={pair.right}
-                            onChange={(e) => {
-                                const newPairs = [...pairs];
-                                newPairs[i] = { ...newPairs[i], right: e.target.value };
-                                updateItem(index, { pairs: newPairs });
-                            }}
-                            placeholder={t("dash.teacher.topics.qe.matchN", { n: i + 1 })}
-                        />
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive"
-                            onClick={() => removePair(i)}
-                            disabled={pairs.length <= 2}
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </Button>
-                    </div>
-                ))}
                 <Button variant="outline" size="sm" onClick={addPair} className="gap-1">
                     <Plus className="w-4 h-4" />
                     {t("dash.teacher.topics.qe.addPair")}
