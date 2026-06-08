@@ -385,6 +385,37 @@ export function shufflePuzzleOptions(question: Pick<ChallengeQuestion, "options"
     return shuffleArray(opts);
 }
 
+/** order_questions where each item is a single letter/syllable tile (رتّب الحروف). */
+export function isLetterArrangementOrderQuestion(
+    question: Pick<ChallengeQuestion, "type" | "orderItems">
+): boolean {
+    if (question.type !== "order_questions") return false;
+    const items = (question.orderItems ?? []).map(cleanText).filter((item) => item.trim());
+    if (items.length < 2) return false;
+    return items.every((item) => item.length <= 2);
+}
+
+export function isLetterArrangementQuestion(
+    question: Pick<ChallengeQuestion, "type" | "orderItems" | "options">
+): boolean {
+    return question.type === "puzzle" || isLetterArrangementOrderQuestion(question);
+}
+
+export function getLetterArrangementTiles(question: ChallengeQuestion): string[] {
+    if (question.type === "puzzle") {
+        return shufflePuzzleOptions(question);
+    }
+    const items = (question.orderItems ?? []).map(cleanText).filter((item) => item.trim());
+    return shuffleArray(items);
+}
+
+export function getLetterArrangementAnswer(question: ChallengeQuestion): string {
+    if (question.type === "puzzle") {
+        return getPuzzleCorrectAnswer(question);
+    }
+    return (question.orderItems ?? []).map(cleanText).join("");
+}
+
 /** Sentinel in puzzle click stack for a manually inserted space (multi-word answers). */
 export const PUZZLE_SPACE_INDEX = -1;
 

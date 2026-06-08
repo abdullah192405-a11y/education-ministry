@@ -59,12 +59,14 @@ import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDispla
 import { OrderPuzzleBoard } from "@/components/challenge/OrderPuzzleBoard";
 import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
-    getPuzzleCorrectAnswer,
+    getLetterArrangementAnswer,
+    getLetterArrangementTiles,
+    isLetterArrangementOrderQuestion,
+    isLetterArrangementQuestion,
     PUZZLE_SPACE_INDEX,
     puzzleStackEntryLength,
     puzzleUsedTileIndices,
     shuffleOrderPieces,
-    shufflePuzzleOptions,
     type OrderPiece,
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
@@ -264,8 +266,8 @@ const GroupChallenge = () => {
         if (q?.type === "order_questions") {
             setOrderPieces(shuffleOrderPieces(q));
         }
-        if (q?.type === "puzzle") {
-            setPuzzleTiles(shufflePuzzleOptions(q));
+        if (q && isLetterArrangementQuestion(q)) {
+            setPuzzleTiles(getLetterArrangementTiles(q));
             setPuzzleClickStack([]);
         }
         if (q?.type === "matching" && q.pairs) {
@@ -1322,6 +1324,10 @@ const GroupChallenge = () => {
     };
 
     const renderOrderQuestions = () => {
+        if (isLetterArrangementOrderQuestion(currentQuestion)) {
+            return renderPuzzle();
+        }
+
         const correctItems = currentQuestion.orderItems || [];
         const orderLocked = showQuestionResult || selectedAnswer !== null || isHost;
 
@@ -1355,7 +1361,7 @@ const GroupChallenge = () => {
     };
 
     const renderPuzzle = () => {
-        const targetWord = getPuzzleCorrectAnswer(currentQuestion);
+        const targetWord = getLetterArrangementAnswer(currentQuestion);
         const puzzleLocked = showQuestionResult || selectedAnswer !== null || isHost;
 
         const submitPuzzle = () => {
@@ -1385,7 +1391,6 @@ const GroupChallenge = () => {
                     usedIndices={puzzleUsedTileIndices(puzzleClickStack)}
                     onTileClick={handlePuzzleOptionClick}
                     disabled={puzzleLocked}
-                    showSpaceButton
                     onSpaceClick={handlePuzzleSpace}
                     answerSlot={
                         <div
@@ -2334,7 +2339,8 @@ const GroupChallenge = () => {
                         <span className="px-4 py-1 rounded-full bg-muted text-sm">
                             {currentQuestion.type === "multiple_choice" && "اختيار متعدد"}
                             {currentQuestion.type === "true_false" && "صح أو خطأ"}
-                            {currentQuestion.type === "order_questions" && "رتّب الإجابات"}
+                            {currentQuestion.type === "order_questions" &&
+                                (isLetterArrangementOrderQuestion(currentQuestion) ? "رتّب الحروف" : "رتّب الإجابات")}
                             {currentQuestion.type === "matching" && "طابق العناصر"}
                             {currentQuestion.type === "know_dont_know" && "أعرف / لا أعرف"}
                             {currentQuestion.type === "puzzle" && "رتّب الحروف"}
@@ -2418,9 +2424,11 @@ const GroupChallenge = () => {
 
                     {/* Other types using helper functions */}
                     {currentQuestion.type === "know_dont_know" && renderKnowDontKnow()}
-                    {currentQuestion.type === "order_questions" && renderOrderQuestions()}
+                    {currentQuestion.type === "order_questions" &&
+                        !isLetterArrangementOrderQuestion(currentQuestion) &&
+                        renderOrderQuestions()}
                     {currentQuestion.type === "matching" && renderMatching()}
-                    {currentQuestion.type === "puzzle" && renderPuzzle()}
+                    {isLetterArrangementQuestion(currentQuestion) && renderPuzzle()}
                     {currentQuestion.type === "wheel_spin" && renderWheel()}
                     {currentQuestion.type === "qa" && renderQA()}
 

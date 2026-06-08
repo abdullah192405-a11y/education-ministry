@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Space } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PuzzleLetterBoardProps {
@@ -7,7 +8,6 @@ interface PuzzleLetterBoardProps {
     onTileClick: (tile: string, index: number) => void;
     disabled?: boolean;
     answerSlot?: React.ReactNode;
-    showSpaceButton?: boolean;
     onSpaceClick?: () => void;
 }
 
@@ -17,14 +17,33 @@ export function PuzzleLetterBoard({
     onTileClick,
     disabled = false,
     answerSlot,
-    showSpaceButton = false,
     onSpaceClick,
 }: PuzzleLetterBoardProps) {
     const usedSet = new Set(usedIndices);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {answerSlot}
+
+            {onSpaceClick && (
+                <div className="flex justify-center px-2">
+                    <motion.button
+                        type="button"
+                        disabled={disabled}
+                        onClick={onSpaceClick}
+                        whileHover={!disabled ? { scale: 1.03, y: -1 } : undefined}
+                        whileTap={!disabled ? { scale: 0.97 } : undefined}
+                        className={cn(
+                            "inline-flex min-w-[9rem] h-14 items-center justify-center gap-2 rounded-xl border-2 px-5 text-base font-bold transition-all outline-none shadow-sm",
+                            "border-primary bg-primary/15 text-primary hover:border-primary hover:bg-primary/25",
+                            disabled && "cursor-not-allowed opacity-50"
+                        )}
+                    >
+                        <Space className="h-5 w-5" />
+                        مسافة
+                    </motion.button>
+                </div>
+            )}
 
             <div className="flex flex-wrap items-center justify-center gap-3 px-2">
                 {tiles.map((tile, index) => {
@@ -51,22 +70,6 @@ export function PuzzleLetterBoard({
                         </motion.button>
                     );
                 })}
-                {showSpaceButton && onSpaceClick && (
-                    <motion.button
-                        type="button"
-                        disabled={disabled}
-                        onClick={onSpaceClick}
-                        whileHover={!disabled ? { scale: 1.05, y: -2 } : undefined}
-                        whileTap={!disabled ? { scale: 0.95 } : undefined}
-                        className={cn(
-                            "min-w-[4.5rem] h-14 px-4 rounded-xl border-2 text-base font-bold transition-all outline-none",
-                            "border-secondary/40 bg-secondary/10 hover:border-secondary hover:bg-secondary/20 cursor-pointer",
-                            disabled && "cursor-not-allowed opacity-50"
-                        )}
-                    >
-                        مسافة
-                    </motion.button>
-                )}
             </div>
         </div>
     );

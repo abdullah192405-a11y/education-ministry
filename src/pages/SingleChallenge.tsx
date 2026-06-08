@@ -58,12 +58,14 @@ import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDispla
 import { OrderPuzzleBoard } from "@/components/challenge/OrderPuzzleBoard";
 import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
-    getPuzzleCorrectAnswer,
+    getLetterArrangementAnswer,
+    getLetterArrangementTiles,
+    isLetterArrangementOrderQuestion,
+    isLetterArrangementQuestion,
     PUZZLE_SPACE_INDEX,
     puzzleStackEntryLength,
     puzzleUsedTileIndices,
     shuffleOrderPieces,
-    shufflePuzzleOptions,
     type OrderPiece,
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
@@ -300,8 +302,8 @@ const SingleChallenge = () => {
         if (question.type === "order_questions") {
             setOrderPieces(shuffleOrderPieces(question));
         }
-        if (question.type === "puzzle") {
-            setPuzzleTiles(shufflePuzzleOptions(question));
+        if (isLetterArrangementQuestion(question)) {
+            setPuzzleTiles(getLetterArrangementTiles(question));
             setPuzzleClickStack([]);
         }
         if (question.type === "matching" && question.pairs) {
@@ -1503,6 +1505,10 @@ const SingleChallenge = () => {
     };
 
     const renderOrderQuestions = () => {
+        if (isLetterArrangementOrderQuestion(currentQuestion)) {
+            return renderPuzzle();
+        }
+
         const correctItems = currentQuestion.orderItems || [];
 
         return (
@@ -1620,7 +1626,7 @@ const SingleChallenge = () => {
     };
 
     const renderPuzzle = () => {
-        const targetWord = getPuzzleCorrectAnswer(currentQuestion);
+        const targetWord = getLetterArrangementAnswer(currentQuestion);
 
         const handlePuzzleOptionClick = (_option: string, index: number) => {
             if (showResult || !puzzleTiles[index]?.trim()) return;
@@ -1669,7 +1675,6 @@ const SingleChallenge = () => {
                     usedIndices={puzzleUsedTileIndices(puzzleClickStack)}
                     onTileClick={handlePuzzleOptionClick}
                     disabled={showResult}
-                    showSpaceButton
                     onSpaceClick={handlePuzzleSpace}
                     answerSlot={
                         <div
@@ -1867,7 +1872,8 @@ const SingleChallenge = () => {
                             {currentQuestion.type === "multiple_choice" && "اختيار متعدد"}
                             {currentQuestion.type === "true_false" && "صح أو خطأ"}
                             {currentQuestion.type === "qa" && "سؤال وجواب"}
-                            {currentQuestion.type === "order_questions" && "رتّب الإجابات"}
+                            {currentQuestion.type === "order_questions" &&
+                                (isLetterArrangementOrderQuestion(currentQuestion) ? "رتّب الحروف" : "رتّب الإجابات")}
                             {currentQuestion.type === "matching" && "طابق العناصر"}
                             {currentQuestion.type === "know_dont_know" && "أعرف / لا أعرف"}
                             {currentQuestion.type === "puzzle" && "رتّب الحروف"}
@@ -1944,14 +1950,16 @@ const SingleChallenge = () => {
                     {/* Q&A */}
                     {currentQuestion.type === "qa" && renderQA()}
 
-                    {/* Puzzle */}
-                    {currentQuestion.type === "puzzle" && renderPuzzle()}
+                    {/* Letter arrangement (puzzle + letter order_questions) */}
+                    {isLetterArrangementQuestion(currentQuestion) && renderPuzzle()}
 
                     {/* Know / Don't Know */}
                     {currentQuestion.type === "know_dont_know" && renderKnowDontKnow()}
 
-                    {/* Order Questions */}
-                    {currentQuestion.type === "order_questions" && renderOrderQuestions()}
+                    {/* Order Questions (non-letter) */}
+                    {currentQuestion.type === "order_questions" &&
+                        !isLetterArrangementOrderQuestion(currentQuestion) &&
+                        renderOrderQuestions()}
 
                     {/* Matching */}
                     {currentQuestion.type === "matching" && renderMatching()}
