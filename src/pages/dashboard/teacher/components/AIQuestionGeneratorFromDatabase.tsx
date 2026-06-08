@@ -20,8 +20,8 @@ import {
     pdfNeedsVisualPageImages,
 } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
-import { parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
-import { buildDatabaseGenerationPrompt } from "@/lib/aiQuestionGenerationPrompts";
+import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
+import { aiGenContext, buildDatabaseGenerationPrompt } from "@/lib/aiQuestionGenerationPrompts";
 
 interface AIQuestionGeneratorFromDatabaseProps {
     teacherId: string;
@@ -205,7 +205,14 @@ const AIQuestionGeneratorFromDatabase = ({
             }
 
             const items = parseAiGeneratedChallengeItems(responseText);
-            const questions: ChallengeQuestion[] = items.map((item: any, index: number) => ({
+            const normalizedItems = normalizeGeneratedChallengeItems(items, {
+                language,
+                trueLabel: t("dash.teacher.topics.qe.trueLabel"),
+                falseLabel: t("dash.teacher.topics.qe.falseLabel"),
+                qaFallbackAnswer: (question) => aiGenContext.qaFallbackAnswer(language, question),
+                qaFallbackExplanation: aiGenContext.qaFallbackExplanation(language),
+            });
+            const questions: ChallengeQuestion[] = normalizedItems.map((item: any, index: number) => ({
                 ...item,
                 id: item.id || `db-${Date.now()}-${index}`,
                 source: "pdf_extracted",

@@ -1,4 +1,10 @@
 import type { ChallengeQuestion } from "@/data/challengeTypes";
+import {
+    parseMatchingPairsFromText,
+    parseOrderItemsFromText,
+    parsePairFromLine,
+    splitMatchingQuestionTitle,
+} from "@/lib/aiChallengeTextParsing";
 import { normalizeWheelSegment, normalizeWheelSegments } from "@/lib/wheelSegments";
 
 export type MatchingPair = { left: string; right: string };
@@ -70,12 +76,19 @@ export function normalizeOrderItems(item: Record<string, unknown>): string[] {
 
     const question = cleanText(item.question);
     if (items.length < 2 && question) {
-        const numbered = question
-            .split(/(?=(?:^|\n)\s*(?:\d+[\.\):]|الخطوة\s*\d+|Step\s*\d+))/i)
-            .map((p) => p.trim())
-            .filter((p) => p.length > 2);
-        if (numbered.length >= 2) {
-            items = numbered.map((p) => p.replace(/^(?:\d+[\.\):]|الخطوة\s*\d+[:：]?\s*|Step\s*\d+[:：]?\s*)/i, "").trim());
+        const fromQuestion = parseOrderItemsFromText(question);
+        if (fromQuestion.length >= 2) {
+            items = fromQuestion;
+        } else {
+            const numbered = question
+                .split(/(?=(?:^|\n)\s*(?:\d+[\.\):]|الخطوة\s*\d+|Step\s*\d+))/i)
+                .map((p) => p.trim())
+                .filter((p) => p.length > 2);
+            if (numbered.length >= 2) {
+                items = numbered.map((p) =>
+                    p.replace(/^(?:\d+[\.\):]|الخطوة\s*\d+[:：]?\s*|Step\s*\d+[:：]?\s*)/i, "").trim()
+                );
+            }
         }
     }
 
@@ -165,32 +178,69 @@ export function normalizePuzzleItem(item: Record<string, unknown>): Record<strin
 export function normalizeAiMatchingItem(item: Record<string, unknown>): Record<string, unknown> {
     const rawPairs = item.pairs ?? item.matchingPairs ?? item.match_pairs ?? item.matching_pairs;
     let pairs = normalizeMatchingPairs(rawPairs);
+    const question = cleanText(item.question);
 
-    if (pairs.length < 2 && Array.isArray(item.options) && item.options.length >= 4) {
-        const opts = item.options.map(cleanText).filter(Boolean);
-        const half = Math.floor(opts.length / 2);
-        if (half >= 2) {
-            pairs = Array.from({ length: half }, (_, i) => ({
-                left: opts[i],
-                right: opts[i + half],
-            }));
+    if (pairs.length < 2 && Array.isArray(item.options)) {
+        const fromOptionStrings = item.options
+            .map((raw) => {
+                if (typeof raw === "string") return parsePairFromLine(raw);
+                return parsePairEntry(raw);
+            })
+            .filter((p): p is MatchingPair => p !== null);
+
+        if (fromOptionStrings.length >= 2) {
+            pairs = fromOptionStrings;
+        } else if (item.options.length >= 4) {
+            const opts = item.options.map(cleanText).filter(Boolean);
+            const half = Math.floor(opts.length / 2);
+            if (half >= 2) {
+                pairs = Array.from({ length: half }, (_, i) => ({
+                    left: opts[i],
+                    right: opts[i + half],
+                }));
+            }
         }
     }
+
+    if (pairs.length < 2 && question) {
+        const fromQuestion = parseMatchingPairsFromText(question);
+        if (fromQuestion.length >= 2) pairs = fromQuestion;
+    }
+
+    const matchingQuestion = splitMatchingQuestionTitle(question, pairs.length >= 2);
 
     return {
         ...item,
         type: "matching",
-        pairs: pairs.length >= 2 ? pairs : [{ left: "", right: "" }, { left: "", right: "" }],
+        question: matchingQuestion || question || "طابق العناصر التالية",
+        pairs: pairs.length >= 2 ? pairs.slice(0, 8) : [{ left: "", right: "" }, { left: "", right: "" }],
         options: undefined,
     };
 }
 
 export function normalizeAiOrderItem(item: Record<string, unknown>): Record<string, unknown> {
     const orderItems = normalizeOrderItems(item);
+    const question = cleanText(item.question);
+    let orderQuestion = question;
+
+    if (orderItems.length >= 2 && question.length > 100) {
+        const firstLine = question.split(/\n+/)[0]?.trim() || "";
+        const looksLikeTitle =
+            firstLine.length <= 120 &&
+            !parseOrderItemsFromText(firstLine).length &&
+            parseOrderItemsFromText(question).length >= 2;
+        if (looksLikeTitle) {
+            orderQuestion = firstLine.replace(/[:：]\s*$/, "");
+        } else if (parseOrderItemsFromText(question).length >= 2) {
+            orderQuestion = "رتّب العناصر بالترتيب الصحيح";
+        }
+    }
+
     return {
         ...item,
         type: "order_questions",
-        orderItems: orderItems.length >= 2 ? orderItems : ["", "", ""],
+        question: orderQuestion || question || "رتّب العناصر بالترتيب الصحيح",
+        orderItems: orderItems.length >= 2 ? orderItems.slice(0, 10) : ["", "", ""],
         options: undefined,
     };
 }

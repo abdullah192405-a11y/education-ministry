@@ -407,12 +407,26 @@ If the source is a YouTube video, use title/metadata and grounded knowledge abou
 Question types: multiple_choice, true_false, qa, know_dont_know, order_questions
 Game types: matching, shooting, wheel_spin, puzzle
 
-Return JSON array only. Example item:
-{"type":"multiple_choice","question":"...","options":["A","B","C","D"],"correctAnswer":0,"explanation":"...","points":100,"timeLimit":30}
+Return JSON array only. Follow the teacher request for types and counts.
+
+Example formats:
+[
+  {"type":"multiple_choice","question":"What is...?","options":["A","B","C","D"],"correctAnswer":0,"explanation":"...","points":100,"timeLimit":30},
+  {"type":"matching","question":"Match the terms","pairs":[{"left":"Term 1","right":"Definition 1"},{"left":"Term 2","right":"Definition 2"}],"points":150,"timeLimit":45},
+  {"type":"order_questions","question":"Put in order","orderItems":["Step 1","Step 2","Step 3"],"points":150,"timeLimit":45},
+  {"type":"puzzle","question":"Build the word","options":["p","e","n"],"correctAnswer":"pen","points":150,"timeLimit":30},
+  {"type":"wheel_spin","question":"Spin the wheel!","points":100,"timeLimit":30,"wheelSegments":[{"label":"Easy","points":50,"question":"What is...?","options":["A","B","C","D"],"correctAnswer":0}]}
+]
 
 Rules:
 - 100% grounded in the source; no outside content.
-- Clear, varied questions and games.
+- ONE item per question/game. Never bundle multiple questions in one field.
+- multiple_choice/shooting: question = prompt only; options in options array (2–6 items).
+- matching: use pairs with left/right (3–6 pairs). Do not put pairs inside question text.
+- order_questions: use orderItems array in correct order (3–6 items).
+- puzzle: options = letter tiles; correctAnswer = full word string (not index).
+- wheel_spin: ONE item with 4–6 wheelSegments; each segment = ONE question + its own options.
+- qa/know_dont_know: correctAnswer = clear text answer.
 - Points 50–200; timeLimit 15–60s.
 - Valid JSON only.`;
     }
@@ -428,15 +442,31 @@ ${userPrompt}
 
 تنبيه هام: قم بتحليل **كامل** المحتوى المقدم. إذا كانت هناك صور لصفحات PDF، قم بإجراء تحليل بصري (OCR) دقيق لها.
 
-يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على المعلومات المتوفرة في المصدر المقدم.
+يرجى إنشاء أسئلة وألعاب تفاعلية بناءً على المعلومات المتوفرة في المصدر المقدم، مع الالتزام **بدقة** بما طلبه المعلم من أنواع وعدد.
 
 أنواع الأسئلة: multiple_choice, true_false, qa, know_dont_know, order_questions
 أنواع الألعاب: matching, shooting, wheel_spin, puzzle
 
 يجب أن يكون الرد بصيغة JSON array فقط، بدون أي نص إضافي.
 
+أمثلة للتنسيق:
+[
+  {"type":"multiple_choice","question":"ما هو...؟","options":["أ","ب","ج","د"],"correctAnswer":0,"explanation":"...","points":100,"timeLimit":30},
+  {"type":"matching","question":"طابق المصطلحات","pairs":[{"left":"مصطلح 1","right":"تعريف 1"},{"left":"مصطلح 2","right":"تعريف 2"}],"points":150,"timeLimit":45},
+  {"type":"order_questions","question":"رتّب الخطوات","orderItems":["الخطوة 1","الخطوة 2","الخطوة 3"],"points":150,"timeLimit":45},
+  {"type":"puzzle","question":"رتّب الحروف لتكوين كلمة","options":["م","ل","ق"],"correctAnswer":"قلم","points":150,"timeLimit":30},
+  {"type":"wheel_spin","question":"أدر العجلة!","points":100,"timeLimit":30,"wheelSegments":[{"label":"سهل","points":50,"question":"ما هو...؟","options":["أ","ب","ج","د"],"correctAnswer":0}]}
+]
+
 ملاحظات مهمة:
 - التزم بنسبة 100% بالمحتوى المرفق.
+- عنصر واحد لكل سؤال/لعبة. لا تضع عدة أسئلة في حقل واحد.
+- multiple_choice/shooting: question = نص السؤال فقط؛ الخيارات في options (2–6 خيارات).
+- matching: استخدم pairs مع left و right (3–6 أزواج). لا تضع الأزواج داخل نص السؤال.
+- order_questions: استخدم orderItems بالترتيب الصحيح (3–6 عناصر).
+- puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص.
+- wheel_spin: عنصر واحد مع 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته.
+- qa/know_dont_know: correctAnswer = إجابة نصية واضحة.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON تماماً`;
 }

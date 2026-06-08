@@ -4,6 +4,10 @@
  */
 
 import {
+    extractOptionsFromText,
+    splitTextIntoQuestionBlocks,
+} from "@/lib/aiChallengeTextParsing";
+import {
     normalizeAiMatchingItem,
     normalizeAiOrderItem,
     normalizeChoiceQuestionItem,
@@ -15,80 +19,6 @@ import { normalizeWheelSegment, type WheelSegment } from "@/lib/wheelSegments";
 
 const WHEEL_DEFAULT_LABELS = ["سهل", "متوسط", "صعب", "إضافي", "أسطوري", "تحدي"];
 const WHEEL_DEFAULT_POINTS = [50, 100, 150, 200, 300, 500];
-
-const AR_OPTION_MARKER =
-    /(?:^|[\s,،])([أإابتثجحخدذرزسشصضطظعغفقكلمنهوي])(?:[\)\.\:：\-]|(?=\s))/g;
-const EN_OPTION_MARKER = /(?:^|\n|\s)([A-D])(?:[\)\.\:]\s*|\s+)/gi;
-
-function splitTextIntoQuestionBlocks(text: string): string[] {
-    const trimmed = text.trim();
-    if (!trimmed) return [];
-
-    const numbered = trimmed
-        .split(/(?=(?:^|\n)\s*(?:\d+[\.\):、]|سؤال\s*\d*[:：]?|Question\s*\d*[:：]?))/i)
-        .map((p) => p.trim())
-        .filter((p) => p.length > 8);
-
-    if (numbered.length > 1) return numbered;
-
-    const byDoubleNewline = trimmed
-        .split(/\n\s*\n+/)
-        .map((p) => p.trim())
-        .filter((p) => p.length > 8);
-
-    const hasOptionMarkers = (p: string) =>
-        p.includes("؟") ||
-        /(?:^|[\s,،])[أإابتثجحخدذرزسشصضطظعغفقكلمنهوي][\)\.\:：\-]/.test(p) ||
-        /(?:^|\n|\s)[A-D][\)\.\:]/.test(p);
-
-    if (byDoubleNewline.length > 1 && byDoubleNewline.filter(hasOptionMarkers).length >= 2) {
-        return byDoubleNewline;
-    }
-
-    return [trimmed];
-}
-
-function extractOptionsFromText(body: string): { question: string; options: string[] } {
-    const arMatches = [...body.matchAll(AR_OPTION_MARKER)];
-    AR_OPTION_MARKER.lastIndex = 0;
-
-    if (arMatches.length >= 2) {
-        const question = body.slice(0, arMatches[0].index).trim().replace(/[:：]\s*$/, "");
-        const options: string[] = [];
-        for (let i = 0; i < arMatches.length; i++) {
-            const start = (arMatches[i].index ?? 0) + arMatches[i][0].length;
-            const end = i + 1 < arMatches.length ? arMatches[i + 1].index! : body.length;
-            options.push(body.slice(start, end).trim().replace(/^[,،]\s*/, ""));
-        }
-        return { question, options };
-    }
-
-    const enMatches = [...body.matchAll(EN_OPTION_MARKER)];
-    EN_OPTION_MARKER.lastIndex = 0;
-
-    if (enMatches.length >= 2) {
-        const question = body.slice(0, enMatches[0].index).trim();
-        const options: string[] = [];
-        for (let i = 0; i < enMatches.length; i++) {
-            const start = (enMatches[i].index ?? 0) + enMatches[i][0].length;
-            const end = i + 1 < enMatches.length ? enMatches[i + 1].index! : body.length;
-            options.push(body.slice(start, end).trim());
-        }
-        return { question, options };
-    }
-
-    const lines = body.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length >= 3) {
-        const question = lines[0].replace(/^(?:سؤال\s*\d*[:：]?\s*|Question\s*\d*[:：]?\s*)/i, "");
-        const options = lines
-            .slice(1)
-            .map((l) => l.replace(/^(?:[أإابتثجحخدذرزسشصضطظعغفقكلمنهويA-D\d]+[\)\.\:：\-]\s*)/i, "").trim())
-            .filter(Boolean);
-        if (options.length >= 2) return { question, options };
-    }
-
-    return { question: body, options: [] };
-}
 
 function parseWheelSegmentFromText(
     text: string
@@ -269,12 +199,33 @@ export function normalizeAiWheelSpinItem(item: Record<string, unknown>): Record<
     };
 }
 
+function normalizeAiChoiceFromBundledText(item: Record<string, unknown>): Record<string, unknown> {
+    const question = String(item.question || "").trim();
+    const options = Array.isArray(item.options)
+        ? item.options.map((o) => String(o ?? "").trim()).filter(Boolean)
+        : [];
+
+    if (options.length >= 2 || !question) return item;
+
+    const parsed = extractOptionsFromText(question);
+    if (parsed.options.filter((o) => o.trim()).length < 2) return item;
+
+    return {
+        ...item,
+        question: parsed.question.trim() || question,
+        options: parsed.options,
+    };
+}
+
 export function normalizeAiChallengeItem(item: Record<string, unknown>): Record<string, unknown> {
     const type = String(item.type || "");
     if (type === "wheel_spin") return normalizeAiWheelSpinItem(item);
     if (type === "matching") return normalizeAiMatchingItem(item);
     if (type === "order_questions") return normalizeAiOrderItem(item);
     if (type === "puzzle") return normalizePuzzleItem(item);
+    if (type === "multiple_choice" || type === "shooting") {
+        return normalizeAiChoiceFromBundledText(item);
+    }
     return item;
 }
 
