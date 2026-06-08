@@ -1,6 +1,5 @@
 import { Reorder, useDragControls } from "framer-motion";
 import { GripVertical, CheckCircle2, XCircle } from "lucide-react";
-import { PuzzlePiece } from "./PuzzlePiece";
 import { cn } from "@/lib/utils";
 import type { OrderPiece } from "@/lib/challengeItemNormalize";
 
@@ -12,17 +11,15 @@ interface OrderPuzzleBoardProps {
     disabled?: boolean;
 }
 
-function DraggablePiece({
+function DraggableRow({
     piece,
     index,
-    total,
     showResult,
     correctItems,
     disabled,
 }: {
     piece: OrderPiece;
     index: number;
-    total: number;
     showResult?: boolean;
     correctItems?: string[];
     disabled?: boolean;
@@ -30,57 +27,68 @@ function DraggablePiece({
     const dragControls = useDragControls();
     const isCorrectPosition = showResult && correctItems?.[index] === piece.text;
 
+    let rowClass =
+        "flex w-full items-center gap-3 p-4 rounded-xl border-2 text-right transition-all ";
+
+    if (showResult) {
+        rowClass += isCorrectPosition
+            ? "border-green-500 bg-green-500/10"
+            : "border-red-500 bg-red-500/10";
+    } else {
+        rowClass += "border-border bg-card hover:border-primary/40";
+    }
+
     return (
         <Reorder.Item
             value={piece}
             dragListener={false}
             dragControls={dragControls}
             className={cn("list-none", disabled && "pointer-events-none")}
-            whileDrag={{ scale: 1.03, zIndex: 50, rotate: -1 }}
+            whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
         >
-            <PuzzlePiece
-                index={index}
-                total={total}
-                orientation="vertical"
-                status={showResult ? (isCorrectPosition ? "correct" : "wrong") : "default"}
-            >
-                <div className="flex w-full items-center gap-3 text-right">
-                    {!showResult && !disabled && (
-                        <button
-                            type="button"
-                            className="cursor-grab touch-none rounded p-1 text-white/70 hover:bg-white/20 active:cursor-grabbing"
-                            onPointerDown={(e) => dragControls.start(e)}
-                            aria-label="اسحب لإعادة الترتيب"
-                        >
-                            <GripVertical className="h-5 w-5" />
-                        </button>
+            <div className={rowClass}>
+                {!showResult && !disabled && (
+                    <button
+                        type="button"
+                        className="cursor-grab touch-none rounded-lg p-2 text-muted-foreground hover:bg-muted active:cursor-grabbing shrink-0"
+                        onPointerDown={(e) => dragControls.start(e)}
+                        aria-label="اسحب لإعادة الترتيب"
+                    >
+                        <GripVertical className="h-5 w-5" />
+                    </button>
+                )}
+
+                <span
+                    className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold shrink-0",
+                        showResult && isCorrectPosition
+                            ? "bg-green-500 text-white"
+                            : showResult
+                              ? "bg-red-500 text-white"
+                              : "bg-muted"
                     )}
+                >
+                    {index + 1}
+                </span>
 
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/25 text-sm font-black shadow-inner">
-                        {index + 1}
+                <span className="flex-1 text-base font-medium leading-snug">{piece.text}</span>
+
+                {showResult && (
+                    <span className="shrink-0">
+                        {isCorrectPosition ? (
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        ) : (
+                            <span className="flex items-center gap-1 text-xs font-medium text-red-600">
+                                <XCircle className="h-4 w-4" />
+                                {correctItems?.indexOf(piece.text) !== undefined &&
+                                    correctItems.indexOf(piece.text) >= 0 &&
+                                    `#${correctItems.indexOf(piece.text) + 1}`}
+                            </span>
+                        )}
                     </span>
-
-                    <span className="flex-1 text-base font-semibold leading-snug drop-shadow-sm">
-                        {piece.text}
-                    </span>
-
-                    {showResult && (
-                        <span className="shrink-0">
-                            {isCorrectPosition ? (
-                                <CheckCircle2 className="h-5 w-5 text-white" />
-                            ) : (
-                                <span className="flex items-center gap-1 text-xs font-medium text-white/90">
-                                    <XCircle className="h-4 w-4" />
-                                    {correctItems?.indexOf(piece.text) !== undefined &&
-                                        correctItems.indexOf(piece.text) >= 0 &&
-                                        `#${correctItems.indexOf(piece.text) + 1}`}
-                                </span>
-                            )}
-                        </span>
-                    )}
-                </div>
-            </PuzzlePiece>
+                )}
+            </div>
         </Reorder.Item>
     );
 }
@@ -93,25 +101,22 @@ export function OrderPuzzleBoard({
     disabled = false,
 }: OrderPuzzleBoardProps) {
     return (
-        <div className="mx-auto max-w-lg">
-            <p className="mb-5 text-center text-sm text-muted-foreground">
-                {showResult
-                    ? "نتيجة الترتيب"
-                    : "اسحب قطع الأحجية ورتّبها بالترتيب الصحيح"}
+        <div className="mx-auto max-w-lg space-y-3">
+            <p className="text-center text-sm text-muted-foreground">
+                {showResult ? "نتيجة الترتيب" : "اسحب العناصر لترتيبها بالشكل الصحيح"}
             </p>
 
             <Reorder.Group
                 axis="y"
                 values={pieces}
                 onReorder={onReorder}
-                className="flex flex-col gap-0"
+                className="flex flex-col gap-3"
             >
                 {pieces.map((piece, index) => (
-                    <DraggablePiece
+                    <DraggableRow
                         key={piece.id}
                         piece={piece}
                         index={index}
-                        total={pieces.length}
                         showResult={showResult}
                         correctItems={correctItems}
                         disabled={disabled || showResult}

@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { PuzzlePiece } from "./PuzzlePiece";
 import { cn } from "@/lib/utils";
 
 interface PuzzleLetterBoardProps {
@@ -20,36 +19,31 @@ export function PuzzleLetterBoard({
     const usedSet = new Set(usedIndices);
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             {answerSlot}
 
-            <div className="flex flex-wrap items-center justify-center gap-1 px-2">
+            <div className="flex flex-wrap items-center justify-center gap-3 px-2">
                 {tiles.map((tile, index) => {
                     const used = usedSet.has(index);
+                    const tileDisabled = disabled || !tile.trim() || used;
+
                     return (
                         <motion.button
                             key={`${tile}-${index}`}
                             type="button"
-                            disabled={disabled || !tile.trim() || used}
+                            disabled={tileDisabled}
                             onClick={() => onTileClick(tile, index)}
-                            whileHover={!disabled && !used ? { scale: 1.08, y: -4 } : undefined}
-                            whileTap={!disabled && !used ? { scale: 0.95 } : undefined}
+                            whileHover={!tileDisabled ? { scale: 1.05, y: -2 } : undefined}
+                            whileTap={!tileDisabled ? { scale: 0.95 } : undefined}
                             className={cn(
-                                "border-0 bg-transparent p-0 outline-none",
-                                (disabled || used) && "cursor-not-allowed"
+                                "min-w-[3.25rem] h-14 px-4 rounded-xl border-2 text-2xl font-black transition-all outline-none",
+                                used
+                                    ? "border-border bg-muted/40 text-muted-foreground opacity-40 cursor-not-allowed"
+                                    : "border-primary/30 bg-primary/5 hover:border-primary hover:bg-primary/10 cursor-pointer",
+                                disabled && !used && "cursor-not-allowed opacity-50"
                             )}
                         >
-                            <PuzzlePiece
-                                index={index}
-                                total={tiles.length}
-                                orientation="horizontal"
-                                status={used ? "used" : "default"}
-                                compact
-                            >
-                                <span className="text-2xl font-black drop-shadow-md md:text-3xl">
-                                    {tile}
-                                </span>
-                            </PuzzlePiece>
+                            {tile}
                         </motion.button>
                     );
                 })}
