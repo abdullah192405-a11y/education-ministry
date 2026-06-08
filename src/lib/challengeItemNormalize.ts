@@ -2,6 +2,8 @@ import type { ChallengeQuestion } from "@/data/challengeTypes";
 
 export type MatchingPair = { left: string; right: string };
 
+export type OrderPiece = { id: string; text: string };
+
 const LIST_SPLIT = /\n+|(?:^|\s)[•\-–]\s+|(?:،|,|;|؛)\s*/;
 
 function cleanText(v: unknown): string {
@@ -219,4 +221,15 @@ export function shufflePuzzleOptions(question: Pick<ChallengeQuestion, "options"
 export function shuffleOrderItems(question: Pick<ChallengeQuestion, "orderItems">): string[] {
     const items = (question.orderItems ?? []).map(cleanText).filter(Boolean);
     return shuffleArray(items);
+}
+
+export function createOrderPieces(texts: string[]): OrderPiece[] {
+    return texts.map((text, i) => ({
+        id: `order-${i}-${Math.random().toString(36).slice(2, 9)}`,
+        text,
+    }));
+}
+
+export function shuffleOrderPieces(question: Pick<ChallengeQuestion, "orderItems">): OrderPiece[] {
+    return createOrderPieces(shuffleOrderItems(question));
 }

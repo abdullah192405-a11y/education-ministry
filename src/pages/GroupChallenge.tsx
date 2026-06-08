@@ -56,10 +56,13 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase, publicClient } from "@/lib/supabase";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import { OrderPuzzleBoard } from "@/components/challenge/OrderPuzzleBoard";
+import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
     getPuzzleCorrectAnswer,
-    shuffleOrderItems,
+    shuffleOrderPieces,
     shufflePuzzleOptions,
+    type OrderPiece,
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import { useMutation } from "@tanstack/react-query";
@@ -165,8 +168,9 @@ const GroupChallenge = () => {
     // Game Logic States
     const [players, setPlayers] = useState<Player[]>([]);
     const [playerAnswers, setPlayerAnswers] = useState<Record<string, { answered: boolean, points: number, isCorrect: boolean }>>({});
-    const [orderItems, setOrderItems] = useState<string[]>([]);
+    const [orderPieces, setOrderPieces] = useState<OrderPiece[]>([]);
     const [puzzleTiles, setPuzzleTiles] = useState<string[]>([]);
+    const [puzzleClickStack, setPuzzleClickStack] = useState<number[]>([]);
     const [matchedPairs, setMatchedPairs] = useState<{ leftIndex: number; rightIndex: number }[]>([]);
     const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
     const [shuffledRight, setShuffledRight] = useState<{ text: string; originalIndex: number }[]>([]);
@@ -255,10 +259,11 @@ const GroupChallenge = () => {
         setPlayerAnswers({});
 
         if (q?.type === "order_questions") {
-            setOrderItems(shuffleOrderItems(q));
+            setOrderPieces(shuffleOrderPieces(q));
         }
         if (q?.type === "puzzle") {
             setPuzzleTiles(shufflePuzzleOptions(q));
+            setPuzzleClickStack([]);
         }
         if (q?.type === "matching" && q.pairs) {
             const rightItems = q.pairs.map((p, i) => ({ text: p.right, originalIndex: i }));
@@ -522,22 +527,13 @@ const GroupChallenge = () => {
         processAnswer(isCorrect, undefined, answer);
     };
 
-    // Order Items logic
-    const moveItem = (index: number, direction: "up" | "down") => {
-        if (isHost) return;
-        const newItems = [...orderItems];
-        const targetIndex = direction === "up" ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= newItems.length) return;
-        [newItems[index], newItems[targetIndex]] = [newItems[targetIndex], newItems[index]];
-        setOrderItems(newItems);
-    };
-
     const submitOrder = () => {
         if (isHost) return;
-        const isCorrect = orderItems.every((item, i) => item === currentQuestion.orderItems?.[i]);
+        const currentOrder = orderPieces.map((piece) => piece.text);
+        const isCorrect = currentOrder.every((item, i) => item === currentQuestion.orderItems?.[i]);
         setSelectedAnswer(isCorrect ? "correct" : "wrong");
         play(isCorrect ? "correct" : "wrong");
-        processAnswer(isCorrect, undefined, orderItems.join(" -> "));
+        processAnswer(isCorrect, undefined, currentOrder.join(" -> "));
     };
 
     // Matching logic
@@ -1322,75 +1318,26 @@ const GroupChallenge = () => {
         );
     };
 
-    // Render Order Questions
     const renderOrderQuestions = () => {
         const correctItems = currentQuestion.orderItems || [];
+        const orderLocked = showQuestionResult || selectedAnswer !== null || isHost;
 
         return (
-            <div className="space-y-3">
-                <p className="text-sm text-muted-foreground text-center mb-4">
-                    استخدم الأسهم لترتيب العناصر بالترتيب الصحيح
-                </p>
-
-                {orderItems.map((item, index) => {
-                    const isCorrectPosition = showQuestionResult && item === correctItems[index];
-
-                    return (
-                        <motion.div
-                            key={`order-${index}`}
-                            layout
-                            className={`p-4 rounded-xl border-2 flex items-center gap-3 ${showQuestionResult
-                                ? isCorrectPosition
-                                    ? "border-green-500 bg-green-500/10"
-                                    : "border-red-500 bg-red-500/10"
-                                : "border-border"
-                                }`}
-                        >
-                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${showQuestionResult
-                                ? isCorrectPosition
-                                    ? "bg-green-500 text-white"
-                                    : "bg-red-500 text-white"
-                                : "bg-muted"
-                                }`}>
-                                {index + 1}
-                            </span>
-
-                            <span className="flex-1 text-right">{item}</span>
-
-                            {!showQuestionResult && (
-                                <div className="flex flex-col gap-1">
-                                    <button
-                                        onClick={() => moveItem(index, 'up')}
-                                        disabled={index === 0 || selectedAnswer !== null}
-                                        className="p-1 rounded hover:bg-muted disabled:opacity-30"
-                                    >
-                                        <ArrowUp className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => moveItem(index, 'down')}
-                                        disabled={index === orderItems.length - 1 || selectedAnswer !== null}
-                                        className="p-1 rounded hover:bg-muted disabled:opacity-30"
-                                    >
-                                        <ArrowDown className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            )}
-
-                            {showQuestionResult && (
-                                <span className="text-xs">
-                                    {isCorrectPosition ? "✓" : `الصحيح: ${correctItems.indexOf(item) + 1}`}
-                                </span>
-                            )}
-                        </motion.div>
-                    );
-                })}
+            <div className="space-y-4">
+                <OrderPuzzleBoard
+                    pieces={orderPieces}
+                    onReorder={setOrderPieces}
+                    showResult={showQuestionResult}
+                    correctItems={correctItems}
+                    disabled={orderLocked}
+                />
 
                 {!showQuestionResult && (
                     <Button
                         onClick={submitOrder}
-                        className="w-full mt-4"
+                        className="w-full mt-2"
                         size="lg"
-                        disabled={selectedAnswer !== null}
+                        disabled={selectedAnswer !== null || isHost}
                     >
                         {selectedAnswer !== null ? (
                             <>
@@ -1416,37 +1363,46 @@ const GroupChallenge = () => {
             processAnswer(isCorrect, undefined, userAnswer);
         };
 
-        return (
-            <div className="space-y-8 max-w-xl mx-auto">
-                <div
-                    className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showQuestionResult
-                        ? selectedAnswer === "correct"
-                            ? "border-green-500 text-green-700 bg-green-50"
-                            : "border-red-500 text-red-700 bg-red-50"
-                        : "border-dashed border-primary/30"
-                        }`}
-                >
-                    {userAnswer || <span className="text-muted-foreground/30 text-lg font-normal">اضغط على الحروف لتكوين الكلمة</span>}
-                </div>
+        const handlePuzzleOptionClick = (_option: string, index: number) => {
+            if (puzzleLocked || !puzzleTiles[index]?.trim() || puzzleClickStack.includes(index)) return;
+            setPuzzleClickStack((prev) => [...prev, index]);
+            setUserAnswer((prev) => prev + puzzleTiles[index]);
+        };
 
-                <div className="grid grid-cols-4 gap-3 md:gap-4">
-                    {puzzleTiles.map((option, index) => (
-                        <Button
-                            key={`${option}-${index}`}
-                            onClick={() => !puzzleLocked && option.trim() && setUserAnswer((prev) => prev + option)}
-                            disabled={puzzleLocked || !option.trim()}
-                            variant="outline"
-                            className="h-16 text-2xl font-bold rounded-xl hover:scale-105 active:scale-95 transition-transform"
+        return (
+            <div className="space-y-6 max-w-xl mx-auto">
+                <PuzzleLetterBoard
+                    tiles={puzzleTiles}
+                    usedIndices={puzzleClickStack}
+                    onTileClick={handlePuzzleOptionClick}
+                    disabled={puzzleLocked}
+                    answerSlot={
+                        <div
+                            className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showQuestionResult
+                                ? selectedAnswer === "correct"
+                                    ? "border-green-500 text-green-700 bg-green-50"
+                                    : "border-red-500 text-red-700 bg-red-50"
+                                : "border-dashed border-primary/30"
+                                }`}
                         >
-                            {option}
-                        </Button>
-                    ))}
-                </div>
+                            {userAnswer || (
+                                <span className="text-muted-foreground/30 text-lg font-normal">
+                                    اضغط على قطع الأحجية لتكوين الكلمة
+                                </span>
+                            )}
+                        </div>
+                    }
+                />
 
                 {!puzzleLocked && (
                     <div className="flex gap-3">
                         <Button
-                            onClick={() => setUserAnswer((prev) => prev.slice(0, -1))}
+                            onClick={() => {
+                                if (puzzleClickStack.length === 0) return;
+                                const lastIndex = puzzleClickStack[puzzleClickStack.length - 1];
+                                setPuzzleClickStack((prev) => prev.slice(0, -1));
+                                setUserAnswer((prev) => prev.slice(0, -puzzleTiles[lastIndex].length));
+                            }}
                             variant="ghost"
                             className="flex-1 h-12"
                             disabled={!userAnswer}
@@ -1454,7 +1410,10 @@ const GroupChallenge = () => {
                             حذف آخر حرف
                         </Button>
                         <Button
-                            onClick={() => setUserAnswer("")}
+                            onClick={() => {
+                                setUserAnswer("");
+                                setPuzzleClickStack([]);
+                            }}
                             variant="ghost"
                             className="flex-1 h-12 text-red-500 hover:bg-red-50"
                             disabled={!userAnswer}

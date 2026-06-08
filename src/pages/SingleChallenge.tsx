@@ -55,10 +55,13 @@ import {
 } from "@/lib/challengeShareMessage";
 import { LessonEmojiRatingDialog } from "@/components/LessonEmojiRating";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
+import { OrderPuzzleBoard } from "@/components/challenge/OrderPuzzleBoard";
+import { PuzzleLetterBoard } from "@/components/challenge/PuzzleLetterBoard";
 import {
     getPuzzleCorrectAnswer,
-    shuffleOrderItems,
+    shuffleOrderPieces,
     shufflePuzzleOptions,
+    type OrderPiece,
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
@@ -150,10 +153,11 @@ const SingleChallenge = () => {
     const [questionResults, setQuestionResults] = useState<SinglePlayerResult["questionResults"]>([]);
 
     // For ordering questions
-    const [orderItems, setOrderItems] = useState<string[]>([]);
+    const [orderPieces, setOrderPieces] = useState<OrderPiece[]>([]);
 
     // For puzzle — shuffled letter tiles
     const [puzzleTiles, setPuzzleTiles] = useState<string[]>([]);
+    const [puzzleClickStack, setPuzzleClickStack] = useState<number[]>([]);
 
     // For matching questions
     const [matchedPairs, setMatchedPairs] = useState<{ leftIndex: number; rightIndex: number }[]>([]);
@@ -291,10 +295,11 @@ const SingleChallenge = () => {
 
         // Reset question-specific states
         if (question.type === "order_questions") {
-            setOrderItems(shuffleOrderItems(question));
+            setOrderPieces(shuffleOrderPieces(question));
         }
         if (question.type === "puzzle") {
             setPuzzleTiles(shufflePuzzleOptions(question));
+            setPuzzleClickStack([]);
         }
         if (question.type === "matching" && question.pairs) {
             // Shuffle right side for matching
@@ -366,21 +371,6 @@ const SingleChallenge = () => {
         processAnswer(isCorrect, timeTaken);
     };
 
-    // Order questions handlers
-    const moveItemUp = (index: number) => {
-        if (index === 0 || showResult) return;
-        const newItems = [...orderItems];
-        [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-        setOrderItems(newItems);
-    };
-
-    const moveItemDown = (index: number) => {
-        if (index === orderItems.length - 1 || showResult) return;
-        const newItems = [...orderItems];
-        [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-        setOrderItems(newItems);
-    };
-
     const handleOrderSubmit = () => {
         if (showResult) return;
 
@@ -388,9 +378,9 @@ const SingleChallenge = () => {
         setTotalTime(prev => prev + timeTaken);
         setShowResult(true);
 
-        // Check if order is correct
         const correctOrder = currentQuestion.orderItems || [];
-        const isCorrect = orderItems.every((item, index) => item === correctOrder[index]);
+        const currentOrder = orderPieces.map((piece) => piece.text);
+        const isCorrect = currentOrder.every((item, index) => item === correctOrder[index]);
 
         setSelectedAnswer(isCorrect ? "correct" : "wrong");
         play(isCorrect ? "correct" : "wrong");
@@ -1509,74 +1499,23 @@ const SingleChallenge = () => {
         );
     };
 
-    // Render Order Questions
     const renderOrderQuestions = () => {
         const correctItems = currentQuestion.orderItems || [];
 
         return (
-            <div className="space-y-3">
-                <p className="text-sm text-muted-foreground text-center mb-4">
-                    استخدم الأسهم لترتيب العناصر بالترتيب الصحيح
-                </p>
+            <div className="space-y-4">
+                <OrderPuzzleBoard
+                    pieces={orderPieces}
+                    onReorder={setOrderPieces}
+                    showResult={showResult}
+                    correctItems={correctItems}
+                    disabled={showResult}
+                />
 
-                {orderItems.map((item, index) => {
-                    const isCorrectPosition = showResult && item === correctItems[index];
-                    const isWrongPosition = showResult && item !== correctItems[index];
-
-                    return (
-                        <motion.div
-                            key={`order-${index}`}
-                            layout
-                            className={`p-4 rounded-xl border-2 flex items-center gap-3 ${showResult
-                                ? isCorrectPosition
-                                    ? "border-green-500 bg-green-500/10"
-                                    : "border-red-500 bg-red-500/10"
-                                : "border-border"
-                                }`}
-                        >
-                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${showResult
-                                ? isCorrectPosition
-                                    ? "bg-green-500 text-white"
-                                    : "bg-red-500 text-white"
-                                : "bg-muted"
-                                }`}>
-                                {index + 1}
-                            </span>
-
-                            <span className="flex-1 text-right">{item}</span>
-
-                            {!showResult && (
-                                <div className="flex flex-col gap-1">
-                                    <button
-                                        onClick={() => moveItemUp(index)}
-                                        disabled={index === 0}
-                                        className="p-1 rounded hover:bg-muted disabled:opacity-30"
-                                    >
-                                        <ArrowUp className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => moveItemDown(index)}
-                                        disabled={index === orderItems.length - 1}
-                                        className="p-1 rounded hover:bg-muted disabled:opacity-30"
-                                    >
-                                        <ArrowDown className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            )}
-
-                            {showResult && (
-                                <span className="text-xs">
-                                    {isCorrectPosition ? "✓" : `الصحيح: ${correctItems.indexOf(item) + 1}`}
-                                </span>
-                            )}
-                        </motion.div>
-                    );
-                })}
-
-                {!showResult && orderItems.length >= 2 && (
+                {!showResult && orderPieces.length >= 2 && (
                     <Button
                         onClick={handleOrderSubmit}
-                        className="w-full mt-4"
+                        className="w-full mt-2"
                         size="lg"
                     >
                         تأكيد الترتيب
@@ -1677,23 +1616,27 @@ const SingleChallenge = () => {
         );
     };
 
-    // Render Puzzle
     const renderPuzzle = () => {
         const targetWord = getPuzzleCorrectAnswer(currentQuestion);
 
-        const handlePuzzleOptionClick = (option: string) => {
-            if (showResult || !option.trim()) return;
-            setUserAnswer((prev) => prev + option);
+        const handlePuzzleOptionClick = (_option: string, index: number) => {
+            if (showResult || !puzzleTiles[index]?.trim()) return;
+            if (puzzleClickStack.includes(index)) return;
+            setPuzzleClickStack((prev) => [...prev, index]);
+            setUserAnswer((prev) => prev + puzzleTiles[index]);
         };
 
         const handlePuzzleBackspace = () => {
-            if (showResult) return;
-            setUserAnswer((prev) => prev.slice(0, -1));
+            if (showResult || puzzleClickStack.length === 0) return;
+            const lastIndex = puzzleClickStack[puzzleClickStack.length - 1];
+            setPuzzleClickStack((prev) => prev.slice(0, -1));
+            setUserAnswer((prev) => prev.slice(0, -puzzleTiles[lastIndex].length));
         };
 
         const handlePuzzleClear = () => {
             if (showResult) return;
             setUserAnswer("");
+            setPuzzleClickStack([]);
         };
 
         const handlePuzzleSubmit = () => {
@@ -1711,31 +1654,29 @@ const SingleChallenge = () => {
         };
 
         return (
-            <div className="space-y-8 max-w-xl mx-auto">
-                <div
-                    className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showResult
-                        ? selectedAnswer === "correct"
-                            ? "border-green-500 text-green-700 bg-green-50"
-                            : "border-red-500 text-red-700 bg-red-50"
-                        : "border-dashed border-primary/30"
-                        }`}
-                >
-                    {userAnswer || <span className="text-muted-foreground/30 text-lg font-normal">اضغط على الحروف لتكوين الكلمة</span>}
-                </div>
-
-                <div className="grid grid-cols-4 gap-3 md:gap-4">
-                    {puzzleTiles.map((option, index) => (
-                        <Button
-                            key={`${option}-${index}`}
-                            onClick={() => handlePuzzleOptionClick(option)}
-                            disabled={showResult || !option.trim()}
-                            variant="outline"
-                            className="h-16 text-2xl font-bold rounded-xl hover:scale-105 active:scale-95 transition-transform"
+            <div className="space-y-6 max-w-xl mx-auto">
+                <PuzzleLetterBoard
+                    tiles={puzzleTiles}
+                    usedIndices={puzzleClickStack}
+                    onTileClick={handlePuzzleOptionClick}
+                    disabled={showResult}
+                    answerSlot={
+                        <div
+                            className={`min-h-[80px] flex items-center justify-center p-4 rounded-xl border-2 text-3xl font-bold tracking-widest bg-muted/30 ${showResult
+                                ? selectedAnswer === "correct"
+                                    ? "border-green-500 text-green-700 bg-green-50"
+                                    : "border-red-500 text-red-700 bg-red-50"
+                                : "border-dashed border-primary/30"
+                                }`}
                         >
-                            {option}
-                        </Button>
-                    ))}
-                </div>
+                            {userAnswer || (
+                                <span className="text-muted-foreground/30 text-lg font-normal">
+                                    اضغط على قطع الأحجية لتكوين الكلمة
+                                </span>
+                            )}
+                        </div>
+                    }
+                />
 
                 {!showResult && (
                     <div className="flex gap-3">
