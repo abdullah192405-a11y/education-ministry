@@ -49,7 +49,7 @@ Repair rules:
 - order_questions must include orderItems array in correct order (3–6 items).
 - puzzle: options = letter tiles; correctAnswer = full target word string (not index).
 - wheel_spin = ONE game with 4–6 wheelSegments; each segment has exactly ONE question and 2–4 options (correctAnswer index). Never put multiple questions in one segment or in the parent question field.
-- shooting must include options (4) and correctAnswer.
+- shooting: type must be "shooting"; include question (prompt only), options (4), and correctAnswer (index 0–3).
 - All question, option, explanation, and label strings must be in English.
 - Make correctAnswer appropriate for the question type.
 
@@ -66,7 +66,7 @@ ${generatedText}`;
 - order_questions يجب أن يحتوي orderItems بالترتيب الصحيح (3–6 عناصر).
 - puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص.
 - wheel_spin = لعبة واحدة تحتوي wheelSegments من 4 إلى 6 شرائح؛ كل شريحة سؤال واحد فقط مع 2–4 خيارات (correctAnswer رقم الخيار). لا تضع عدة أسئلة في شريحة واحدة أو في حقل question الرئيسي.
-- shooting يجب أن يحتوي options (4) وcorrectAnswer.
+- shooting: type يجب أن يكون "shooting"؛ يجب أن يحتوي question (نص السؤال فقط) و options (4 خيارات) و correctAnswer (رقم 0–3).
 - اجعل correctAnswer مناسباً لنوع السؤال.
 
 النص المراد إصلاحه:
@@ -209,6 +209,14 @@ Example format:
     "timeLimit": 30
   },
   {
+    "type": "shooting",
+    "question": "Which answer is correct?",
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "correctAnswer": 0,
+    "points": 150,
+    "timeLimit": 10
+  },
+  {
     "type": "wheel_spin",
     "question": "Spin the wheel!",
     "points": 100,
@@ -294,6 +302,14 @@ ${availableTypes}
     "timeLimit": 30
   },
   {
+    "type": "shooting",
+    "question": "ما هو الإجابة الصحيحة؟",
+    "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
+    "correctAnswer": 0,
+    "points": 150,
+    "timeLimit": 10
+  },
+  {
     "type": "wheel_spin",
     "question": "أدر العجلة!",
     "points": 100,
@@ -313,6 +329,7 @@ ${availableTypes}
 - matching: استخدم pairs مع left و right (3–6 أزواج).
 - order_questions: استخدم orderItems بالترتيب الصحيح (3–6 عناصر).
 - puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص (وليس رقم index).
+- shooting: يجب أن يحتوي كل عنصر على question (نص السؤال فقط) و options (4 خيارات) و correctAnswer (رقم الخيار الصحيح 0–3). لا تضع الخيارات داخل نص السؤال.
 - لـ wheel_spin: عنصر واحد يحتوي 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته فقط. لا تضع عدة أسئلة في شريحة واحدة.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON.`;
@@ -415,6 +432,7 @@ Example formats:
   {"type":"matching","question":"Match the terms","pairs":[{"left":"Term 1","right":"Definition 1"},{"left":"Term 2","right":"Definition 2"}],"points":150,"timeLimit":45},
   {"type":"order_questions","question":"Put in order","orderItems":["Step 1","Step 2","Step 3"],"points":150,"timeLimit":45},
   {"type":"puzzle","question":"Build the word","options":["p","e","n"],"correctAnswer":"pen","points":150,"timeLimit":30},
+  {"type":"shooting","question":"Which is correct?","options":["A","B","C","D"],"correctAnswer":0,"points":150,"timeLimit":10},
   {"type":"wheel_spin","question":"Spin the wheel!","points":100,"timeLimit":30,"wheelSegments":[{"label":"Easy","points":50,"question":"What is...?","options":["A","B","C","D"],"correctAnswer":0}]}
 ]
 
@@ -455,13 +473,15 @@ ${userPrompt}
   {"type":"matching","question":"طابق المصطلحات","pairs":[{"left":"مصطلح 1","right":"تعريف 1"},{"left":"مصطلح 2","right":"تعريف 2"}],"points":150,"timeLimit":45},
   {"type":"order_questions","question":"رتّب الخطوات","orderItems":["الخطوة 1","الخطوة 2","الخطوة 3"],"points":150,"timeLimit":45},
   {"type":"puzzle","question":"رتّب الحروف لتكوين كلمة","options":["م","ل","ق"],"correctAnswer":"قلم","points":150,"timeLimit":30},
+  {"type":"shooting","question":"ما هو الصحيح؟","options":["أ","ب","ج","د"],"correctAnswer":0,"points":150,"timeLimit":10},
   {"type":"wheel_spin","question":"أدر العجلة!","points":100,"timeLimit":30,"wheelSegments":[{"label":"سهل","points":50,"question":"ما هو...؟","options":["أ","ب","ج","د"],"correctAnswer":0}]}
 ]
 
 ملاحظات مهمة:
 - التزم بنسبة 100% بالمحتوى المرفق.
 - عنصر واحد لكل سؤال/لعبة. لا تضع عدة أسئلة في حقل واحد.
-- multiple_choice/shooting: question = نص السؤال فقط؛ الخيارات في options (2–6 خيارات).
+- multiple_choice/shooting: question = نص السؤال فقط؛ الخيارات في options (2–6 خيارات، و4 خيارات لـ shooting).
+- shooting: type يجب أن يكون "shooting" (وليس تصويب) مع options و correctAnswer.
 - matching: استخدم pairs مع left و right (3–6 أزواج). لا تضع الأزواج داخل نص السؤال.
 - order_questions: استخدم orderItems بالترتيب الصحيح (3–6 عناصر).
 - puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص.

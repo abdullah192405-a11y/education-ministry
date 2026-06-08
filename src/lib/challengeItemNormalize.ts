@@ -456,18 +456,55 @@ export function resolveIndexedCorrectAnswer(correctAnswer: unknown, options: str
     return 0;
 }
 
-export function normalizeChoiceQuestionItem(item: Record<string, unknown>): Record<string, unknown> {
-    const options = Array.isArray(item.options)
-        ? item.options.map((option) => String(option ?? ""))
-        : [];
+/** Map AI / localized type labels to canonical challenge item types. */
+export function normalizeChallengeItemType(rawType: string): string {
+    const type = rawType.trim().toLowerCase().replace(/\s+/g, "_");
+    if (type === "match" || type === "matching_game" || type === "مطابقة") return "matching";
+    if (type === "order" || type === "ordering" || type === "ترتيب") return "order_questions";
+    if (type === "wheel" || type === "spin_wheel" || type === "عجلة_الحظ" || type === "عجلة") {
+        return "wheel_spin";
+    }
+    if (
+        type === "shooting_game" ||
+        type === "shooting" ||
+        type === "تصويب" ||
+        type === "لعبة_التصويب" ||
+        type === "لعبةالتصويب"
+    ) {
+        return "shooting";
+    }
+    if (type === "puzzle" || type === "ألغاز" || type === "الغاز") return "puzzle";
+    return type;
+}
+
+function extractChoiceOptions(item: Record<string, unknown>): string[] {
+    for (const key of ["options", "choices", "answers"] as const) {
+        const raw = item[key];
+        if (Array.isArray(raw) && raw.length > 0) {
+            return raw.map((option) => String(option ?? ""));
+        }
+    }
+    return [];
+}
+
+export function normalizeChoiceQuestionItem(
+    item: Record<string, unknown>,
+    minOptions = 0
+): Record<string, unknown> {
+    const options = extractChoiceOptions(item);
     const correctAnswer = resolveIndexedCorrectAnswer(
         item.correctAnswer ?? item.correct_answer ?? item.answer,
         options
     );
 
+    const paddedOptions = [...options];
+    if (minOptions > 0) {
+        while (paddedOptions.length < minOptions) paddedOptions.push("");
+    }
+
     return {
         ...item,
-        options,
+        options: paddedOptions,
         correctAnswer,
     };
 }
@@ -575,7 +612,9 @@ export function normalizeChallengeQuestionFields<T extends Record<string, unknow
         normalized = normalizeAiOrderItem(normalized);
     } else if (type === "puzzle") {
         normalized = normalizePuzzleItem(normalized);
-    } else if (type === "multiple_choice" || type === "shooting") {
+    } else if (type === "shooting") {
+        normalized = normalizeChoiceQuestionItem(normalized, 4);
+    } else if (type === "multiple_choice") {
         normalized = normalizeChoiceQuestionItem(normalized);
     } else if (type === "true_false") {
         normalized = normalizeTrueFalseQuestionItem(normalized);

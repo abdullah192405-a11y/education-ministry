@@ -10,6 +10,7 @@ import {
 import {
     normalizeAiMatchingItem,
     normalizeAiOrderItem,
+    normalizeChallengeItemType,
     normalizeChoiceQuestionItem,
     normalizeOpenAnswerItem,
     normalizePuzzleItem,
@@ -199,36 +200,41 @@ export function normalizeAiWheelSpinItem(item: Record<string, unknown>): Record<
     };
 }
 
+function getChoiceOptionsFromItem(item: Record<string, unknown>): string[] {
+    for (const key of ["options", "choices", "answers"] as const) {
+        const raw = item[key];
+        if (Array.isArray(raw) && raw.length > 0) {
+            return raw.map((o) => String(o ?? "").trim()).filter(Boolean);
+        }
+    }
+    return [];
+}
+
 function normalizeAiChoiceFromBundledText(item: Record<string, unknown>): Record<string, unknown> {
     const question = String(item.question || "").trim();
-    const options = Array.isArray(item.options)
-        ? item.options.map((o) => String(o ?? "").trim()).filter(Boolean)
-        : [];
+    let options = getChoiceOptionsFromItem(item);
 
-    if (options.length >= 2 || !question) return item;
+    if (options.length < 2 && question) {
+        const parsed = extractOptionsFromText(question);
+        if (parsed.options.filter((o) => o.trim()).length >= 2) {
+            return {
+                ...item,
+                question: parsed.question.trim() || question,
+                options: parsed.options,
+            };
+        }
+    }
 
-    const parsed = extractOptionsFromText(question);
-    if (parsed.options.filter((o) => o.trim()).length < 2) return item;
+    if (options.length >= 2) {
+        return { ...item, options };
+    }
 
-    return {
-        ...item,
-        question: parsed.question.trim() || question,
-        options: parsed.options,
-    };
+    return item;
 }
 
 export function normalizeAiChallengeItem(item: Record<string, unknown>): Record<string, unknown> {
     const rawType = String(item.type || "").trim();
-    const type = rawType.toLowerCase().replace(/\s+/g, "_");
-
-    const normalizedType =
-        type === "match" || type === "matching_game" || type === "مطابقة"
-            ? "matching"
-            : type === "order" || type === "ordering" || type === "ترتيب"
-              ? "order_questions"
-              : type === "wheel" || type === "spin_wheel" || type === "عجلة_الحظ"
-                ? "wheel_spin"
-                : type;
+    const normalizedType = normalizeChallengeItemType(rawType);
 
     const withType = normalizedType ? { ...item, type: normalizedType } : item;
 
@@ -306,7 +312,11 @@ export function normalizeGeneratedChallengeItems(
             };
         }
 
-        if (type === "multiple_choice" || type === "shooting") {
+        if (type === "shooting") {
+            return normalizeChoiceQuestionItem(normalized, 4);
+        }
+
+        if (type === "multiple_choice") {
             return normalizeChoiceQuestionItem(normalized);
         }
 

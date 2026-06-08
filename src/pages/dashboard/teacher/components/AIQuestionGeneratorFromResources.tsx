@@ -16,6 +16,7 @@ import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
 import { generateGeminiContent } from "@/lib/geminiClient";
+import { normalizeChallengeItemType } from "@/lib/challengeItemNormalize";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
@@ -732,7 +733,7 @@ const AIQuestionGeneratorFromResources = ({
                     await parseItemsWithRepair(generatedText, apiKey, generateType)
                 );
                 const filteredItems = parsedItems.filter((item) => {
-                    const type = String(item.type || "") as ChallengeType;
+                    const type = normalizeChallengeItemType(String(item.type || "")) as ChallengeType;
                     if (!uniqueAllowedTypes.includes(type)) return false;
                     if (generateType === "questions" && !QUESTION_TYPES.includes(type as QuestionType)) return false;
                     if (generateType === "games" && !GAME_TYPES.includes(type as GameType)) return false;
