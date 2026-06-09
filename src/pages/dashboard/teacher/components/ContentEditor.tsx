@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, useCallback, useLayoutEffect } from "react";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TFunction } from "@/contexts/LanguageContext";
-import { motion, AnimatePresence, Reorder } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -190,40 +190,63 @@ const getMediaTypeLabel = (type: EditorMediaType, t: TFunction): string => {
 
 type DraggableMediaResourceCardProps = {
     media: ContentMedia;
+    index: number;
     cardTitle: string;
     typeLabel: string;
+    isDragging: boolean;
     t: TFunction;
+    onDragStart: (index: number) => void;
+    onDragEnter: (index: number) => void;
+    onDragEnd: () => void;
     onEdit: () => void;
     onDelete: () => void;
 };
 
-const stopDragOnInteractive = (e: React.PointerEvent) => {
+const stopMediaCardButtonDrag = (e: React.DragEvent) => {
+    e.preventDefault();
     e.stopPropagation();
 };
 
 const DraggableMediaResourceCard = ({
     media,
+    index,
     cardTitle,
     typeLabel,
+    isDragging,
     t,
+    onDragStart,
+    onDragEnter,
+    onDragEnd,
     onEdit,
     onDelete,
 }: DraggableMediaResourceCardProps) => {
     return (
-        <Reorder.Item
-            value={media}
-            className="list-none cursor-grab active:cursor-grabbing touch-none"
-            whileDrag={{ scale: 1.03, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", cursor: "grabbing" }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        <div
+            draggable
+            onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", String(index));
+                onDragStart(index);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDragEnter={(e) => {
+                e.preventDefault();
+                onDragEnter(index);
+            }}
+            onDragEnd={onDragEnd}
+            className={cn(
+                "cursor-grab active:cursor-grabbing touch-manipulation",
+                isDragging && "opacity-50 ring-2 ring-primary scale-[0.98]"
+            )}
             aria-label={t("dash.teacher.topics.editor.dragResource")}
         >
             <Card className="overflow-hidden h-full select-none">
-                <div className="relative h-20 w-full border-b">
-                    <GripVertical className="absolute top-1.5 end-1.5 z-10 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
-                    <ContentResourceThumbnail item={media} t={t} interactive />
+                <div className="relative h-20 w-full border-b pointer-events-none">
+                    <GripVertical className="absolute top-1.5 end-1.5 z-10 w-3.5 h-3.5 text-muted-foreground/50" />
+                    <ContentResourceThumbnail item={media} t={t} />
                 </div>
                 <CardContent className="p-2 space-y-1.5">
-                    <div>
+                    <div className="pointer-events-none">
                         <p className="text-xs font-medium leading-tight line-clamp-2" title={cardTitle}>
                             {cardTitle}
                         </p>
@@ -231,16 +254,14 @@ const DraggableMediaResourceCard = ({
                             {typeLabel}
                         </Badge>
                     </div>
-                    <div
-                        className="flex items-center justify-end gap-0.5 border-t pt-1.5 cursor-default"
-                        onPointerDown={stopDragOnInteractive}
-                    >
+                    <div className="flex items-center justify-end gap-0.5 border-t pt-1.5">
                         <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 cursor-pointer"
+                            draggable={false}
                             onClick={onEdit}
-                            onPointerDown={stopDragOnInteractive}
+                            onDragStart={stopMediaCardButtonDrag}
                         >
                             <Edit className="w-3.5 h-3.5" />
                         </Button>
@@ -248,15 +269,16 @@ const DraggableMediaResourceCard = ({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive cursor-pointer"
+                            draggable={false}
                             onClick={onDelete}
-                            onPointerDown={stopDragOnInteractive}
+                            onDragStart={stopMediaCardButtonDrag}
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                     </div>
                 </CardContent>
             </Card>
-        </Reorder.Item>
+        </div>
     );
 };
 
@@ -454,6 +476,18 @@ const ContentEditor = ({
     // Media
     const initialMediaSnapshotRef = useRef(JSON.stringify(content?.media || []));
     const [mediaList, setMediaList] = useState<ContentMedia[]>(content?.media || []);
+    const mediaKeysRef = useRef<string[]>([]);
+    const dragMediaIndexRef = useRef<number | null>(null);
+    const [dragMediaIndex, setDragMediaIndex] = useState<number | null>(null);
+
+    useEffect(() => {
+        while (mediaKeysRef.current.length < mediaList.length) {
+            mediaKeysRef.current.push(`media-${crypto.randomUUID()}`);
+        }
+        if (mediaKeysRef.current.length > mediaList.length) {
+            mediaKeysRef.current.splice(mediaList.length);
+        }
+    }, [mediaList.length]);
     const [mediaDirty, setMediaDirty] = useState(false);
     const [editingMediaIndex, setEditingMediaIndex] = useState<number | null>(null);
 
@@ -946,12 +980,24 @@ const ContentEditor = ({
         setMediaList(mediaList.filter((_, i) => i !== index));
     };
 
-    const handleMediaReorder = (newList: ContentMedia[]) => {
+    const handleMediaReorder = (newList: ContentMedia[], fromIndex?: number, toIndex?: number) => {
         const indexMap = new Map<number, number>();
         mediaList.forEach((item, oldIndex) => {
             const newIndex = newList.indexOf(item);
             if (newIndex !== -1) indexMap.set(oldIndex, newIndex);
         });
+
+        if (
+            fromIndex !== undefined &&
+            toIndex !== undefined &&
+            fromIndex !== toIndex &&
+            mediaKeysRef.current[fromIndex] !== undefined
+        ) {
+            const newKeys = [...mediaKeysRef.current];
+            const [key] = newKeys.splice(fromIndex, 1);
+            newKeys.splice(toIndex, 0, key);
+            mediaKeysRef.current = newKeys;
+        }
 
         if (editingMediaIndex !== null) {
             const newIndex = indexMap.get(editingMediaIndex);
@@ -970,6 +1016,27 @@ const ContentEditor = ({
         );
 
         setMediaList(newList);
+    };
+
+    const handleMediaDragStart = (index: number) => {
+        dragMediaIndexRef.current = index;
+        setDragMediaIndex(index);
+    };
+
+    const handleMediaDragEnter = (overIndex: number) => {
+        const fromIndex = dragMediaIndexRef.current;
+        if (fromIndex === null || fromIndex === overIndex) return;
+        const newList = [...mediaList];
+        const [moved] = newList.splice(fromIndex, 1);
+        newList.splice(overIndex, 0, moved);
+        handleMediaReorder(newList, fromIndex, overIndex);
+        dragMediaIndexRef.current = overIndex;
+        setDragMediaIndex(overIndex);
+    };
+
+    const handleMediaDragEnd = () => {
+        dragMediaIndexRef.current = null;
+        setDragMediaIndex(null);
     };
 
     const questionEditorRef = useRef<QuestionGameEditorHandle>(null);
@@ -2068,12 +2135,7 @@ const ContentEditor = ({
                                 <p className="text-xs text-muted-foreground">
                                     {t("dash.teacher.topics.editor.mediaDragHint")}
                                 </p>
-                                <Reorder.Group
-                                    axis="y"
-                                    values={mediaList}
-                                    onReorder={handleMediaReorder}
-                                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 list-none p-0 m-0"
-                                >
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                     {mediaList.map((media, index) => {
                                         const cardTitle =
                                             media.caption?.trim() ||
@@ -2081,11 +2143,16 @@ const ContentEditor = ({
                                             getMediaTypeLabel(media.type, t);
                                         return (
                                             <DraggableMediaResourceCard
-                                                key={media.id ? String(media.id) : `media-${index}-${media.type}-${media.url || media.fileName || ""}`}
+                                                key={mediaKeysRef.current[index] || `media-${index}`}
                                                 media={media}
+                                                index={index}
                                                 cardTitle={cardTitle}
                                                 typeLabel={getMediaTypeLabel(media.type, t)}
+                                                isDragging={dragMediaIndex === index}
                                                 t={t}
+                                                onDragStart={handleMediaDragStart}
+                                                onDragEnter={handleMediaDragEnter}
+                                                onDragEnd={handleMediaDragEnd}
                                                 onEdit={() => {
                                                     setEditingMediaIndex(index);
                                                     setEditingLivePendingIndex(null);
@@ -2096,7 +2163,7 @@ const ContentEditor = ({
                                             />
                                         );
                                     })}
-                                </Reorder.Group>
+                                </div>
                             </div>
                         )}
 
