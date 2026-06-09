@@ -13,7 +13,7 @@ import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
-import { generateGeminiContent } from "@/lib/geminiClient";
+import { generateGeminiContent, QUESTION_GENERATION_MODELS } from "@/lib/geminiClient";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { aiGenContext, buildUploadGenerationPrompt, buildAudioTranscriptionPrompt } from "@/lib/aiQuestionGenerationPrompts";
@@ -272,7 +272,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                             maxOutputTokens: 8192,
                         },
                     }, {
-                        models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+                        models: [...QUESTION_GENERATION_MODELS],
                     })) as {
                         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
                     };
@@ -383,6 +383,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                     responseMimeType: "application/json",
                 },
             }, {
+                models: [...QUESTION_GENERATION_MODELS],
                 onRetry: ({ attempt, delayMs, model, reason }) => {
                     const sec = Math.max(1, Math.round(delayMs / 1000));
                     setProgress(

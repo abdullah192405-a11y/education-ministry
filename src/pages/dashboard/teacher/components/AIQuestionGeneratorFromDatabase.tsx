@@ -19,7 +19,7 @@ import {
     getTeacherPdfs,
     pdfNeedsVisualPageImages,
 } from "@/lib/pdfExtractor";
-import { generateGeminiContent } from "@/lib/geminiClient";
+import { generateGeminiContent, QUESTION_GENERATION_MODELS } from "@/lib/geminiClient";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { aiGenContext, buildDatabaseGenerationPrompt } from "@/lib/aiQuestionGenerationPrompts";
 
@@ -188,6 +188,7 @@ const AIQuestionGeneratorFromDatabase = ({
                     responseMimeType: "application/json",
                 },
             }, {
+                models: [...QUESTION_GENERATION_MODELS],
                 onRetry: ({ attempt, delayMs, model, reason }) => {
                     const sec = Math.max(1, Math.round(delayMs / 1000));
                     setProgress(

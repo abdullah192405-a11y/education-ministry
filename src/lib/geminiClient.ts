@@ -18,6 +18,9 @@ export type GeminiRetryInfo = {
 
 const DEFAULT_MODEL_CHAIN = ["gemini-2.5-flash"];
 
+/** Question generation always uses Gemini 2.5 Flash — no fallback to older models. */
+export const QUESTION_GENERATION_MODELS = ["gemini-2.5-flash"] as const;
+
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
