@@ -2650,7 +2650,7 @@ export const useCreateTopic = () => {
                 if (linkError) {
                     console.error("_TeacherTopics insert failed:", linkError);
                     throw new Error(
-                        `فشل ربط الدرس بحساب المعلم: ${linkError.message}. بدون هذا الربط قد يفشل حفظ الوسائط أو الأسئلة.`
+                        `فشل ربط الدرس بحساب المعلم: ${linkError.message}. بدون هذا الربط قد يفشل حفظ موارد المحتوى أو الأسئلة.`
                     );
                 }
             }
@@ -2855,7 +2855,7 @@ export const useSaveTopicMedia = () => {
             const { error: deleteError } = await supabase.from("topic_media").delete().eq("topic_id", topicId);
             if (deleteError) {
                 console.error("Error deleting existing media:", deleteError);
-                throw new Error(`فشل حذف الوسائط القديمة: ${deleteError.message}`);
+                throw new Error(`فشل حذف موارد المحتوى القديمة: ${deleteError.message}`);
             }
 
             if (media.length === 0) return [];
@@ -2883,7 +2883,7 @@ export const useSaveTopicMedia = () => {
                 .select();
             if (error) {
                 console.error("Error inserting media:", error);
-                throw new Error(`فشل حفظ الوسائط: ${error.message}`);
+                throw new Error(`فشل حفظ موارد المحتوى: ${error.message}`);
             }
             return data;
         },

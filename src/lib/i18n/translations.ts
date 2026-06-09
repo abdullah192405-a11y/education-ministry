@@ -1778,7 +1778,7 @@ export const translations = {
         "dash.teacher.aiGen.resources.title": "توليد الأسئلة من موارد الدرس",
         "dash.teacher.aiGen.resources.subtitle": "اختر الموارد التي يجب على الذكاء الاصطناعي تحليلها لتوليد الأسئلة والألعاب",
         "dash.teacher.aiGen.resources.step1": "الخطوة 1: اختر الموارد للتحليل",
-        "dash.teacher.aiGen.resources.noResources": "لا توجد موارد متاحة. أضف موارد (PDFs، نصوص، فيديوهات) أولاً في تبويب الوسائط.",
+        "dash.teacher.aiGen.resources.noResources": "لا توجد موارد متاحة. أضف موارد (PDFs، نصوص، فيديوهات) أولاً في تبويب موارد المحتوى.",
         "dash.teacher.aiGen.resources.selected": "المختار:",
         "dash.teacher.aiGen.resources.targetCount": "عدد العناصر المطلوب توليدها:",
         "dash.teacher.aiGen.resources.targetCountHint": "يدعم التوليد على دفعات تلقائياً لتحسين الثبات عند الأعداد الكبيرة (مثل 50).",

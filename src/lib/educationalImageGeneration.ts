@@ -625,7 +625,7 @@ export async function generateImagePromptFromAnalyzedResources(
     if (!textSummary.trim() && parts.length === 0) {
         if (!lessonTitle.trim() && !lessonDescription.trim()) {
             throw new Error(
-                "لا توجد موارد أو عنوان/وصف للدرس. أضف وسائط أو املأ عنوان المحتوى والوصف ثم أعد المحاولة."
+                "لا توجد موارد أو عنوان/وصف للدرس. أضف موارد محتوى أو املأ عنوان المحتوى والوصف ثم أعد المحاولة."
             );
         }
     }
