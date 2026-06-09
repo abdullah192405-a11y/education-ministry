@@ -1,5 +1,5 @@
 import {
-    Video, Image, FileText, FileType, Headphones, Link2, Play,
+    Youtube, Image, FileText, FileType, Headphones, Link2, Play,
 } from "lucide-react";
 import type { ContentMedia } from "@/data/challengeTypes";
 import type { TFunction } from "@/contexts/LanguageContext";
@@ -56,7 +56,7 @@ const ContentResourceThumbnail = ({
 
     const renderFallbackIcon = () => {
         switch (item.type) {
-            case "video": return <Video className="w-5 h-5 text-red-500" />;
+            case "video": return <Youtube className="w-5 h-5 text-red-500" />;
             case "image": return <Image className="w-5 h-5 text-blue-500" />;
             case "text": return <FileText className="w-5 h-5 text-green-500" />;
             case "pdf": return <FileType className="w-5 h-5 text-orange-500" />;
@@ -122,7 +122,7 @@ const ContentResourceThumbnail = ({
                 }
                 return (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
-                        <Video className="w-5 h-5 text-red-500" />
+                        <Youtube className="w-5 h-5 text-red-500" />
                         <span className="text-[9px] text-muted-foreground">{t("dash.teacher.topics.editor.mediaType.video")}</span>
                     </div>
                 );

@@ -29,7 +29,7 @@ import {
     Plus, Edit, Trash2, Save, X, Upload, Video, Image, FileText,
     ChevronDown, ChevronUp, GripVertical, CheckCircle, XCircle,
     Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
-    Headphones, Link2, Sparkles, Radio,
+    Headphones, Link2, Sparkles, Radio, Youtube,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
 import {
@@ -115,7 +115,7 @@ interface ContentEditorProps {
 }
 
 const getMediaTypes = (t: TFunction) => [
-    { type: "video" as const, label: t("dash.teacher.topics.editor.mediaType.video"), icon: Video },
+    { type: "video" as const, label: t("dash.teacher.topics.editor.mediaType.video"), icon: Youtube },
     { type: "image" as const, label: t("dash.teacher.topics.editor.mediaType.image"), icon: Image },
     { type: "text" as const, label: t("dash.teacher.topics.editor.mediaType.text"), icon: FileText },
     { type: "pdf" as const, label: t("dash.teacher.topics.editor.mediaType.pdf"), icon: FileType },

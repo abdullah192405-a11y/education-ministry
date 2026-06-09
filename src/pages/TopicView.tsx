@@ -21,7 +21,7 @@ import {
 import {
     CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Play, Eye, Clock,
     BookOpen, Gamepad2,
-    FileText, Image as ImageIcon, AlignLeft, Video,
+    FileText, Image as ImageIcon, AlignLeft, Youtube,
     Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
 } from "lucide-react";
 import {
@@ -567,7 +567,7 @@ const TopicView = () => {
     const getMediaIcon = (type: string) => {
         switch (type) {
             case "live_session": return <Radio className="w-4 h-4" />;
-            case "video": return <Video className="w-4 h-4" />;
+            case "video": return <Youtube className="w-4 h-4" />;
             case "image": return <ImageIcon className="w-4 h-4" />;
             case "text": return <AlignLeft className="w-4 h-4" />;
             case "pdf": return <FileText className="w-4 h-4" />;
