@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     FileText, Sparkles, AlertCircle, CheckCircle2,
     Loader2, X, Wand2, Video, Image, FileType,
-    Database, Brain, Zap, Headphones, Link2
+    Database, Brain, Zap, Headphones, Link2, Play
 } from "lucide-react";
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
@@ -19,7 +19,7 @@ import { generateGeminiContent } from "@/lib/geminiClient";
 import { normalizeChallengeItemType } from "@/lib/challengeItemNormalize";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
-import { cn } from "@/lib/utils";
+import { cn, getYouTubeId, getYouTubeThumbnail } from "@/lib/utils";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import {
     aiGenContext,
@@ -156,6 +156,57 @@ const AIQuestionGeneratorFromResources = ({
             case "link": return t("dash.teacher.aiGen.resources.media.link");
             default: return type;
         }
+    };
+
+    const getImageResourceSrc = (resource: ContentMedia): string | null => {
+        if (resource.type !== "image") return null;
+        if (resource.url) return resource.url;
+        if (resource.imageBase64) return `data:image/jpeg;base64,${resource.imageBase64}`;
+        return null;
+    };
+
+    const getVideoThumbnailSrc = (resource: ContentMedia): string | null => {
+        if (resource.type !== "video" || !resource.url) return null;
+        return getYouTubeThumbnail(resource.url);
+    };
+
+    const renderResourceTypeIcon = (item: ContentMedia) => (
+        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            {getMediaIcon(item.type)}
+        </div>
+    );
+
+    const renderResourceContentPreview = (item: ContentMedia) => {
+        const imageSrc = getImageResourceSrc(item);
+        if (imageSrc) {
+            return (
+                <img
+                    src={imageSrc}
+                    alt={item.caption || item.fileName || t("dash.teacher.topics.editor.imagePreview")}
+                    className="h-28 w-full max-w-xs rounded-md border object-contain bg-muted/30"
+                    loading="lazy"
+                />
+            );
+        }
+
+        const videoThumb = getVideoThumbnailSrc(item);
+        if (videoThumb) {
+            return (
+                <div className="relative h-28 w-full max-w-xs overflow-hidden rounded-md border">
+                    <img
+                        src={videoThumb}
+                        alt={item.caption || t("dash.teacher.topics.editor.videoPreview")}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Play className="w-5 h-5 text-white fill-current" />
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
     };
 
     const normalizeExternalUrl = (raw?: string): string => {
@@ -844,40 +895,51 @@ const AIQuestionGeneratorFromResources = ({
                                 </p>
                             </Card>
                         ) : (
-                            <div className="space-y-2 max-h-64 overflow-y-auto p-2 rounded-lg border bg-muted/20">
-                                {media.map((item, index) => (
-                                    <div
-                                        key={index}
-                                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${selectedMedia.includes(index)
-                                            ? "bg-primary/10 border border-primary/30"
-                                            : "bg-background hover:bg-muted/50 border border-transparent"
-                                            }`}
-                                        onClick={() => toggleMediaSelection(index)}
-                                    >
-                                        <Checkbox
-                                            checked={selectedMedia.includes(index)}
-                                            onCheckedChange={() => toggleMediaSelection(index)}
-                                        />
-                                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                                            {getMediaIcon(item.type)}
-                                        </div>
-                                        <div className={cn("flex-1 min-w-0", textAlign)}>
-                                            <div className="font-medium text-sm">
-                                                {item.caption || item.fileName || getMediaLabel(item.type)}
+                            <div className="space-y-2 max-h-96 overflow-y-auto p-2 rounded-lg border bg-muted/20">
+                                {media.map((item, index) => {
+                                    const imageSrc = getImageResourceSrc(item);
+                                    return (
+                                        <div
+                                            key={index}
+                                            className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${selectedMedia.includes(index)
+                                                ? "bg-primary/10 border border-primary/30"
+                                                : "bg-background hover:bg-muted/50 border border-transparent"
+                                                }`}
+                                            onClick={() => toggleMediaSelection(index)}
+                                        >
+                                            <Checkbox
+                                                checked={selectedMedia.includes(index)}
+                                                onCheckedChange={() => toggleMediaSelection(index)}
+                                                className="mt-1"
+                                            />
+                                            {renderResourceTypeIcon(item)}
+                                            <div className={cn("flex-1 min-w-0 space-y-2", textAlign)}>
+                                                <div>
+                                                    <div className="font-medium text-sm">
+                                                        {item.caption || item.fileName || getMediaLabel(item.type)}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground truncate">
+                                                        {item.type === "text" && item.content &&
+                                                            `${item.content.substring(0, 50)}...`}
+                                                        {item.type === "pdf" && item.fileName}
+                                                        {item.type === "video" && item.url && (
+                                                            getYouTubeId(item.url)
+                                                                ? t("dash.teacher.topics.editor.youtubeVideo")
+                                                                : item.url.substring(0, 40) + "..."
+                                                        )}
+                                                        {item.type === "image" && !imageSrc && item.url?.substring(0, 40) + "..."}
+                                                        {item.type === "audio" && (item.fileName || item.url?.substring(0, 40))}
+                                                        {item.type === "link" && item.url?.substring(0, 40) + "..."}
+                                                    </div>
+                                                </div>
+                                                {renderResourceContentPreview(item)}
                                             </div>
-                                            <div className="text-xs text-muted-foreground truncate">
-                                                {item.type === "text" && item.content &&
-                                                    `${item.content.substring(0, 50)}...`}
-                                                {item.type === "pdf" && item.fileName}
-                                                {item.type === "video" && item.url?.substring(0, 40) + "..."}
-                                                {item.type === "image" && item.url?.substring(0, 40) + "..."}
-                                            </div>
+                                            <Badge variant="secondary" className="text-xs shrink-0">
+                                                {getMediaLabel(item.type)}
+                                            </Badge>
                                         </div>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {getMediaLabel(item.type)}
-                                        </Badge>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
 

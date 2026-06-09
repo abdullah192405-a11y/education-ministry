@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,8 +54,18 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
     const [prompt, setPrompt] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState("");
+    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
     const { toast } = useToast();
     const { t, dir, language, isRtl, textAlign } = useDashboardLocale();
+
+    useEffect(() => {
+        if (file && fileType === "image") {
+            const url = URL.createObjectURL(file);
+            setImagePreviewUrl(url);
+            return () => URL.revokeObjectURL(url);
+        }
+        setImagePreviewUrl(null);
+    }, [file, fileType]);
 
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -175,6 +185,16 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                 {t("dash.teacher.aiGen.upload.chooseFile")}
             </Button>
             {renderFileSelection()}
+            {kind === "image" && imagePreviewUrl && (
+                <div className="rounded-md border bg-background p-2 space-y-2">
+                    <p className="text-xs font-medium">{t("dash.teacher.topics.editor.imagePreview")}</p>
+                    <img
+                        src={imagePreviewUrl}
+                        alt={t("dash.teacher.topics.editor.imagePreview")}
+                        className="w-full max-h-64 rounded-md object-contain bg-muted/30"
+                    />
+                </div>
+            )}
             {!file && (
                 <p className={cn("text-xs text-muted-foreground flex items-start gap-2", textAlign)}>
                     <Icon className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground/70" />
