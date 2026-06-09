@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, useCallback, useLayoutEffect } from "react";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TFunction } from "@/contexts/LanguageContext";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ import {
     type TeacherSoundCategory,
 } from "@/lib/teacherUploadedSounds";
 import { cn, getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
+import ContentResourceThumbnail from "./ContentResourceThumbnail";
 import {
     generateImagePromptFromAnalyzedResources,
     generateImageBytesFromPrompt,
@@ -185,6 +186,78 @@ const getMediaTypeLabel = (type: EditorMediaType, t: TFunction): string => {
     if (type === "audio") return t("dash.teacher.topics.editor.mediaType.audio");
     if (type === "link") return t("dash.teacher.topics.editor.mediaType.link");
     return t("dash.teacher.topics.editor.mediaType.live");
+};
+
+type DraggableMediaResourceCardProps = {
+    media: ContentMedia;
+    cardTitle: string;
+    typeLabel: string;
+    t: TFunction;
+    onEdit: () => void;
+    onDelete: () => void;
+};
+
+const stopDragOnInteractive = (e: React.PointerEvent) => {
+    e.stopPropagation();
+};
+
+const DraggableMediaResourceCard = ({
+    media,
+    cardTitle,
+    typeLabel,
+    t,
+    onEdit,
+    onDelete,
+}: DraggableMediaResourceCardProps) => {
+    return (
+        <Reorder.Item
+            value={media}
+            className="list-none cursor-grab active:cursor-grabbing touch-none"
+            whileDrag={{ scale: 1.03, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", cursor: "grabbing" }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            aria-label={t("dash.teacher.topics.editor.dragResource")}
+        >
+            <Card className="overflow-hidden h-full select-none">
+                <div className="relative h-20 w-full border-b">
+                    <GripVertical className="absolute top-1.5 end-1.5 z-10 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
+                    <ContentResourceThumbnail item={media} t={t} interactive />
+                </div>
+                <CardContent className="p-2 space-y-1.5">
+                    <div>
+                        <p className="text-xs font-medium leading-tight line-clamp-2" title={cardTitle}>
+                            {cardTitle}
+                        </p>
+                        <Badge variant="secondary" className="mt-1 text-[10px] px-1.5 py-0 h-4">
+                            {typeLabel}
+                        </Badge>
+                    </div>
+                    <div
+                        className="flex items-center justify-end gap-0.5 border-t pt-1.5 cursor-default"
+                        onPointerDown={stopDragOnInteractive}
+                    >
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 cursor-pointer"
+                            onClick={onEdit}
+                            onPointerDown={stopDragOnInteractive}
+                        >
+                            <Edit className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive cursor-pointer"
+                            onClick={onDelete}
+                            onPointerDown={stopDragOnInteractive}
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        </Reorder.Item>
+    );
 };
 
 const getMediaOptionLabel = (media: ContentMedia, index: number, t: TFunction): string => {
@@ -873,16 +946,30 @@ const ContentEditor = ({
         setMediaList(mediaList.filter((_, i) => i !== index));
     };
 
-    const moveMedia = (index: number, direction: "up" | "down") => {
-        if (direction === "up" && index > 0) {
-            const newList = [...mediaList];
-            [newList[index - 1], newList[index]] = [newList[index], newList[index - 1]];
-            setMediaList(newList);
-        } else if (direction === "down" && index < mediaList.length - 1) {
-            const newList = [...mediaList];
-            [newList[index], newList[index + 1]] = [newList[index + 1], newList[index]];
-            setMediaList(newList);
+    const handleMediaReorder = (newList: ContentMedia[]) => {
+        const indexMap = new Map<number, number>();
+        mediaList.forEach((item, oldIndex) => {
+            const newIndex = newList.indexOf(item);
+            if (newIndex !== -1) indexMap.set(oldIndex, newIndex);
+        });
+
+        if (editingMediaIndex !== null) {
+            const newIndex = indexMap.get(editingMediaIndex);
+            if (newIndex !== undefined && newIndex !== editingMediaIndex) {
+                setEditingMediaIndex(newIndex);
+            }
         }
+
+        setAiImageSourceSelections((prev) =>
+            prev
+                .map((value) => {
+                    const newIndex = indexMap.get(Number(value));
+                    return newIndex !== undefined ? String(newIndex) : null;
+                })
+                .filter((value): value is string => value !== null)
+        );
+
+        setMediaList(newList);
     };
 
     const questionEditorRef = useRef<QuestionGameEditorHandle>(null);
@@ -1976,87 +2063,42 @@ const ContentEditor = ({
                             </Card>
                         ))}
 
-                        {mediaList.map((media, index) => (
-                            <Card key={index} className="overflow-hidden">
-                                <CardContent className="p-4">
-                                    <div className="flex items-start gap-4">
-                                        <div className="flex flex-col gap-1">
-                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveMedia(index, "up")} disabled={index === 0}>
-                                                <ChevronUp className="w-4 h-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveMedia(index, "down")} disabled={index === mediaList.length - 1}>
-                                                <ChevronDown className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-
-                                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                                            {media.type === "video" && <Video className="w-5 h-5 text-primary" />}
-                                            {media.type === "image" && <Image className="w-5 h-5 text-secondary" />}
-                                            {media.type === "text" && <FileText className="w-5 h-5 text-muted-foreground" />}
-                                            {media.type === "pdf" && <FileType className="w-5 h-5 text-orange-500" />}
-                                            {media.type === "audio" && <Headphones className="w-5 h-5 text-violet-500" />}
-                                            {media.type === "link" && <Link2 className="w-5 h-5 text-sky-600" />}
-                                        </div>
-
-                                        <div className="flex-1">
-                                            <div className="font-medium text-sm">
-                                                {getMediaTypeLabel(media.type, t)}
-                                            </div>
-                                            {media.type === "image" && media.url && (
-                                                <div className="mt-2">
-                                                    <img
-                                                        src={media.url}
-                                                        alt={media.caption || t("dash.teacher.topics.editor.attachedImage")}
-                                                        className="h-24 w-36 rounded-md border object-cover"
-                                                        loading="lazy"
-                                                    />
-                                                </div>
-                                            )}
-                                            {media.type === "video" && media.url && isYouTubeUrl(media.url) && (
-                                                <div className="relative mt-2 h-24 w-36 overflow-hidden rounded-md border">
-                                                    <img
-                                                        src={getYouTubeThumbnail(media.url) || ""}
-                                                        alt={media.caption || t("dash.teacher.topics.editor.videoPreview")}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                                        <Play className="w-5 h-5 text-white fill-current" />
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <div className="mt-2 text-xs text-muted-foreground truncate max-w-md">
-                                                {media.type === "text"
-                                                    ? (media.content?.substring(0, 100) || "") + "..."
-                                                    : media.type === "pdf"
-                                                        ? media.fileName || t("dash.teacher.topics.editor.pdfFile")
-                                                        : media.type === "audio"
-                                                            ? media.fileName || t("dash.teacher.topics.editor.audioFile")
-                                                            : media.type === "link"
-                                                                ? media.url
-                                                                : media.type === "video" && isYouTubeUrl(media.url)
-                                                                    ? t("dash.teacher.topics.editor.youtubeVideo")
-                                                                    : media.url}
-                                            </div>
-                                            {media.caption && <div className="text-xs text-primary mt-1">{media.caption}</div>}
-                                        </div>
-
-                                        <div className="flex gap-1">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                                                setEditingMediaIndex(index);
-                                                setEditingLivePendingIndex(null);
-                                                setNewMedia(mediaList[index] as EditorNewMedia);
-                                                setShowAddMedia(true);
-                                            }}>
-                                                <Edit className="w-4 h-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMedia(index)}>
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                        {mediaList.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs text-muted-foreground">
+                                    {t("dash.teacher.topics.editor.mediaDragHint")}
+                                </p>
+                                <Reorder.Group
+                                    axis="y"
+                                    values={mediaList}
+                                    onReorder={handleMediaReorder}
+                                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 list-none p-0 m-0"
+                                >
+                                    {mediaList.map((media, index) => {
+                                        const cardTitle =
+                                            media.caption?.trim() ||
+                                            media.fileName?.trim() ||
+                                            getMediaTypeLabel(media.type, t);
+                                        return (
+                                            <DraggableMediaResourceCard
+                                                key={media.id ? String(media.id) : `media-${index}-${media.type}-${media.url || media.fileName || ""}`}
+                                                media={media}
+                                                cardTitle={cardTitle}
+                                                typeLabel={getMediaTypeLabel(media.type, t)}
+                                                t={t}
+                                                onEdit={() => {
+                                                    setEditingMediaIndex(index);
+                                                    setEditingLivePendingIndex(null);
+                                                    setNewMedia(mediaList[index] as EditorNewMedia);
+                                                    setShowAddMedia(true);
+                                                }}
+                                                onDelete={() => deleteMedia(index)}
+                                            />
+                                        );
+                                    })}
+                                </Reorder.Group>
+                            </div>
+                        )}
 
                         {content?.id && (
                             <TopicLiveSessionsManager

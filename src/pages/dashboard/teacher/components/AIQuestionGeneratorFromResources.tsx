@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     FileText, Sparkles, AlertCircle, CheckCircle2,
     Loader2, X, Wand2, Video, Image, FileType,
-    Database, Brain, Zap, Headphones, Link2, Play
+    Database, Brain, Zap, Headphones, Link2,
 } from "lucide-react";
 import type { ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
 import { useToast } from "@/components/ui/use-toast";
@@ -19,7 +19,8 @@ import { generateGeminiContent } from "@/lib/geminiClient";
 import { normalizeChallengeItemType } from "@/lib/challengeItemNormalize";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
-import { cn, getYouTubeThumbnail } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import ContentResourceThumbnail, { normalizeResourceUrl } from "./ContentResourceThumbnail";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import {
     aiGenContext,
@@ -158,184 +159,6 @@ const AIQuestionGeneratorFromResources = ({
         }
     };
 
-    const getImageResourceSrc = (resource: ContentMedia): string | null => {
-        if (resource.type !== "image") return null;
-        if (resource.url) return resource.url;
-        if (resource.imageBase64) return `data:image/jpeg;base64,${resource.imageBase64}`;
-        return null;
-    };
-
-    const getVideoThumbnailSrc = (resource: ContentMedia): string | null => {
-        if (resource.type !== "video" || !resource.url) return null;
-        return getYouTubeThumbnail(resource.url);
-    };
-
-    const normalizeExternalUrl = (raw?: string): string => {
-        const trimmed = (raw || "").trim();
-        if (!trimmed) return "";
-        if (/^https?:\/\//i.test(trimmed)) return trimmed;
-        return `https://${trimmed}`;
-    };
-
-    const stopCardToggle = (e: React.MouseEvent | React.KeyboardEvent) => {
-        e.stopPropagation();
-    };
-
-    const getLinkHostname = (raw?: string): string => {
-        const url = normalizeExternalUrl(raw);
-        if (!url) return "";
-        try {
-            return new URL(url).hostname.replace(/^www\./, "");
-        } catch {
-            return url;
-        }
-    };
-
-    const renderResourceThumbnail = (item: ContentMedia) => {
-        switch (item.type) {
-            case "image": {
-                const imageSrc = getImageResourceSrc(item);
-                if (!imageSrc) {
-                    return (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-blue-500/10 p-1.5">
-                            <Image className="w-5 h-5 text-blue-500" />
-                            <span className="text-[9px] text-muted-foreground line-clamp-2 text-center break-all px-1">
-                                {item.url || t("dash.teacher.topics.editor.attachedImage")}
-                            </span>
-                        </div>
-                    );
-                }
-                return (
-                    <img
-                        src={imageSrc}
-                        alt={item.caption || item.fileName || t("dash.teacher.topics.editor.imagePreview")}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                    />
-                );
-            }
-            case "video": {
-                const videoThumb = getVideoThumbnailSrc(item);
-                if (videoThumb) {
-                    return (
-                        <>
-                            <img
-                                src={videoThumb}
-                                alt={item.caption || t("dash.teacher.topics.editor.videoPreview")}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                                <Play className="w-4 h-4 text-white fill-current" />
-                            </div>
-                        </>
-                    );
-                }
-                if (item.url) {
-                    return (
-                        <div className="relative h-full w-full bg-black/80" onClick={stopCardToggle}>
-                            <video
-                                src={item.url}
-                                className="h-full w-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
-                                controls
-                            />
-                        </div>
-                    );
-                }
-                return (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
-                        <Video className="w-5 h-5 text-red-500" />
-                        <span className="text-[9px] text-muted-foreground">{t("dash.teacher.topics.editor.mediaType.video")}</span>
-                    </div>
-                );
-            }
-            case "pdf": {
-                const pdfSrc = item.url
-                    ? `${item.url}#page=1&view=FitH`
-                    : item.pdfBase64
-                        ? `data:application/pdf;base64,${item.pdfBase64}`
-                        : null;
-                if (pdfSrc) {
-                    return (
-                        <div className="relative h-full w-full bg-orange-500/5" onClick={stopCardToggle}>
-                            <embed
-                                src={pdfSrc}
-                                type="application/pdf"
-                                className="h-full w-full pointer-events-none"
-                            />
-                            <div className="absolute inset-x-0 bottom-0 bg-orange-600/85 px-1 py-0.5 pointer-events-none">
-                                <p className="text-[8px] text-white truncate text-center">
-                                    {item.fileName || t("dash.teacher.topics.editor.pdfFile")}
-                                </p>
-                            </div>
-                        </div>
-                    );
-                }
-                return (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-orange-500/10 p-1.5">
-                        <FileType className="w-5 h-5 text-orange-500" />
-                        <span className="text-[9px] text-muted-foreground line-clamp-2 text-center break-all px-1">
-                            {item.fileName || t("dash.teacher.topics.editor.pdfFile")}
-                        </span>
-                    </div>
-                );
-            }
-            case "audio":
-                if (item.url) {
-                    return (
-                        <div
-                            className="flex h-full w-full flex-col items-center justify-center gap-1 bg-violet-500/10 p-1"
-                            onClick={stopCardToggle}
-                        >
-                            <Headphones className="w-4 h-4 text-violet-500 shrink-0" />
-                            <audio controls preload="none" src={item.url} className="h-8 w-full min-w-0" />
-                        </div>
-                    );
-                }
-                return (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-violet-500/10 p-1.5">
-                        <Headphones className="w-5 h-5 text-violet-500" />
-                        <span className="text-[9px] text-muted-foreground line-clamp-2 text-center break-all px-1">
-                            {item.fileName || t("dash.teacher.topics.editor.audioFile")}
-                        </span>
-                    </div>
-                );
-            case "text":
-                return (
-                    <div className="h-full w-full overflow-hidden bg-green-500/10 p-1.5">
-                        <p className="text-[9px] leading-tight text-foreground/80 line-clamp-4 whitespace-pre-wrap break-words">
-                            {item.content?.trim() || t("dash.teacher.topics.editor.mediaType.text")}
-                        </p>
-                    </div>
-                );
-            case "link": {
-                const host = getLinkHostname(item.url);
-                return (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-sky-500/10 p-1.5 text-center">
-                        <Link2 className="w-5 h-5 text-sky-600 shrink-0" />
-                        <span className="text-[9px] font-medium text-sky-700 dark:text-sky-400 line-clamp-1 break-all px-1">
-                            {host || t("dash.teacher.topics.editor.mediaType.link")}
-                        </span>
-                        {item.url && (
-                            <span className="text-[8px] text-muted-foreground line-clamp-2 break-all px-1">
-                                {item.url}
-                            </span>
-                        )}
-                    </div>
-                );
-            }
-            default:
-                return (
-                    <div className="flex h-full w-full items-center justify-center bg-muted">
-                        {getMediaIcon(item.type)}
-                    </div>
-                );
-        }
-    };
-
     const guessMimeTypeFromUrl = (url: string): string => {
         const lower = url.toLowerCase();
         if (lower.endsWith(".wav")) return "audio/wav";
@@ -399,7 +222,7 @@ const AIQuestionGeneratorFromResources = ({
                         aiGenContext.resourceLink(
                             language,
                             resource.caption || aiGenContext.externalLinkDefaultCaption(language),
-                            normalizeExternalUrl(resource.url)
+                            normalizeResourceUrl(resource.url)
                         )
                     );
                     break;
@@ -495,7 +318,7 @@ const AIQuestionGeneratorFromResources = ({
         for (const resource of selectedResources) {
             if (resource.type !== "audio" || !resource.url) continue;
             try {
-                const audioUrl = normalizeExternalUrl(resource.url);
+                const audioUrl = normalizeResourceUrl(resource.url);
                 const response = await fetch(audioUrl);
                 if (!response.ok) continue;
                 const blob = await response.blob();
@@ -520,7 +343,7 @@ const AIQuestionGeneratorFromResources = ({
 
         const chunks: string[] = [];
         for (const link of links) {
-            const normalizedUrl = normalizeExternalUrl(link.url);
+            const normalizedUrl = normalizeResourceUrl(link.url);
             const caption = link.caption?.trim() || aiGenContext.externalLinkDefaultCaption(language);
             let extractedText = "";
             try {
@@ -1045,8 +868,8 @@ const AIQuestionGeneratorFromResources = ({
                                                     className="h-4 w-4 bg-background/90 border-background shadow-sm"
                                                 />
                                             </div>
-                                            <div className="relative h-20 w-full overflow-hidden border-b bg-muted/30">
-                                                {renderResourceThumbnail(item)}
+                                            <div className="relative h-20 w-full border-b">
+                                                <ContentResourceThumbnail item={item} t={t} interactive />
                                             </div>
                                             <div className={cn("flex flex-col gap-1 p-2 min-w-0", textAlign)}>
                                                 <p className="text-xs font-medium leading-tight line-clamp-2" title={title}>
