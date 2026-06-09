@@ -6,7 +6,7 @@ import {
     WHEEL_SPIN_DURATION_SEC,
     WHEEL_SPIN_EASE,
 } from "@/lib/wheelSpinSounds";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import {
     Plus, X, Save, Trash2, ChevronUp, ChevronDown,
     HelpCircle, Gamepad2, CheckCircle, XCircle,
     Clock, Star, Sparkles, ListOrdered, ArrowLeftRight, Volume2,
-    Target, CircleDot, RotateCcw, Wand2, Database, FileUp, AlertTriangle,
+    Target, CircleDot, RotateCcw, Wand2, Database, FileUp, AlertTriangle, GripVertical,
 } from "lucide-react";
 import { QuestionAttachmentField } from "./QuestionAttachmentField";
 import type { QuestionAttachmentValue } from "./QuestionAttachmentField";
@@ -805,16 +805,45 @@ const OpenAnswerFields = ({ item, index, updateItem }: FieldProps) => {
     );
 };
 
+type OrderItemRow = { id: string; text: string };
+
+const stopOrderRowDrag = (e: React.PointerEvent) => {
+    e.stopPropagation();
+};
+
 const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
     const { t } = useDashboardLocale();
     const orderItems = item.orderItems || [];
+    const rowKeysRef = useRef<string[]>([]);
 
-    const addOrderItem = () => {
-        updateItem(index, { orderItems: [...orderItems, ""] });
+    while (rowKeysRef.current.length < orderItems.length) {
+        rowKeysRef.current.push(`order-row-${index}-${rowKeysRef.current.length}-${crypto.randomUUID()}`);
+    }
+    if (rowKeysRef.current.length > orderItems.length) {
+        rowKeysRef.current.splice(orderItems.length);
+    }
+
+    const rows: OrderItemRow[] = orderItems.map((text, i) => ({
+        id: rowKeysRef.current[i],
+        text,
+    }));
+
+    const syncOrderItems = (nextRows: OrderItemRow[]) => {
+        rowKeysRef.current = nextRows.map((row) => row.id);
+        updateItem(index, { orderItems: nextRows.map((row) => row.text) });
     };
 
-    const removeOrderItem = (i: number) => {
-        updateItem(index, { orderItems: orderItems.filter((_, idx) => idx !== i) });
+    const addOrderItem = () => {
+        syncOrderItems([...rows, { id: `order-row-${index}-${rows.length}-${crypto.randomUUID()}`, text: "" }]);
+    };
+
+    const removeOrderItem = (rowId: string) => {
+        if (rows.length <= 2) return;
+        syncOrderItems(rows.filter((row) => row.id !== rowId));
+    };
+
+    const updateRowText = (rowId: string, text: string) => {
+        syncOrderItems(rows.map((row) => (row.id === rowId ? { ...row, text } : row)));
     };
 
     return (
@@ -822,37 +851,54 @@ const OrderQuestionsFields = ({ item, index, updateItem }: FieldProps) => {
             <label className="text-sm font-medium mb-2 block">
                 {t("dash.teacher.topics.qe.orderItemsLabel")}
             </label>
-            <div className="space-y-2">
-                {orderItems.map((item_text, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                        <span className="w-8 h-8 rounded bg-muted flex items-center justify-center font-bold text-sm">
-                            {i + 1}
-                        </span>
-                        <Input
-                            value={item_text}
-                            onChange={(e) => {
-                                const items = [...orderItems];
-                                items[i] = e.target.value;
-                                updateItem(index, { orderItems: items });
-                            }}
-                            placeholder={t("dash.teacher.topics.qe.itemN", { n: i + 1 })}
-                        />
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive"
-                            onClick={() => removeOrderItem(i)}
-                            disabled={orderItems.length <= 2}
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </Button>
-                    </div>
+            <p className="text-xs text-muted-foreground mb-2">
+                {t("dash.teacher.topics.qe.orderItemsDragHint")}
+            </p>
+            <Reorder.Group
+                axis="y"
+                values={rows}
+                onReorder={syncOrderItems}
+                className="space-y-2 list-none p-0 m-0"
+            >
+                {rows.map((row, i) => (
+                    <Reorder.Item
+                        key={row.id}
+                        value={row}
+                        className="list-none cursor-grab active:cursor-grabbing touch-none select-none"
+                        whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", cursor: "grabbing" }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        aria-label={t("dash.teacher.topics.editor.dragResource")}
+                    >
+                        <div className="flex items-center gap-2 rounded-lg border bg-card p-2">
+                            <GripVertical className="w-4 h-4 shrink-0 text-muted-foreground/50 pointer-events-none" />
+                            <span className="w-8 h-8 rounded bg-muted flex items-center justify-center font-bold text-sm shrink-0">
+                                {i + 1}
+                            </span>
+                            <Input
+                                value={row.text}
+                                onChange={(e) => updateRowText(row.id, e.target.value)}
+                                onPointerDown={stopOrderRowDrag}
+                                placeholder={t("dash.teacher.topics.qe.itemN", { n: i + 1 })}
+                                className="cursor-text"
+                            />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive shrink-0 cursor-pointer"
+                                onClick={() => removeOrderItem(row.id)}
+                                onPointerDown={stopOrderRowDrag}
+                                disabled={rows.length <= 2}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    </Reorder.Item>
                 ))}
-                <Button variant="outline" size="sm" onClick={addOrderItem} className="gap-1">
-                    <Plus className="w-4 h-4" />
-                    {t("dash.teacher.topics.qe.addItem")}
-                </Button>
-            </div>
+            </Reorder.Group>
+            <Button variant="outline" size="sm" onClick={addOrderItem} className="gap-1 mt-2">
+                <Plus className="w-4 h-4" />
+                {t("dash.teacher.topics.qe.addItem")}
+            </Button>
             <p className="text-xs text-muted-foreground mt-2">
                 {t("dash.teacher.topics.qe.shuffleHint")}
             </p>

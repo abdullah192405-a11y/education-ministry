@@ -1,4 +1,4 @@
-import { Reorder, useDragControls } from "framer-motion";
+import { Reorder } from "framer-motion";
 import { GripVertical, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OrderPiece } from "@/lib/challengeItemNormalize";
@@ -24,8 +24,8 @@ function DraggableRow({
     correctItems?: string[];
     disabled?: boolean;
 }) {
-    const dragControls = useDragControls();
     const isCorrectPosition = showResult && correctItems?.[index] === piece.text;
+    const canDrag = !showResult && !disabled;
 
     let rowClass =
         "flex w-full items-center gap-3 p-4 rounded-xl border-2 text-right transition-all ";
@@ -41,22 +41,18 @@ function DraggableRow({
     return (
         <Reorder.Item
             value={piece}
-            dragListener={false}
-            dragControls={dragControls}
-            className={cn("list-none", disabled && "pointer-events-none")}
-            whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}
+            className={cn(
+                "list-none",
+                disabled && "pointer-events-none",
+                canDrag && "cursor-grab active:cursor-grabbing touch-none select-none"
+            )}
+            whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", cursor: "grabbing" }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            aria-label="اسحب لإعادة الترتيب"
         >
             <div className={rowClass}>
-                {!showResult && !disabled && (
-                    <button
-                        type="button"
-                        className="cursor-grab touch-none rounded-lg p-2 text-muted-foreground hover:bg-muted active:cursor-grabbing shrink-0"
-                        onPointerDown={(e) => dragControls.start(e)}
-                        aria-label="اسحب لإعادة الترتيب"
-                    >
-                        <GripVertical className="h-5 w-5" />
-                    </button>
+                {canDrag && (
+                    <GripVertical className="h-5 w-5 shrink-0 text-muted-foreground/50 pointer-events-none" />
                 )}
 
                 <span
