@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { useSound } from "@/hooks/useSound";
 import {
-    resolveWheelSpinSoundUrl,
+    resolveWheelSpinSoundOverride,
     WHEEL_SPIN_DURATION_MS,
     WHEEL_SPIN_DURATION_SEC,
     WHEEL_SPIN_EASE,
@@ -1028,7 +1028,7 @@ const WheelSpinPreview = ({
     const [resultIdx, setResultIdx] = useState<number | null>(null);
 
     const soundOverrides = useMemo(
-        () => ({ wheel_spin: resolveWheelSpinSoundUrl(wheelSpinSoundUrl) }),
+        () => ({ wheel_spin: resolveWheelSpinSoundOverride(wheelSpinSoundUrl) }),
         [wheelSpinSoundUrl]
     );
     const { playWheelSpin } = useSound(true, soundOverrides);

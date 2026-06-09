@@ -72,11 +72,12 @@ import {
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import {
-    resolveWheelSpinSoundUrl,
+    resolveWheelSpinSoundOverride,
     WHEEL_SPIN_DURATION_MS,
     WHEEL_SPIN_DURATION_SEC,
     WHEEL_SPIN_EASE,
 } from "@/lib/wheelSpinSounds";
+import { isSoundDisabled, resolveBackgroundSoundOverride } from "@/lib/topicSoundSettings";
 
 type GameState = "intro" | "playing" | "results";
 
@@ -187,11 +188,13 @@ const SingleChallenge = () => {
     const [showAnalysis, setShowAnalysis] = useState(false);
     const [earnedSessionBadges, setEarnedSessionBadges] = useState<Badge[]>([]);
 
+    const isBackgroundSoundDisabled = isSoundDisabled(content?.answering_background_sound_url);
+
     const soundOverrides = useMemo(() => ({
         correct: content?.correct_sound_url?.trim() || undefined,
         wrong: content?.wrong_sound_url?.trim() || undefined,
-        background: content?.answering_background_sound_url?.trim() || undefined,
-        wheel_spin: resolveWheelSpinSoundUrl(content?.wheel_spin_sound_url),
+        background: resolveBackgroundSoundOverride(content?.answering_background_sound_url),
+        wheel_spin: resolveWheelSpinSoundOverride(content?.wheel_spin_sound_url),
     }), [content?.correct_sound_url, content?.wrong_sound_url, content?.answering_background_sound_url, content?.wheel_spin_sound_url]);
 
     // Initialize sound system
@@ -242,12 +245,12 @@ const SingleChallenge = () => {
     }, [currentIndex, gameState]);
 
     useEffect(() => {
-        if (gameState === "playing" && musicEnabled) {
+        if (gameState === "playing" && musicEnabled && !isBackgroundSoundDisabled) {
             play("background");
             return;
         }
         stop("background");
-    }, [gameState, musicEnabled, play, stop]);
+    }, [gameState, musicEnabled, isBackgroundSoundDisabled, play, stop]);
 
     const handleStartGame = () => {
         const hasFullProfile = !!currentUser?.id && !!studentProfile?.id;
@@ -2450,30 +2453,32 @@ const SingleChallenge = () => {
             <div className="absolute bottom-20 left-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
 
             {/* Music Toggle Button */}
-            <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                    setMusicEnabled(prev => !prev);
-                }}
-                className={`fixed left-4 z-50 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all ${
-                    gameState === "intro"
-                        ? "top-24 w-14 h-14"
-                        : "top-4 w-14 h-14 max-sm:top-auto max-sm:bottom-4 max-sm:w-12 max-sm:h-12"
-                }`}
-            >
-                <AnimatePresence mode="wait">
-                    {musicEnabled ? (
-                        <motion.div key="on" initial={{ rotate: -180, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 180, opacity: 0 }}>
-                            <Volume2 className="w-6 h-6" />
-                        </motion.div>
-                    ) : (
-                        <motion.div key="off" initial={{ rotate: 180, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -180, opacity: 0 }}>
-                            <VolumeX className="w-6 h-6" />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </motion.button>
+            {!isBackgroundSoundDisabled && (
+                <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                        setMusicEnabled(prev => !prev);
+                    }}
+                    className={`fixed left-4 z-50 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-2xl flex items-center justify-center hover:shadow-primary/50 transition-all ${
+                        gameState === "intro"
+                            ? "top-24 w-14 h-14"
+                            : "top-4 w-14 h-14 max-sm:top-auto max-sm:bottom-4 max-sm:w-12 max-sm:h-12"
+                    }`}
+                >
+                    <AnimatePresence mode="wait">
+                        {musicEnabled ? (
+                            <motion.div key="on" initial={{ rotate: -180, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 180, opacity: 0 }}>
+                                <Volume2 className="w-6 h-6" />
+                            </motion.div>
+                        ) : (
+                            <motion.div key="off" initial={{ rotate: 180, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -180, opacity: 0 }}>
+                                <VolumeX className="w-6 h-6" />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </motion.button>
+            )}
 
             {gameState === "intro" && <Header />}
             <main className={`relative z-10 ${gameState === "intro" ? "pt-24 pb-16" : "pt-6 pb-16 max-sm:pb-24"}`}>

@@ -69,7 +69,7 @@ import {
 } from "@/lib/challengeQuestionAnalytics";
 import type { ChallengeQuestion } from "@/data/challengeTypes";
 import { selectValueToPresetFields, type StudentChallengePresetValue } from "@/lib/topicChallengePreset";
-import { resolveWheelSpinSoundUrl } from "@/lib/wheelSpinSounds";
+import { isSoundDisabled, normalizeWheelSpinSoundSelection } from "@/lib/wheelSpinSounds";
 import { sortTopicsByOrder, getTopicSortOrder } from "@/lib/sortTopics";
 import ContentEditor from "./ContentEditor";
 import {
@@ -1459,7 +1459,7 @@ const TeacherTopicsTab = ({
                         correctSoundUrl: editingTopic.correct_sound_url || "",
                         wrongSoundUrl: editingTopic.wrong_sound_url || "",
                         answeringBackgroundSoundUrl: editingTopic.answering_background_sound_url || "",
-                        wheelSpinSoundUrl: resolveWheelSpinSoundUrl(editingTopic.wheel_spin_sound_url),
+                        wheelSpinSoundUrl: normalizeWheelSpinSoundSelection(editingTopic.wheel_spin_sound_url),
                         discussionsEnabled: editingTopic.discussions_enabled ?? true,
                         collectSingleChallengeParticipantData: editingTopic.collect_single_challenge_participant_data === true,
                         studentChallengeMode: editingTopic.student_challenge_mode ?? null,

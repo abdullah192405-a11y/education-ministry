@@ -28,7 +28,7 @@ import {
 import {
     Plus, Edit, Trash2, Save, X, Upload, Video, Image, FileText,
     ChevronDown, ChevronUp, GripVertical, CheckCircle, XCircle,
-    Play, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
+    Play, Square, Eye, Gamepad2, ListChecks, HelpCircle, FileType, Loader2,
     Headphones, Link2, Sparkles, Radio, Youtube,
 } from "lucide-react";
 import type { ContentMedia, EducationalContent, ChallengeQuestion } from "@/data/challengeTypes";
@@ -51,7 +51,10 @@ import {
 } from "@/lib/topicLiveSession";
 import {
     DEFAULT_WHEEL_SPIN_SOUND_URL,
+    SOUND_DISABLED_SENTINEL,
     WHEEL_SPIN_SOUND_PRESETS,
+    isSoundDisabled,
+    normalizeWheelSpinSoundSelection,
     resolveWheelSpinSoundUrl,
 } from "@/lib/wheelSpinSounds";
 import { useToast } from "@/components/ui/use-toast";
@@ -375,6 +378,7 @@ const ContentEditor = ({
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
     const correctUploadInputRef = useRef<HTMLInputElement | null>(null);
     const wrongUploadInputRef = useRef<HTMLInputElement | null>(null);
     const backgroundUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -420,7 +424,7 @@ const ContentEditor = ({
     const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
     const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
     const [wheelSpinSoundUrl, setWheelSpinSoundUrl] = useState(
-        resolveWheelSpinSoundUrl(content?.wheelSpinSoundUrl)
+        normalizeWheelSpinSoundSelection(content?.wheelSpinSoundUrl)
     );
     const [discussionsEnabled, setDiscussionsEnabled] = useState(content?.discussionsEnabled ?? true);
     const [collectSingleChallengeParticipantData, setCollectSingleChallengeParticipantData] = useState(
@@ -462,7 +466,12 @@ const ContentEditor = ({
         setCustomBackgroundSoundOptions(
             mergeSoundOptionLists(
                 teacherSoundsToOptions(teacherSoundsByCategory.background, savedLabel),
-                optionFromTopicUrl(content?.answeringBackgroundSoundUrl, savedLabel)
+                optionFromTopicUrl(
+                    isSoundDisabled(content?.answeringBackgroundSoundUrl)
+                        ? null
+                        : content?.answeringBackgroundSoundUrl,
+                    savedLabel
+                )
             )
         );
     }, [
@@ -503,7 +512,7 @@ const ContentEditor = ({
         setCorrectSoundUrl(content?.correctSoundUrl || "");
         setWrongSoundUrl(content?.wrongSoundUrl || "");
         setAnsweringBackgroundSoundUrl(content?.answeringBackgroundSoundUrl || "");
-        setWheelSpinSoundUrl(resolveWheelSpinSoundUrl(content?.wheelSpinSoundUrl));
+        setWheelSpinSoundUrl(normalizeWheelSpinSoundSelection(content?.wheelSpinSoundUrl));
     }, [content?.id]);
 
     useEffect(() => {
@@ -558,29 +567,62 @@ const ContentEditor = ({
         });
     };
 
-    const stopPreview = () => {
+    const stopPreview = useCallback(() => {
         if (previewAudioRef.current) {
             previewAudioRef.current.pause();
             previewAudioRef.current.currentTime = 0;
+            previewAudioRef.current = null;
         }
-    };
+        setIsPreviewPlaying(false);
+    }, []);
 
-    const playPreview = (url?: string) => {
-        if (!url || url === "__default__") {
+    useEffect(() => () => stopPreview(), [stopPreview]);
+
+    const playPreview = (url?: string, options?: { fallbackUrl?: string; loop?: boolean }) => {
+        if (isSoundDisabled(url)) return;
+
+        const resolved = url?.trim() || options?.fallbackUrl?.trim() || "";
+        if (!resolved) {
             toast({ title: t("dash.common.alert"), description: t("dash.teacher.topics.editor.toast.pickSoundFirst") });
             return;
         }
         try {
             stopPreview();
-            const audio = new Audio(url);
+            const audio = new Audio(resolved);
             previewAudioRef.current = audio;
             audio.volume = 0.6;
-            void audio.play();
+            audio.loop = options?.loop ?? false;
+            audio.onended = () => {
+                if (!audio.loop) setIsPreviewPlaying(false);
+            };
+            void audio.play().then(() => setIsPreviewPlaying(true)).catch((error) => {
+                console.error("Preview play error:", error);
+                stopPreview();
+                toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.editor.toast.previewErr"), variant: "destructive" });
+            });
         } catch (error) {
             console.error("Preview play error:", error);
             toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.editor.toast.previewErr"), variant: "destructive" });
         }
     };
+
+    const renderSoundPreviewButtons = (onPlay: () => void, playDisabled = false) => (
+        <>
+            <Button type="button" variant="outline" size="icon" disabled={playDisabled} onClick={onPlay}>
+                <Play className="w-4 h-4" />
+            </Button>
+            <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={!isPreviewPlaying}
+                onClick={stopPreview}
+                title={t("dash.teacher.topics.editor.stopPreview")}
+            >
+                <Square className="w-4 h-4" />
+            </Button>
+        </>
+    );
 
     const uploadSoundOption = async (
         type: TeacherSoundCategory,
@@ -1082,8 +1124,12 @@ const ContentEditor = ({
                 duration,
                 correctSoundUrl: correctSoundUrl || null,
                 wrongSoundUrl: wrongSoundUrl || null,
-                answeringBackgroundSoundUrl: answeringBackgroundSoundUrl || null,
-                wheelSpinSoundUrl: resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
+                answeringBackgroundSoundUrl: isSoundDisabled(answeringBackgroundSoundUrl)
+                    ? SOUND_DISABLED_SENTINEL
+                    : answeringBackgroundSoundUrl || null,
+                wheelSpinSoundUrl: isSoundDisabled(wheelSpinSoundUrl)
+                    ? SOUND_DISABLED_SENTINEL
+                    : resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
                 discussionsEnabled,
                 collectSingleChallengeParticipantData,
                 studentChallengePreset,
@@ -1357,9 +1403,9 @@ const ContentEditor = ({
                                                 </option>
                                             ))}
                                         </select>
-                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(correctSoundUrl)}>
-                                            <Play className="w-4 h-4" />
-                                        </Button>
+                                        {renderSoundPreviewButtons(() =>
+                                            playPreview(correctSoundUrl, { fallbackUrl: correctSoundPresets[0]?.url })
+                                        )}
                                         <input
                                             ref={correctUploadInputRef}
                                             type="file"
@@ -1392,9 +1438,9 @@ const ContentEditor = ({
                                                 </option>
                                             ))}
                                         </select>
-                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(wrongSoundUrl)}>
-                                            <Play className="w-4 h-4" />
-                                        </Button>
+                                        {renderSoundPreviewButtons(() =>
+                                            playPreview(wrongSoundUrl, { fallbackUrl: wrongSoundPresets[0]?.url })
+                                        )}
                                         <input
                                             ref={wrongUploadInputRef}
                                             type="file"
@@ -1416,20 +1462,38 @@ const ContentEditor = ({
                                     <label className="text-sm font-medium block">{t("dash.teacher.topics.editor.backgroundSound")}</label>
                                     <div className="flex items-center gap-2">
                                         <select
-                                            value={answeringBackgroundSoundUrl || "__default__"}
-                                            onChange={(e) => setAnsweringBackgroundSoundUrl(e.target.value === "__default__" ? "" : e.target.value)}
+                                            value={
+                                                isSoundDisabled(answeringBackgroundSoundUrl)
+                                                    ? SOUND_DISABLED_SENTINEL
+                                                    : answeringBackgroundSoundUrl || "__default__"
+                                            }
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (value === "__default__") {
+                                                    setAnsweringBackgroundSoundUrl("");
+                                                } else if (value === SOUND_DISABLED_SENTINEL) {
+                                                    setAnsweringBackgroundSoundUrl(SOUND_DISABLED_SENTINEL);
+                                                } else {
+                                                    setAnsweringBackgroundSoundUrl(value);
+                                                }
+                                            }}
                                             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         >
                                             <option value="__default__">{t("dash.teacher.topics.editor.defaultOption")}</option>
+                                            <option value={SOUND_DISABLED_SENTINEL}>{t("dash.teacher.topics.editor.sound.disabled")}</option>
                                             {getMergedSoundOptions(backgroundSoundPresets, customBackgroundSoundOptions).map((preset) => (
                                                 <option key={`bg-preset-${preset.url}`} value={preset.url}>
                                                     {preset.label || t("dash.teacher.topics.editor.customSaved")}
                                                 </option>
                                             ))}
                                         </select>
-                                        <Button type="button" variant="outline" size="icon" onClick={() => playPreview(answeringBackgroundSoundUrl)}>
-                                            <Play className="w-4 h-4" />
-                                        </Button>
+                                        {renderSoundPreviewButtons(
+                                            () => playPreview(answeringBackgroundSoundUrl, {
+                                                fallbackUrl: backgroundSoundPresets[0]?.url,
+                                                loop: true,
+                                            }),
+                                            isSoundDisabled(answeringBackgroundSoundUrl)
+                                        )}
                                         <input
                                             ref={backgroundUploadInputRef}
                                             type="file"
@@ -1462,21 +1526,12 @@ const ContentEditor = ({
                                                 </option>
                                             ))}
                                         </select>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="icon"
-                                            onClick={() => playPreview(wheelSpinSoundUrl || DEFAULT_WHEEL_SPIN_SOUND_URL)}
-                                        >
-                                            <Play className="w-4 h-4" />
-                                        </Button>
+                                        {renderSoundPreviewButtons(
+                                            () => playPreview(wheelSpinSoundUrl, { fallbackUrl: DEFAULT_WHEEL_SPIN_SOUND_URL }),
+                                            isSoundDisabled(wheelSpinSoundUrl)
+                                        )}
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="flex justify-end">
-                                <Button type="button" variant="ghost" size="sm" onClick={stopPreview} className="gap-2">
-                                    <XCircle className="w-4 h-4" />{t("dash.teacher.topics.editor.stopPreview")}</Button>
                             </div>
 
                             {audioMediaOptions.length === 0 && (
@@ -2199,7 +2254,7 @@ const ContentEditor = ({
                                 onDirtyChange={handleQuestionsDirtyChange}
                                 registerCloseGuard={registerQuestionEditorCloseGuard}
                                 media={mediaList}
-                                wheelSpinSoundUrl={resolveWheelSpinSoundUrl(wheelSpinSoundUrl)}
+                                wheelSpinSoundUrl={wheelSpinSoundUrl}
                             />
                         ) : (
                             <>

@@ -1,4 +1,8 @@
+import { SOUND_DISABLED_SENTINEL, isSoundDisabled } from "@/lib/topicSoundSettings";
+
 /** Fixed wheel-spin SFX (Mixkit, free license). No uploads — pick from presets only. */
+
+export { SOUND_DISABLED_SENTINEL, isSoundDisabled };
 
 /** Wheel animation + sound length (seconds). Keep in sync everywhere. */
 export const WHEEL_SPIN_DURATION_MS = 4000;
@@ -12,6 +16,11 @@ export const DEFAULT_WHEEL_SPIN_SOUND_URL =
     "https://assets.mixkit.co/active_storage/sfx/2642/2642-preview.mp3";
 
 export const WHEEL_SPIN_SOUND_PRESETS = [
+    {
+        id: "none",
+        labelKey: "dash.teacher.topics.editor.sound.disabled",
+        url: SOUND_DISABLED_SENTINEL,
+    },
     {
         id: "rattle",
         labelKey: "dash.teacher.topics.editor.sound.wheelRattle",
@@ -46,8 +55,15 @@ export const LEGACY_BROKEN_WHEEL_SOUND_URL =
 export const LEGACY_WHEEL_SPIN_SOUND_URL =
     "https://assets.mixkit.co/active_storage/sfx/2645/2645-preview.mp3";
 
-/** Normalize stored URL (empty, legacy URLs → default preset). */
+/** Editor / storage value: disabled sentinel or resolved preset URL. */
+export function normalizeWheelSpinSoundSelection(url?: string | null): string {
+    if (isSoundDisabled(url)) return SOUND_DISABLED_SENTINEL;
+    return resolveWheelSpinSoundUrl(url);
+}
+
+/** Playback URL (empty when disabled). Empty / legacy URLs → default preset. */
 export function resolveWheelSpinSoundUrl(url?: string | null): string {
+    if (isSoundDisabled(url)) return "";
     const trimmed = url?.trim() || "";
     if (
         !trimmed ||
@@ -57,4 +73,11 @@ export function resolveWheelSpinSoundUrl(url?: string | null): string {
         return DEFAULT_WHEEL_SPIN_SOUND_URL;
     }
     return trimmed;
+}
+
+/** useSound override: null = disabled, undefined = default, string = custom URL. */
+export function resolveWheelSpinSoundOverride(url?: string | null): string | null | undefined {
+    if (isSoundDisabled(url)) return null;
+    const resolved = resolveWheelSpinSoundUrl(url);
+    return resolved || undefined;
 }

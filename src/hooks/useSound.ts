@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from "react";
 import {
     DEFAULT_MATCH_PAIR_SOUND_URL,
     DEFAULT_MATCH_WRONG_SOUND_URL,
@@ -29,26 +29,42 @@ const SOUNDS: Record<SoundType, string> = {
     background: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3'
 };
 
-type SoundOverrides = Partial<Record<SoundType, string>>;
+type SoundOverrideValue = string | null | undefined;
+type SoundOverrides = Partial<Record<SoundType, SoundOverrideValue>>;
 
-/** Apply only non-empty override URLs so defaults are not replaced with undefined. */
-export function mergeSoundOverrides(base: Record<SoundType, string>, overrides: SoundOverrides): Record<SoundType, string> {
-    const merged = { ...base };
-    for (const [key, url] of Object.entries(overrides) as [SoundType, string | undefined][]) {
+export type MergedSoundConfig = {
+    sounds: Record<SoundType, string>;
+    disabled: Set<SoundType>;
+};
+
+/** Apply overrides: null disables a sound, undefined keeps default, string sets custom URL. */
+export function mergeSoundOverrides(
+    base: Record<SoundType, string>,
+    overrides: SoundOverrides
+): MergedSoundConfig {
+    const sounds = { ...base };
+    const disabled = new Set<SoundType>();
+    for (const [key, url] of Object.entries(overrides) as [SoundType, SoundOverrideValue][]) {
+        if (url === null) {
+            disabled.add(key);
+            continue;
+        }
         const trimmed = typeof url === "string" ? url.trim() : "";
-        if (trimmed) merged[key] = trimmed;
+        if (trimmed) sounds[key] = trimmed;
     }
-    return merged;
+    return { sounds, disabled };
 }
 
 export const useSound = (enabled: boolean = true, overrides: SoundOverrides = {}) => {
     const audioRefs = useRef<Record<SoundType, HTMLAudioElement>>({} as Record<SoundType, HTMLAudioElement>);
+    const disabledSoundsRef = useRef<Set<SoundType>>(new Set());
     const wheelSpinStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const overrideKey = JSON.stringify(overrides);
 
     useEffect(() => {
-        const mergedSounds = mergeSoundOverrides(SOUNDS, overrides);
+        const { sounds: mergedSounds, disabled } = mergeSoundOverrides(SOUNDS, overrides);
+        disabledSoundsRef.current = disabled;
 
         // Preload all sounds
         Object.entries(mergedSounds).forEach(([type, url]) => {
@@ -76,7 +92,7 @@ export const useSound = (enabled: boolean = true, overrides: SoundOverrides = {}
     }, [overrideKey]);
 
     const play = useCallback((type: SoundType) => {
-        if (!enabled) return;
+        if (!enabled || disabledSoundsRef.current.has(type)) return;
 
         const audio = audioRefs.current[type];
         if (audio) {
@@ -103,7 +119,7 @@ export const useSound = (enabled: boolean = true, overrides: SoundOverrides = {}
 
     /** Play wheel SFX for exactly the wheel spin animation duration. */
     const playWheelSpin = useCallback(() => {
-        if (!enabled) return;
+        if (!enabled || disabledSoundsRef.current.has("wheel_spin")) return;
 
         const audio = audioRefs.current.wheel_spin;
         if (!audio) return;
