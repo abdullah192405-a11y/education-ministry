@@ -456,6 +456,7 @@ function renderDonutChart(title: string, rows?: Array<Record<string, unknown>>):
 function renderDailyTrendChart(rows?: Array<Record<string, unknown>>): string {
     if (!rows?.length) return "";
 
+    const isRtl = L.dir === "rtl";
     const visibleRows = rows.slice(-7);
     const width = 520;
     const height = 210;
@@ -467,9 +468,16 @@ function renderDailyTrendChart(rows?: Array<Record<string, unknown>>): string {
     const plotH = height - top - bottom;
     const maxAttempts = Math.max(...visibleRows.map((row) => numeric(row.attempts)), 1);
     const pointGap = visibleRows.length > 1 ? plotW / (visibleRows.length - 1) : plotW;
+    const plotStart = isRtl ? width - right : left;
+    const yAxisX = isRtl ? width - right : left;
+    const yLabelX = isRtl ? width - right + 8 : left - 8;
+    const yLabelAnchor = isRtl ? "start" : "end";
+
+    const getPlotX = (index: number) =>
+        isRtl ? plotStart - pointGap * index : plotStart + pointGap * index;
 
     const points = visibleRows.map((row, index) => {
-        const x = left + pointGap * index;
+        const x = getPlotX(index);
         const avg = Math.max(0, Math.min(100, numeric(row.avg)));
         const y = top + plotH - (avg / 100) * plotH;
         return { x, y, avg };
@@ -483,19 +491,20 @@ function renderDailyTrendChart(rows?: Array<Record<string, unknown>>): string {
                 <h3>${escapeHtml(L.charts.weeklyTrend)}</h3>
                 <span>${escapeHtml(L.charts.weeklyTrendSub)}</span>
             </div>
-            <svg class="trend-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+            <svg class="trend-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true" dir="${L.dir}">
                 ${[0, 25, 50, 75, 100]
                     .map((tick) => {
                         const y = top + plotH - (tick / 100) * plotH;
                         return `
                             <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="grid-line" />
-                            <text x="${left - 8}" y="${y + 4}" class="axis-label">${tick}%</text>
+                            <text x="${yLabelX}" y="${y + 4}" class="axis-label" text-anchor="${yLabelAnchor}">${tick}%</text>
                         `;
                     })
                     .join("")}
+                <line x1="${yAxisX}" y1="${top}" x2="${yAxisX}" y2="${top + plotH}" class="axis-line" />
                 ${visibleRows
                     .map((row, index) => {
-                        const x = left + pointGap * index;
+                        const x = getPlotX(index);
                         const attempts = numeric(row.attempts);
                         const barH = Math.max(3, (attempts / maxAttempts) * plotH);
                         const y = top + plotH - barH;
@@ -523,6 +532,7 @@ function renderDailyTrendChart(rows?: Array<Record<string, unknown>>): string {
 function renderScatterChart(rows?: Array<Record<string, unknown>>): string {
     if (!rows?.length) return "";
 
+    const isRtl = L.dir === "rtl";
     const visibleRows = compactRows(rows, 45);
     const width = 520;
     const height = 220;
@@ -533,6 +543,13 @@ function renderScatterChart(rows?: Array<Record<string, unknown>>): string {
     const plotW = width - left - right;
     const plotH = height - top - bottom;
     const maxTime = Math.max(...visibleRows.map((row) => numeric(row.time)), 1);
+    const yAxisX = isRtl ? width - right : left;
+    const yLabelX = isRtl ? width - right + 8 : left - 8;
+    const yLabelAnchor = isRtl ? "start" : "end";
+    const lessTimeX = isRtl ? width - right : left;
+    const moreTimeX = isRtl ? left : width - right;
+    const lessTimeAnchor = isRtl ? "end" : "start";
+    const moreTimeAnchor = isRtl ? "start" : "end";
 
     return `
         <div class="chart-card chart-card-wide">
@@ -540,29 +557,30 @@ function renderScatterChart(rows?: Array<Record<string, unknown>>): string {
                 <h3>${escapeHtml(L.charts.timeVsScore)}</h3>
                 <span>${escapeHtml(L.charts.timeVsScoreSub)}</span>
             </div>
-            <svg class="scatter-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+            <svg class="scatter-chart" viewBox="0 0 ${width} ${height}" aria-hidden="true" dir="${L.dir}">
                 ${[0, 25, 50, 75, 100]
                     .map((tick) => {
                         const y = top + plotH - (tick / 100) * plotH;
                         return `
                             <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="grid-line" />
-                            <text x="${left - 8}" y="${y + 4}" class="axis-label">${tick}%</text>
+                            <text x="${yLabelX}" y="${y + 4}" class="axis-label" text-anchor="${yLabelAnchor}">${tick}%</text>
                         `;
                     })
                     .join("")}
                 <line x1="${left}" y1="${top + plotH}" x2="${width - right}" y2="${top + plotH}" class="axis-line" />
-                <line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" class="axis-line" />
+                <line x1="${yAxisX}" y1="${top}" x2="${yAxisX}" y2="${top + plotH}" class="axis-line" />
                 ${visibleRows
                     .map((row, index) => {
                         const time = Math.max(0, numeric(row.time));
                         const score = Math.max(0, Math.min(100, numeric(row.score)));
-                        const x = left + (time / maxTime) * plotW;
+                        const ratio = time / maxTime;
+                        const x = isRtl ? width - right - ratio * plotW : left + ratio * plotW;
                         const y = top + plotH - (score / 100) * plotH;
                         return `<circle cx="${x}" cy="${y}" r="5" fill="${escapeHtml(getChartColor(row, index))}" opacity="0.78" />`;
                     })
                     .join("")}
-                <text x="${left}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.lessTime)}</text>
-                <text x="${width - right}" y="${height - 14}" class="x-label">${escapeHtml(L.charts.moreTime)}</text>
+                <text x="${lessTimeX}" y="${height - 14}" class="x-label" text-anchor="${lessTimeAnchor}">${escapeHtml(L.charts.lessTime)}</text>
+                <text x="${moreTimeX}" y="${height - 14}" class="x-label" text-anchor="${moreTimeAnchor}">${escapeHtml(L.charts.moreTime)}</text>
             </svg>
             ${rows.length > visibleRows.length ? `<p class="chart-note">${escapeHtml(formatReportLabel(L.charts.showsFirstN, { shown: visibleRows.length, total: rows.length }))}</p>` : ""}
         </div>
@@ -717,17 +735,6 @@ export function buildChallengeReportHtml(
         }
         h1, h2, h3, h4, p, li, th, td, span, strong {
             text-align: inherit;
-        }
-        .chart-card,
-        .chart-card-wide,
-        .donut-wrap,
-        .bar-list,
-        .bar-row,
-        .trend-chart,
-        .scatter-chart,
-        .legend,
-        .legend-item {
-            direction: ltr;
         }
         .header {
             margin-bottom: 18px;
@@ -1141,9 +1148,23 @@ export function buildChallengeReportHtml(
         html[dir="rtl"] .recommendation-badges,
         html[dir="rtl"] .recommendation-block,
         html[dir="rtl"] .key-findings,
-        html[dir="rtl"] .recommendations {
+        html[dir="rtl"] .recommendations,
+        html[dir="rtl"] .charts-grid,
+        html[dir="rtl"] .chart-card,
+        html[dir="rtl"] .chart-card-wide,
+        html[dir="rtl"] .chart-head,
+        html[dir="rtl"] .bar-list,
+        html[dir="rtl"] .bar-row,
+        html[dir="rtl"] .bar-label,
+        html[dir="rtl"] .donut-wrap,
+        html[dir="rtl"] .legend,
+        html[dir="rtl"] .legend-item,
+        html[dir="rtl"] .chart-note {
             direction: rtl;
             text-align: start;
+        }
+        html[dir="rtl"] .bar-track {
+            direction: rtl;
         }
         html[dir="rtl"] .recommendation-block ul {
             padding-inline-start: 18px;
@@ -1169,9 +1190,23 @@ export function buildChallengeReportHtml(
         html[dir="ltr"] .recommendation-badges,
         html[dir="ltr"] .recommendation-block,
         html[dir="ltr"] .key-findings,
-        html[dir="ltr"] .recommendations {
+        html[dir="ltr"] .recommendations,
+        html[dir="ltr"] .charts-grid,
+        html[dir="ltr"] .chart-card,
+        html[dir="ltr"] .chart-card-wide,
+        html[dir="ltr"] .chart-head,
+        html[dir="ltr"] .bar-list,
+        html[dir="ltr"] .bar-row,
+        html[dir="ltr"] .bar-label,
+        html[dir="ltr"] .donut-wrap,
+        html[dir="ltr"] .legend,
+        html[dir="ltr"] .legend-item,
+        html[dir="ltr"] .chart-note {
             direction: ltr;
             text-align: start;
+        }
+        html[dir="ltr"] .bar-track {
+            direction: ltr;
         }
         html[dir="ltr"] .recommendation-block ul {
             padding-inline-start: 18px;
@@ -1180,11 +1215,15 @@ export function buildChallengeReportHtml(
         html[dir="ltr"] .recommendation-section-head {
             grid-template-columns: 34px 1fr;
         }
-        html[dir="ltr"] .donut-wrap {
+        html[dir="ltr"] .donut-wrap,
+        html[dir="rtl"] .donut-wrap {
             grid-template-columns: 132px 1fr;
         }
         html[dir="ltr"] .chart-head {
             flex-direction: row;
+        }
+        html[dir="rtl"] .chart-head {
+            flex-direction: row-reverse;
         }
         .grid-line {
             stroke: #e2e8f0;
@@ -1199,7 +1238,8 @@ export function buildChallengeReportHtml(
             font-family: "Cairo", "Arial", "Tahoma", sans-serif;
             font-size: 10px;
         }
-        .axis-label { text-anchor: end; }
+        html[dir="ltr"] .axis-label { text-anchor: end; }
+        html[dir="rtl"] .axis-label { text-anchor: start; }
         .x-label { text-anchor: middle; }
         .bar-value, .line-value {
             fill: #334155;
