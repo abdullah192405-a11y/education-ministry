@@ -4,7 +4,7 @@ import {
   buildFallbackRecommendationReport,
   generateChallengeRecommendationReport,
 } from "./challengeReportRecommendations";
-import type { ReportLanguage } from "./challengeReportLabels";
+import { getChallengeReportLabels, type ReportLanguage } from "./challengeReportLabels";
 
 const REPORT_ENDPOINT = "/api/challenge-report-pdf";
 const MIN_PDF_BYTES = 1500;
@@ -57,8 +57,9 @@ function downloadBlob(blob: Blob, fileName: string): void {
 }
 
 function loadingHtml(language?: ReportLanguage): string {
+  const L = getChallengeReportLabels(language);
   const title = language === "en" ? "Generating report…" : "جاري إعداد التقرير…";
-  return `<!DOCTYPE html><html lang="${language === "en" ? "en" : "ar"}"><head><meta charset="utf-8"><title>${title}</title></head><body style="font-family:sans-serif;padding:2rem;text-align:center">${title}</body></html>`;
+  return `<!DOCTYPE html><html lang="${L.lang}" dir="${L.dir}"><head><meta charset="utf-8"><title>${title}</title></head><body dir="${L.dir}" style="font-family:sans-serif;padding:2rem;text-align:center;direction:${L.dir}">${title}</body></html>`;
 }
 
 /** Open synchronously on user click so the browser keeps the print window after async work. */

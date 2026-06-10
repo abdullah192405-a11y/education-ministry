@@ -718,9 +718,6 @@ export function buildChallengeReportHtml(
         h1, h2, h3, h4, p, li, th, td, span, strong {
             text-align: inherit;
         }
-        .metric-grid,
-        .analysis-grid,
-        .charts-grid,
         .chart-card,
         .chart-card-wide,
         .donut-wrap,
@@ -728,8 +725,8 @@ export function buildChallengeReportHtml(
         .bar-row,
         .trend-chart,
         .scatter-chart,
-        .lesson-rating-bars,
-        .lesson-rating-row {
+        .legend,
+        .legend-item {
             direction: ltr;
         }
         .header {
@@ -1124,13 +1121,47 @@ export function buildChallengeReportHtml(
             width: 100%;
             height: auto;
         }
+        html[dir="rtl"] .header,
+        html[dir="rtl"] .section,
+        html[dir="rtl"] .meta,
+        html[dir="rtl"] .footer,
+        html[dir="rtl"] table,
+        html[dir="rtl"] .metric-grid,
+        html[dir="rtl"] .metric-card,
+        html[dir="rtl"] .analysis-grid,
+        html[dir="rtl"] .analysis-item,
+        html[dir="rtl"] .lesson-rating-summary,
+        html[dir="rtl"] .lesson-rating-label,
+        html[dir="rtl"] .lesson-rating-bars,
+        html[dir="rtl"] .lesson-rating-row,
+        html[dir="rtl"] .recommendation-report,
+        html[dir="rtl"] .recommendation-summary,
+        html[dir="rtl"] .recommendation-section,
+        html[dir="rtl"] .recommendation-section-head,
+        html[dir="rtl"] .recommendation-badges,
+        html[dir="rtl"] .recommendation-block,
+        html[dir="rtl"] .key-findings,
+        html[dir="rtl"] .recommendations {
+            direction: rtl;
+            text-align: start;
+        }
+        html[dir="rtl"] .recommendation-block ul {
+            padding-inline-start: 18px;
+            padding-inline-end: 0;
+        }
         html[dir="ltr"] .header,
         html[dir="ltr"] .section,
         html[dir="ltr"] .meta,
         html[dir="ltr"] .footer,
         html[dir="ltr"] table,
+        html[dir="ltr"] .metric-grid,
+        html[dir="ltr"] .metric-card,
+        html[dir="ltr"] .analysis-grid,
+        html[dir="ltr"] .analysis-item,
         html[dir="ltr"] .lesson-rating-summary,
         html[dir="ltr"] .lesson-rating-label,
+        html[dir="ltr"] .lesson-rating-bars,
+        html[dir="ltr"] .lesson-rating-row,
         html[dir="ltr"] .recommendation-report,
         html[dir="ltr"] .recommendation-summary,
         html[dir="ltr"] .recommendation-section,
@@ -1201,7 +1232,7 @@ export function buildChallengeReportHtml(
         .page-break-avoid { break-inside: avoid; }
     </style>
 </head>
-<body>
+<body dir="${L.dir}">
     <header class="header">
         <p class="eyebrow">${escapeHtml(L.eyebrow)}</p>
         <h1>${escapeHtml(opts.topicTitle || L.defaultTitle)}</h1>
