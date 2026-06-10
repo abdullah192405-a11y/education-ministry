@@ -61,7 +61,10 @@ import {
     getAllowedSubjectIdsFromGrades,
 } from "@/lib/teacherClassAccess";
 import { orgAdminScopedOrganizationId } from "@/lib/accountCapabilities";
-import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
+import {
+    downloadChallengeReportPdf,
+    openChallengeReportPrintWindow,
+} from "@/lib/challengeReportPdf";
 import {
     aggregateChallengeQuestionStats,
     getQuestionResultsFromAttempt,
@@ -780,6 +783,7 @@ const TeacherTopicsTab = ({
     const handleDownloadSingleReportPdf = async () => {
         if (!singleChallengeResultsTopic || !singleChallengeCollectedReport) return;
 
+        const printWindow = openChallengeReportPrintWindow(language);
         setIsSingleReportPdfDownloading(true);
         try {
             toast({
@@ -812,7 +816,7 @@ const TeacherTopicsTab = ({
                 total: question.attempts,
             }));
 
-            await downloadChallengeReportPdf({
+            const downloadResult = await downloadChallengeReportPdf({
                 language,
                 topicTitle: t("dash.teacher.topics.pdfReportTitle", { title: singleChallengeResultsTopic.title }),
                 lessonTitle: singleChallengeResultsTopic.title,
@@ -868,11 +872,14 @@ const TeacherTopicsTab = ({
                 },
                 results: pdfResults,
                 questionRows,
-            });
+            }, printWindow);
 
             toast({
                 title: t("dash.teacher.topics.toast.pdfDownloaded"),
-                description: t("dash.teacher.challengesTab.toastPdfSaved"),
+                description:
+                    downloadResult.method === "html-file"
+                        ? t("dash.teacher.topics.toast.pdfHtmlFallback")
+                        : t("dash.teacher.challengesTab.toastPdfSaved"),
             });
         } catch (error) {
             console.error("Failed to download single challenge PDF:", error);

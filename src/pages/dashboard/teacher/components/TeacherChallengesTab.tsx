@@ -49,7 +49,10 @@ import {
     downloadChallengeResultsCsv,
     type ChallengeReportCsvOptions,
 } from "@/lib/challengeReportDownload";
-import { downloadChallengeReportPdf } from "@/lib/challengeReportPdf";
+import {
+    downloadChallengeReportPdf,
+    openChallengeReportPrintWindow,
+} from "@/lib/challengeReportPdf";
 import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
@@ -176,16 +179,20 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
     }, [reportOptions, toast, t]);
 
     const handleDownloadPdf = useCallback(async () => {
+        const printWindow = openChallengeReportPrintWindow(language);
         setPdfExporting(true);
         try {
             toast({
                 title: t("dash.teacher.challengesTab.toastPdfGenerating"),
                 description: t("dash.teacher.challengesTab.toastPdfGeneratingDesc"),
             });
-            await downloadChallengeReportPdf(reportOptions);
+            const downloadResult = await downloadChallengeReportPdf(reportOptions, printWindow);
             toast({
                 title: t("dash.teacher.challengesTab.toastDownloaded"),
-                description: t("dash.teacher.challengesTab.toastPdfSaved"),
+                description:
+                    downloadResult.method === "html-file"
+                        ? t("dash.teacher.topics.toast.pdfHtmlFallback")
+                        : t("dash.teacher.challengesTab.toastPdfSaved"),
             });
         } catch (e) {
             console.error(e);
@@ -197,7 +204,7 @@ const ChallengeDetailsContent = ({ session }: { session: any }) => {
         } finally {
             setPdfExporting(false);
         }
-    }, [reportOptions, toast, t]);
+    }, [reportOptions, toast, t, language]);
 
     if (loadingTopic) return <div className="p-12 flex justify-center"><RefreshCw className="w-8 h-8 animate-spin text-primary" /></div>;
     if (!session) return null;
