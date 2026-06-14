@@ -78,6 +78,7 @@ import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/con
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { formatOptionLabel } from "@/lib/formatOptionLabel";
 
 type GamePhase = "lobby" | "countdown" | "playing" | "question_result" | "leaderboard" | "final_results";
 
@@ -89,7 +90,7 @@ const GroupChallenge = () => {
     const isCreator = searchParams.get("creator") === "true";
     const isScheduledHostUrl = searchParams.get("scheduled") === "1";
     const playerName = searchParams.get("name") || "لاعب";
-    const { dir } = useTranslation();
+    const { dir, language } = useTranslation();
     const ArrowBack = dir === "rtl" ? ArrowRight : ArrowLeft;
     const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
 
@@ -1244,7 +1245,7 @@ const GroupChallenge = () => {
                                             <div className="flex items-center gap-3">
                                                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${showQuestionResult && isCorrect ? "bg-green-500 text-white" : "bg-muted"
                                                     }`}>
-                                                    {i + 1}
+                                                    {formatOptionLabel(i, language)}
                                                 </span>
                                                 {opt}
                                             </div>
@@ -2429,7 +2430,7 @@ const GroupChallenge = () => {
                                                 ) : isSelected ? (
                                                     <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity }} className="w-3 h-3 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
                                                 ) : (
-                                                    String.fromCharCode(1571 + index)
+                                                    formatOptionLabel(index, language)
                                                 )}
                                             </span>
                                             <span className="text-lg">{option}</span>

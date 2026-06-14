@@ -16,6 +16,7 @@ import { useExamByPin, useSubmitExamResult, useExamSubmission, examCategoryLabel
 import { useUser, useStudentProfile } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { formatOptionLabel } from "@/lib/formatOptionLabel";
 import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDisplay";
 
 // ============================================================================
@@ -24,7 +25,7 @@ import { QuestionAttachmentDisplay } from "@/components/QuestionAttachmentDispla
 const ExamPage = () => {
     const { pin } = useParams<{ pin: string }>();
     const navigate = useNavigate();
-    const { dir } = useTranslation();
+    const { dir, language } = useTranslation();
     const ArrowBack = dir === "rtl" ? ArrowRight : ArrowLeft;
     const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
     const { data: exam, isLoading: loadingExam } = useExamByPin(pin || "");
@@ -590,7 +591,7 @@ const ExamPage = () => {
                                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
                                                             isSelected ? "bg-indigo-500 text-white" : "bg-muted"
                                                         }`}>
-                                                            {String.fromCharCode(1571 + i)}
+                                                            {formatOptionLabel(i, language)}
                                                         </div>
                                                         <span className="font-medium">{option}</span>
                                                     </div>

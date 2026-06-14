@@ -48,6 +48,7 @@ import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/con
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { formatOptionLabel } from "@/lib/formatOptionLabel";
 import {
     buildChallengeShareMessage,
     buildSingleChallengeShareUrl,
@@ -91,7 +92,7 @@ const SingleChallenge = () => {
     const joinDisplayName = searchParams.get("name");
     const scheduledFromJoinUrl = searchParams.get("scheduled") === "1";
     const playerSessionIdFromJoin = searchParams.get("ps")?.trim() || "";
-    const { dir } = useTranslation();
+    const { dir, language } = useTranslation();
     const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
     const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
 
@@ -1428,7 +1429,7 @@ const SingleChallenge = () => {
                                             <div className="flex items-center gap-3">
                                                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${showResult && isCorrect ? "bg-green-500 text-white" : "bg-muted"
                                                     }`}>
-                                                    {i + 1}
+                                                    {formatOptionLabel(i, language)}
                                                 </span>
                                                 {opt}
                                             </div>
@@ -1957,7 +1958,7 @@ const SingleChallenge = () => {
                                                 ) : showResult && isSelected ? (
                                                     <XCircle className="w-5 h-5" />
                                                 ) : (
-                                                    String.fromCharCode(1571 + index)
+                                                    formatOptionLabel(index, language)
                                                 )}
                                             </span>
                                             <span className="text-lg">{option}</span>
@@ -2521,6 +2522,8 @@ const SingleChallenge = () => {
 };
 
 export default SingleChallenge;
+
+
 
 
 
