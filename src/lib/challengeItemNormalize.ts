@@ -1,4 +1,5 @@
 import type { ChallengeQuestion } from "@/data/challengeTypes";
+import { AUTO_TIME_LIMIT_SECONDS, hasAutoTimeLimit } from "@/data/challengeTypes";
 import {
     parseMatchingPairsFromText,
     parseOrderItemsFromText,
@@ -620,6 +621,10 @@ export function normalizeChallengeQuestionFields<T extends Record<string, unknow
         normalized = normalizeTrueFalseQuestionItem(normalized);
     } else if (type === "wheel_spin") {
         normalized = normalizeWheelSpinQuestionItem(normalized);
+    }
+
+    if (hasAutoTimeLimit(type)) {
+        normalized.timeLimit = AUTO_TIME_LIMIT_SECONDS;
     }
 
     return normalized as T & ChallengeQuestion;

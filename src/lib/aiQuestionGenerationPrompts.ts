@@ -214,7 +214,7 @@ Example format:
     "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
     "correctAnswer": 0,
     "points": 150,
-    "timeLimit": 10
+    "timeLimit": 30
   },
   {
     "type": "wheel_spin",
@@ -240,6 +240,7 @@ Important:
 - For puzzle: options = letter/syllable tiles; correctAnswer = the full target word as a string (not an index).
 - For wheel_spin: ONE item with 4–6 wheelSegments; each segment = ONE question + its own options. Never bundle multiple Q&A in one segment.
 - For shooting use 4 options with one correct answer.
+- multiple_choice, true_false, and shooting must always use timeLimit 30.
 - Points 50–200; timeLimit 15–60 seconds.
 - Valid JSON only.`;
 }
@@ -307,7 +308,7 @@ ${availableTypes}
     "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
     "correctAnswer": 0,
     "points": 150,
-    "timeLimit": 10
+    "timeLimit": 30
   },
   {
     "type": "wheel_spin",
@@ -330,6 +331,7 @@ ${availableTypes}
 - order_questions: استخدم orderItems بالترتيب الصحيح (3–6 عناصر).
 - puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص (وليس رقم index).
 - shooting: يجب أن يحتوي كل عنصر على question (نص السؤال فقط) و options (4 خيارات) و correctAnswer (رقم الخيار الصحيح 0–3). لا تضع الخيارات داخل نص السؤال.
+- multiple_choice و true_false و shooting: timeLimit دائماً 30.
 - لـ wheel_spin: عنصر واحد يحتوي 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته فقط. لا تضع عدة أسئلة في شريحة واحدة.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON.`;
@@ -432,7 +434,7 @@ Example formats:
   {"type":"matching","question":"Match the terms","pairs":[{"left":"Term 1","right":"Definition 1"},{"left":"Term 2","right":"Definition 2"}],"points":150,"timeLimit":45},
   {"type":"order_questions","question":"Put in order","orderItems":["Step 1","Step 2","Step 3"],"points":150,"timeLimit":45},
   {"type":"puzzle","question":"Build the word","options":["p","e","n"],"correctAnswer":"pen","points":150,"timeLimit":30},
-  {"type":"shooting","question":"Which is correct?","options":["A","B","C","D"],"correctAnswer":0,"points":150,"timeLimit":10},
+  {"type":"shooting","question":"Which is correct?","options":["A","B","C","D"],"correctAnswer":0,"points":150,"timeLimit":30},
   {"type":"wheel_spin","question":"Spin the wheel!","points":100,"timeLimit":30,"wheelSegments":[{"label":"Easy","points":50,"question":"What is...?","options":["A","B","C","D"],"correctAnswer":0}]}
 ]
 
@@ -445,6 +447,7 @@ Rules:
 - puzzle: options = letter tiles; correctAnswer = full word string (not index).
 - wheel_spin: ONE item with 4–6 wheelSegments; each segment = ONE question + its own options.
 - qa/know_dont_know: correctAnswer = clear text answer.
+- multiple_choice, true_false, and shooting must always use timeLimit 30.
 - Points 50–200; timeLimit 15–60s.
 - Valid JSON only.`;
     }
@@ -473,7 +476,7 @@ ${userPrompt}
   {"type":"matching","question":"طابق المصطلحات","pairs":[{"left":"مصطلح 1","right":"تعريف 1"},{"left":"مصطلح 2","right":"تعريف 2"}],"points":150,"timeLimit":45},
   {"type":"order_questions","question":"رتّب الخطوات","orderItems":["الخطوة 1","الخطوة 2","الخطوة 3"],"points":150,"timeLimit":45},
   {"type":"puzzle","question":"رتّب الحروف لتكوين كلمة","options":["م","ل","ق"],"correctAnswer":"قلم","points":150,"timeLimit":30},
-  {"type":"shooting","question":"ما هو الصحيح؟","options":["أ","ب","ج","د"],"correctAnswer":0,"points":150,"timeLimit":10},
+  {"type":"shooting","question":"ما هو الصحيح؟","options":["أ","ب","ج","د"],"correctAnswer":0,"points":150,"timeLimit":30},
   {"type":"wheel_spin","question":"أدر العجلة!","points":100,"timeLimit":30,"wheelSegments":[{"label":"سهل","points":50,"question":"ما هو...؟","options":["أ","ب","ج","د"],"correctAnswer":0}]}
 ]
 
@@ -487,6 +490,7 @@ ${userPrompt}
 - puzzle: options = حروف/مقاطع؛ correctAnswer = الكلمة الكاملة كنص.
 - wheel_spin: عنصر واحد مع 4–6 شرائح في wheelSegments؛ كل شريحة = سؤال واحد + خياراته.
 - qa/know_dont_know: correctAnswer = إجابة نصية واضحة.
+- multiple_choice و true_false و shooting: timeLimit دائماً 30.
 - استخدم اللغة العربية الفصحى.
 - تأكد من صحة JSON تماماً`;
 }

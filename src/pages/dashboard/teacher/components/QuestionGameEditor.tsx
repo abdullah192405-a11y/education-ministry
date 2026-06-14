@@ -20,6 +20,7 @@ import {
 import { QuestionAttachmentField } from "./QuestionAttachmentField";
 import type { QuestionAttachmentValue } from "./QuestionAttachmentField";
 import type { ActivityType, GameType, ChallengeQuestion, ContentMedia } from "@/data/challengeTypes";
+import { AUTO_TIME_LIMIT_SECONDS, hasAutoTimeLimit } from "@/data/challengeTypes";
 import AIQuestionGenerator from "./AIQuestionGenerator";
 import AIQuestionGeneratorFromResources from "./AIQuestionGeneratorFromResources";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
@@ -90,9 +91,9 @@ const getDefaultItem = (type: ActivityType | GameType, t: TFunction): Partial<Ch
 
     switch (type) {
         case "multiple_choice":
-            return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0 };
+            return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0, timeLimit: AUTO_TIME_LIMIT_SECONDS };
         case "true_false":
-            return { ...baseItem, options: [t("dash.teacher.topics.qe.trueLabel"), t("dash.teacher.topics.qe.falseLabel")], correctAnswer: 0, timeLimit: 15 };
+            return { ...baseItem, options: [t("dash.teacher.topics.qe.trueLabel"), t("dash.teacher.topics.qe.falseLabel")], correctAnswer: 0, timeLimit: AUTO_TIME_LIMIT_SECONDS };
         case "qa":
             return { ...baseItem, correctAnswer: "", timeLimit: 30 };
         case "know_dont_know":
@@ -112,7 +113,7 @@ const getDefaultItem = (type: ActivityType | GameType, t: TFunction): Partial<Ch
                 points: 200
             };
         case "shooting":
-            return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0, timeLimit: 10, points: 150 };
+            return { ...baseItem, options: ["", "", "", ""], correctAnswer: 0, timeLimit: AUTO_TIME_LIMIT_SECONDS, points: 150 };
         case "wheel_spin":
             return {
                 ...baseItem,
@@ -200,8 +201,11 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
         const proceed = pendingProceedRef.current;
         const intent = closeIntentRef.current;
         pendingProceedRef.current = null;
-        savedSnapshotRef.current = serializeChallengeItems(questionItems);
-        onSave(questionItems);
+        const preparedItems = questionItems.map(
+            (item) => normalizeChallengeQuestionFields({ ...item }) as ChallengeQuestion
+        );
+        savedSnapshotRef.current = serializeChallengeItems(preparedItems);
+        onSave(preparedItems);
         if (intent === "external" && !isExamMode) {
             proceed?.();
         }
@@ -307,8 +311,11 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                     </Button>
                     <Button
                         onClick={() => {
-                            savedSnapshotRef.current = serializeChallengeItems(questionItems);
-                            onSave(questionItems);
+                            const preparedItems = questionItems.map(
+                                (item) => normalizeChallengeQuestionFields({ ...item }) as ChallengeQuestion
+                            );
+                            savedSnapshotRef.current = serializeChallengeItems(preparedItems);
+                            onSave(preparedItems);
                         }}
                         className="gap-2"
                     >
@@ -558,7 +565,9 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                                                 {!isExamMode && (
                                                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
-                                                        {t("dash.teacher.topics.qe.secondsShort", { n: item.timeLimit ?? 0 })}
+                                                        {t("dash.teacher.topics.qe.secondsShort", {
+                                                            n: hasAutoTimeLimit(item.type) ? AUTO_TIME_LIMIT_SECONDS : (item.timeLimit ?? 0),
+                                                        })}
                                                     </span>
                                                 )}
                                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -608,13 +617,20 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                                                                         <Clock className="w-3 h-3" />
                                                                         {t("dash.teacher.topics.qe.timeSeconds")}
                                                                     </label>
-                                                                    <Input
-                                                                        type="number"
-                                                                        value={item.timeLimit}
-                                                                        onChange={(e) => updateItem(index, { timeLimit: parseInt(e.target.value) || 20 })}
-                                                                        min={5}
-                                                                        max={120}
-                                                                    />
+                                                                    {hasAutoTimeLimit(item.type) ? (
+                                                                        <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground">
+                                                                            {t("dash.teacher.topics.qe.secondsShort", { n: AUTO_TIME_LIMIT_SECONDS })}
+                                                                            <span className="ms-2 text-xs">({t("dash.teacher.topics.qe.timeAuto")})</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <Input
+                                                                            type="number"
+                                                                            value={item.timeLimit}
+                                                                            onChange={(e) => updateItem(index, { timeLimit: parseInt(e.target.value) || 20 })}
+                                                                            min={5}
+                                                                            max={120}
+                                                                        />
+                                                                    )}
                                                                 </div>
                                                             )}
                                                             <div>
