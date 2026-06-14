@@ -74,6 +74,7 @@ import {
     type TeacherSoundCategory,
 } from "@/lib/teacherUploadedSounds";
 import { cn, getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
+import { getChallengeTypeStyle, ALL_CHALLENGE_ITEM_TYPES } from "@/lib/challengeTypeStyles";
 import ContentResourceThumbnail from "./ContentResourceThumbnail";
 import {
     generateImagePromptFromAnalyzedResources,
@@ -2316,15 +2317,17 @@ const ContentEditor = ({
                                             </CardHeader>
                                             <CardContent>
                                                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                                                    {challengeItems.map((item, index) => (
+                                                    {challengeItems.map((item, index) => {
+                                                        const typeStyle = getChallengeTypeStyle(item.type);
+                                                        return (
                                                         <div
                                                             key={item.id}
-                                                            className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
+                                                            className={cn("flex items-center gap-3 p-2 rounded-lg border", typeStyle.border, typeStyle.headerBg)}
                                                         >
-                                                            <span className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-xs font-bold">
+                                                            <span className={cn("w-6 h-6 rounded flex items-center justify-center text-xs font-bold", typeStyle.indexBadge)}>
                                                                 {index + 1}
                                                             </span>
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-secondary/20">
+                                                            <span className={cn("text-xs px-2 py-0.5 rounded font-medium", typeStyle.badge)}>
                                                                 {getTypeLabel(item.type)}
                                                             </span>
                                                             <span className="flex-1 text-sm truncate">
@@ -2334,7 +2337,8 @@ const ContentEditor = ({
                                                                 {t("dash.teacher.topics.qe.pointsShort", { n: item.points ?? 0 })}
                                                             </span>
                                                         </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             </CardContent>
                                         </Card>
@@ -2347,11 +2351,17 @@ const ContentEditor = ({
                                             {t("dash.teacher.topics.editor.noQuestionsDesc")}
                                         </p>
                                         <div className="flex flex-wrap justify-center gap-2 mb-6 text-xs">
-                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">{t("dash.teacher.topics.editor.type.multipleChoice")}</span>
-                                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded">{t("dash.teacher.topics.editor.type.trueFalse")}</span>
-                                            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded">{t("dash.teacher.topics.qe.matching")}</span>
-                                            <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">{t("dash.teacher.topics.qe.wheelSpin")}</span>
-                                            <span className="px-2 py-1 bg-pink-100 text-pink-800 rounded">{t("dash.teacher.topics.qe.shooting")}</span>
+                                            {ALL_CHALLENGE_ITEM_TYPES.map((type) => {
+                                                const typeStyle = getChallengeTypeStyle(type);
+                                                return (
+                                                    <span
+                                                        key={type}
+                                                        className={cn("px-2 py-1 rounded font-medium", typeStyle.badge)}
+                                                    >
+                                                        {getTypeLabel(type)}
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                         <Button onClick={() => setShowQuestionEditor(true)} className="gap-2">
                                             <Plus className="w-4 h-4" />{t("dash.teacher.topics.editor.addQuestionsGames")}</Button>

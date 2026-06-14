@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import UnsavedQuestionsDialog from "./UnsavedQuestionsDialog";
 import { normalizeChallengeQuestionFields } from "@/lib/challengeItemNormalize";
+import { getChallengeTypeStyle } from "@/lib/challengeTypeStyles";
 
 type ItemCategory = "activity" | "game";
 type AIMode = "upload" | "resources" | null;
@@ -291,9 +292,6 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
         ? activityTypes.filter(a => ["multiple_choice", "true_false", "order_questions"].includes(a.type))
         : activityTypes;
 
-    const isGameType = (type: ActivityType | GameType): boolean =>
-        gameTypes.some(g => g.type === type);
-
     return (
         <div className="space-y-6" dir={dir}>
             <div className="flex items-center justify-between">
@@ -473,28 +471,30 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                                         )}
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {(selectedCategory === "activity" ? allowedActivityTypes : gameTypes).map((item) => (
+                                            {(selectedCategory === "activity" ? allowedActivityTypes : gameTypes).map((item) => {
+                                                const typeStyle = getChallengeTypeStyle(item.type);
+                                                return (
                                                 <motion.button
                                                     key={item.type}
                                                     whileHover={{ scale: 1.02 }}
                                                     whileTap={{ scale: 0.98 }}
                                                     onClick={() => handleAddItem(item.type)}
-                                                    className={`p-4 rounded-xl border-2 text-right transition-all flex items-start gap-3 ${selectedCategory === "activity"
-                                                        ? "border-primary/20 hover:border-primary hover:bg-primary/5"
-                                                        : "border-secondary/20 hover:border-secondary hover:bg-secondary/5"
-                                                        }`}
+                                                    className={cn(
+                                                        "p-4 rounded-xl border-2 text-right transition-all flex items-start gap-3",
+                                                        typeStyle.pickerBorder,
+                                                        typeStyle.pickerHover
+                                                    )}
                                                 >
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${selectedCategory === "activity" ? "bg-primary/10" : "bg-secondary/10"
-                                                        }`}>
-                                                        <item.icon className={`w-5 h-5 ${selectedCategory === "activity" ? "text-primary" : "text-secondary"
-                                                            }`} />
+                                                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0", typeStyle.iconBg)}>
+                                                        <item.icon className={cn("w-5 h-5", typeStyle.icon)} />
                                                     </div>
                                                     <div>
                                                         <h4 className="font-bold">{item.label}</h4>
                                                         <p className="text-xs text-muted-foreground">{item.description}</p>
                                                     </div>
                                                 </motion.button>
-                                            ))}
+                                            );
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -508,7 +508,7 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                 {questionItems.map((item, index) => {
                     const TypeIcon = getTypeIcon(item.type);
                     const isEditing = editingIndex === index;
-                    const isGame = isGameType(item.type);
+                    const typeStyle = getChallengeTypeStyle(item.type);
 
                     return (
                         <motion.div
@@ -517,12 +517,14 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                         >
-                            <Card className={`overflow-hidden transition-all ${isEditing ? "ring-2 ring-primary" : ""
-                                } ${isGame ? "border-secondary/30" : "border-primary/30"}`}>
+                            <Card className={cn(
+                                "overflow-hidden transition-all",
+                                typeStyle.border,
+                                isEditing && cn("ring-2", typeStyle.ring)
+                            )}>
                                 <CardContent className="p-0">
                                     <div
-                                        className={`p-4 flex items-center gap-4 cursor-pointer ${isGame ? "bg-secondary/5" : "bg-primary/5"
-                                            }`}
+                                        className={cn("p-4 flex items-center gap-4 cursor-pointer", typeStyle.headerBg)}
                                         onClick={() => setEditingIndex(isEditing ? null : index)}
                                     >
                                         <div className="flex flex-col gap-1">
@@ -546,20 +548,17 @@ const QuestionGameEditor = forwardRef<QuestionGameEditorHandle, QuestionGameEdit
                                             </Button>
                                         </div>
 
-                                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${isGame ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
-                                            }`}>
+                                        <span className={cn("w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm", typeStyle.indexBadge)}>
                                             {index + 1}
                                         </span>
 
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isGame ? "bg-secondary/10" : "bg-primary/10"
-                                            }`}>
-                                            <TypeIcon className={`w-5 h-5 ${isGame ? "text-secondary" : "text-primary"}`} />
+                                        <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", typeStyle.iconBg)}>
+                                            <TypeIcon className={cn("w-5 h-5", typeStyle.icon)} />
                                         </div>
 
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className={`text-xs px-2 py-0.5 rounded ${isGame ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary"
-                                                    }`}>
+                                                <span className={cn("text-xs px-2 py-0.5 rounded font-medium", typeStyle.badge)}>
                                                     {getTypeLabel(item.type)}
                                                 </span>
                                                 {!isExamMode && (

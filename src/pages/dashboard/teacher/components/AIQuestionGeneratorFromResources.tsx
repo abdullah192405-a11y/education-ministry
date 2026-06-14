@@ -20,6 +20,7 @@ import { normalizeChallengeItemType } from "@/lib/challengeItemNormalize";
 import { normalizeGeneratedChallengeItems, parseAiGeneratedChallengeItems } from "@/lib/parseAiGeneratedQuestions";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
+import { getChallengeTypeStyle } from "@/lib/challengeTypeStyles";
 import ContentResourceThumbnail, { normalizeResourceUrl } from "./ContentResourceThumbnail";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import {
@@ -1011,19 +1012,28 @@ const AIQuestionGeneratorFromResources = ({
                         <div className="space-y-2">
                             <Label className="text-sm text-muted-foreground">{t("dash.teacher.aiGen.resources.allowedTypes")}</Label>
                             <div className="flex gap-2 flex-wrap">
-                                {getVisibleTypesForMode(generateType).map((type) => (
+                                {getVisibleTypesForMode(generateType).map((type) => {
+                                    const typeStyle = getChallengeTypeStyle(type);
+                                    const isSelected = selectedChallengeTypes.includes(type);
+                                    return (
                                     <Button
                                         key={type}
                                         type="button"
-                                        variant={selectedChallengeTypes.includes(type) ? "default" : "outline"}
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => toggleChallengeType(type)}
                                         disabled={isProcessing}
-                                        className="gap-1"
+                                        className={cn(
+                                            "gap-1 border-2 transition-colors",
+                                            isSelected
+                                                ? typeStyle.badgeSolid
+                                                : cn(typeStyle.pickerBorder, typeStyle.badge)
+                                        )}
                                     >
                                         {getChallengeTypeLabel(type)}
                                     </Button>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
