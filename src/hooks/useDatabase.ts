@@ -2691,6 +2691,46 @@ export const useUpdateTopic = () => {
     });
 };
 
+/** Move a lesson to another subject (class) the teacher is allowed to manage. */
+export const useTransferTopic = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({
+            topicId,
+            fromSubjectId,
+            toSubjectId,
+            destinationSortOrder,
+        }: {
+            topicId: string;
+            fromSubjectId: string;
+            toSubjectId: string;
+            destinationSortOrder: number;
+        }) => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from("topics")
+                .update({
+                    subject_id: toSubjectId,
+                    sort_order: destinationSortOrder,
+                    updated_at: now,
+                })
+                .eq("id", topicId)
+                .select()
+                .single();
+            if (error) throw error;
+            return { data, fromSubjectId, toSubjectId };
+        },
+        onSuccess: ({ data, fromSubjectId, toSubjectId }) => {
+            queryClient.invalidateQueries({ queryKey: ["topic", data.id] });
+            queryClient.invalidateQueries({ queryKey: ["subject", fromSubjectId] });
+            queryClient.invalidateQueries({ queryKey: ["subject", toSubjectId] });
+            queryClient.invalidateQueries({ queryKey: ["grade"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher_topics_all"] });
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
+        },
+    });
+};
+
 /** Persist display order for all topics in a subject (lesson reordering in teacher dashboard). */
 export const useReorderTopics = () => {
     const queryClient = useQueryClient();

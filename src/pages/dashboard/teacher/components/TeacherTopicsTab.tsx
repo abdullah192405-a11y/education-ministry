@@ -9,7 +9,7 @@ import {
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
     FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download,
-    Users, Trophy, ChevronRight, TrendingUp, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, Loader2,
+    Users, Trophy, ChevronRight, TrendingUp, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, Loader2, ArrowRightLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,7 @@ import {
     useTeacherAllTopics,
     useCreateTopic,
     useUpdateTopic,
+    useTransferTopic,
     useDeleteTopic,
     useReorderTopics,
     useSaveTopicMedia,
@@ -85,6 +86,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
@@ -397,6 +399,7 @@ const TeacherTopicsTab = ({
     // Mutations
     const createTopicMutation = useCreateTopic();
     const updateTopicMutation = useUpdateTopic();
+    const transferTopicMutation = useTransferTopic();
     const deleteTopicMutation = useDeleteTopic();
     const reorderTopicsMutation = useReorderTopics();
     const saveMediaMutation = useSaveTopicMedia();
@@ -435,6 +438,9 @@ const TeacherTopicsTab = ({
     const [singleResultsResetOpen, setSingleResultsResetOpen] = useState(false);
     const [singleResultsResetConfirmText, setSingleResultsResetConfirmText] = useState("");
     const [reorderingTopicId, setReorderingTopicId] = useState<string | null>(null);
+    const [transferTopic, setTransferTopic] = useState<ExtendedTopic | null>(null);
+    const [transferGradeId, setTransferGradeId] = useState("");
+    const [transferSubjectId, setTransferSubjectId] = useState("");
     const resetSingleResultsMutation = useResetTopicSingleChallengeResults();
 
     const sortedSingleResultsForDialog = useMemo(() => {
@@ -1372,6 +1378,108 @@ const TeacherTopicsTab = ({
         });
     };
 
+    const transferDestinations = useMemo(() => {
+        const list: {
+            gradeId: string;
+            gradeName: string;
+            subjectId: string;
+            subjectName: string;
+        }[] = [];
+        for (const grade of visibleGrades ?? []) {
+            for (const subject of grade.subjects ?? []) {
+                if (
+                    String(subject.id) !== String(selectedSubjectId) &&
+                    allowedSubjectIds.has(String(subject.id))
+                ) {
+                    list.push({
+                        gradeId: grade.id,
+                        gradeName: grade.name,
+                        subjectId: subject.id,
+                        subjectName: subject.name,
+                    });
+                }
+            }
+        }
+        return list;
+    }, [visibleGrades, selectedSubjectId, allowedSubjectIds]);
+
+    const canTransferTopics = transferDestinations.length > 0;
+
+    const transferGradeOptions = useMemo(() => {
+        const seen = new Map<string, string>();
+        transferDestinations.forEach((destination) => {
+            if (!seen.has(destination.gradeId)) {
+                seen.set(destination.gradeId, destination.gradeName);
+            }
+        });
+        return Array.from(seen, ([id, name]) => ({ id, name }));
+    }, [transferDestinations]);
+
+    const transferSubjectsForGrade = useMemo(
+        () => transferDestinations.filter((destination) => destination.gradeId === transferGradeId),
+        [transferDestinations, transferGradeId],
+    );
+
+    const openTransferDialog = (topic: ExtendedTopic) => {
+        const first = transferDestinations[0];
+        if (!first) return;
+        setTransferTopic(topic);
+        setTransferGradeId(first.gradeId);
+        setTransferSubjectId(first.subjectId);
+    };
+
+    useEffect(() => {
+        if (!transferTopic || !transferGradeId) return;
+        const subjects = transferDestinations.filter((destination) => destination.gradeId === transferGradeId);
+        if (!subjects.some((destination) => destination.subjectId === transferSubjectId)) {
+            setTransferSubjectId(subjects[0]?.subjectId ?? "");
+        }
+    }, [transferTopic, transferGradeId, transferDestinations, transferSubjectId]);
+
+    const handleTransferTopic = async () => {
+        if (!transferTopic || !transferSubjectId || !selectedSubjectId) return;
+        if (!allowedSubjectIds.has(transferSubjectId)) {
+            toast({
+                title: t("dash.teacher.topics.noSubjectAccess"),
+                variant: "destructive",
+            });
+            return;
+        }
+
+        const destTopics = (allTeacherTopics ?? []).filter(
+            (topic: any) => String(topic.subject_id ?? topic.subject?.id) === String(transferSubjectId),
+        );
+        const nextSortOrder =
+            destTopics.length > 0
+                ? Math.max(...destTopics.map((topic: any) => getTopicSortOrder(topic))) + 1
+                : 0;
+
+        const topicId = transferTopic.id;
+        const fromSubjectId = String(selectedSubjectId);
+        const topicTitle = transferTopic.title;
+
+        try {
+            await transferTopicMutation.mutateAsync({
+                topicId,
+                fromSubjectId,
+                toSubjectId: transferSubjectId,
+                destinationSortOrder: nextSortOrder,
+            });
+            setTopics((prev) => prev.filter((topic) => topic.id !== topicId));
+            setTransferTopic(null);
+            toast({
+                title: t("dash.teacher.topics.toast.transferred"),
+                description: topicTitle,
+            });
+        } catch (error: unknown) {
+            toast({
+                title: t("dash.teacher.topics.toast.transferFailed"),
+                description: error instanceof Error ? error.message : t("dash.teacher.topics.tryAgain"),
+                variant: "destructive",
+            });
+        }
+    };
+
     const selectedSubjectName =
         availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
     const canManageSelectedSubject =
@@ -1671,6 +1779,15 @@ const TeacherTopicsTab = ({
                                                                     <DropdownMenuContent align="end">
                                                                         <DropdownMenuItem className="gap-2" onClick={() => handleEditTopic(topic)}>
                                                                             <Edit className="w-4 h-4" />{t("dash.common.edit")}</DropdownMenuItem>
+                                                                        {canTransferTopics && (
+                                                                            <DropdownMenuItem
+                                                                                className="gap-2"
+                                                                                onClick={() => openTransferDialog(topic)}
+                                                                            >
+                                                                                <ArrowRightLeft className="w-4 h-4" />
+                                                                                {t("dash.teacher.topics.transferToClass")}
+                                                                            </DropdownMenuItem>
+                                                                        )}
                                                                         <DropdownMenuItem
                                                                             className="gap-2 text-destructive"
                                                                             onClick={() => setDeleteConfirmId(topic.id)}
@@ -3044,6 +3161,81 @@ const TeacherTopicsTab = ({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={!!transferTopic} onOpenChange={(open) => !open && setTransferTopic(null)}>
+                <DialogContent dir={dir} className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t("dash.teacher.topics.transferTitle")}</DialogTitle>
+                        <DialogDescription>
+                            {t("dash.teacher.topics.transferDesc", { title: transferTopic?.title ?? "" })}
+                        </DialogDescription>
+                    </DialogHeader>
+                    {transferTopic && (
+                        <div className="space-y-4 py-2">
+                            <p className="text-sm text-muted-foreground">
+                                {t("dash.teacher.topics.transferFrom", {
+                                    grade: currentGrade?.name ?? "",
+                                    subject: selectedSubjectName,
+                                })}
+                            </p>
+                            <div className="space-y-2">
+                                <Label>{t("dash.teacher.topics.transferTargetGrade")}</Label>
+                                <Select
+                                    value={transferGradeId}
+                                    onValueChange={(value) => {
+                                        setTransferGradeId(value);
+                                        const firstSubject = transferDestinations.find(
+                                            (destination) => destination.gradeId === value,
+                                        );
+                                        if (firstSubject) {
+                                            setTransferSubjectId(firstSubject.subjectId);
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t("dash.teacher.topics.selectGrade")} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {transferGradeOptions.map((grade) => (
+                                            <SelectItem key={grade.id} value={grade.id}>
+                                                {grade.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>{t("dash.teacher.topics.transferTargetSubject")}</Label>
+                                <Select value={transferSubjectId} onValueChange={setTransferSubjectId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t("dash.teacher.topics.selectSubject")} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {transferSubjectsForGrade.map((destination) => (
+                                            <SelectItem key={destination.subjectId} value={destination.subjectId}>
+                                                {destination.subjectName}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => setTransferTopic(null)}>
+                            {t("dash.common.cancel")}
+                        </Button>
+                        <Button
+                            onClick={handleTransferTopic}
+                            disabled={!transferSubjectId || transferTopicMutation.isPending}
+                            className="gap-2"
+                        >
+                            {transferTopicMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {t("dash.teacher.topics.transferConfirm")}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={!!singleShareDialogTopic} onOpenChange={(open) => !open && setSingleShareDialogTopic(null)}>
                 <DialogContent dir={dir} className="sm:max-w-xl">

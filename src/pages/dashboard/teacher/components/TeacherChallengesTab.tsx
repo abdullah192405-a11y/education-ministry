@@ -56,6 +56,11 @@ import {
 import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardLocale } from "@/contexts/LanguageContext";
+import { generateShareLink } from "@/data/challengeTypes";
+import {
+    buildWhatsAppChallengeShare,
+    openWhatsAppChallengeShare,
+} from "@/lib/challengeJoinLink";
 
 interface Challenge {
     id: number;
@@ -878,15 +883,21 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48">
                                                     <DropdownMenuItem onClick={() => {
-                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
-                                                        const text = t("dash.teacher.share.shareText", { title: challenge.topicTitle, pin: challenge.pin });
-                                                        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n\n" + text)}`);
+                                                        openWhatsAppChallengeShare(
+                                                            buildWhatsAppChallengeShare({
+                                                                pin: challenge.pin,
+                                                                shareLine: t("dash.teacher.share.whatsappCompact", {
+                                                                    title: challenge.topicTitle,
+                                                                    pin: challenge.pin,
+                                                                }),
+                                                            }),
+                                                        );
                                                     }}>
                                                         <MessageCircle className="w-4 h-4 me-2 text-emerald-500" />
                                                         {t("dash.teacher.share.whatsapp")}
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
-                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const link = generateShareLink(challenge.pin);
                                                         const text = t("dash.teacher.share.shareText", { title: challenge.topicTitle, pin: challenge.pin });
                                                         window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
                                                     }}>
@@ -894,7 +905,7 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                         {t("dash.teacher.share.twitter")}
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
-                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const link = generateShareLink(challenge.pin);
                                                         const text = t("dash.teacher.share.shareText", { title: challenge.topicTitle, pin: challenge.pin });
                                                         window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
                                                     }}>
@@ -903,14 +914,13 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                     </DropdownMenuItem>
                                                     <div className="h-px bg-border my-1" />
                                                     <DropdownMenuItem onClick={() => {
-                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
-                                                        onCopyToClipboard(link);
+                                                        onCopyToClipboard(generateShareLink(challenge.pin));
                                                     }}>
                                                         <Copy className="w-4 h-4 me-2" />
                                                         {t("dash.common.copyLink")}
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
-                                                        const link = `${window.location.origin}/join/${challenge.pin}`;
+                                                        const link = generateShareLink(challenge.pin);
                                                         downloadChallengeQR(link, challenge.pin);
                                                     }}>
                                                         <Download className="w-4 h-4 me-2" />
@@ -1017,8 +1027,7 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                             variant="outline"
                                             className="flex-1 gap-2 border-primary/20 hover:bg-primary/5"
                                             onClick={() => {
-                                                const link = `${window.location.origin}/join/${challenge.pin}`;
-                                                onCopyToClipboard(link);
+                                                onCopyToClipboard(generateShareLink(challenge.pin));
                                             }}
                                         >
                                             <Copy className="w-4 h-4 text-primary" />
@@ -1043,13 +1052,16 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuItem onClick={() => {
-                                                    const link = `${window.location.origin}/join/${challenge.pin}`;
-                                                    const text = t("dash.teacher.share.scheduledShareText", {
-                                                        title: challenge.topicTitle,
-                                                        pin: challenge.pin,
-                                                        time: new Date(challenge.scheduledStartTime!).toLocaleString(locale),
-                                                    });
-                                                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(link + "\n" + text)}`);
+                                                    openWhatsAppChallengeShare(
+                                                        buildWhatsAppChallengeShare({
+                                                            pin: challenge.pin,
+                                                            shareLine: t("dash.teacher.share.whatsappScheduledCompact", {
+                                                                title: challenge.topicTitle,
+                                                                pin: challenge.pin,
+                                                                time: new Date(challenge.scheduledStartTime!).toLocaleString(locale),
+                                                            }),
+                                                        }),
+                                                    );
                                                 }}>
                                                     <MessageCircle className="w-4 h-4 me-2 text-emerald-500" />
                                                     {t("dash.teacher.share.whatsapp")}
