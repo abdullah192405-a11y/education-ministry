@@ -57,6 +57,7 @@ import {
     normalizeWheelSpinSoundSelection,
     resolveWheelSpinSoundUrl,
 } from "@/lib/wheelSpinSounds";
+import { resolveMixkitSoundUrl } from "@/lib/mixkitSoundUrls";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import {
@@ -582,7 +583,8 @@ const ContentEditor = ({
     const playPreview = (url?: string, options?: { fallbackUrl?: string; loop?: boolean }) => {
         if (isSoundDisabled(url)) return;
 
-        const resolved = url?.trim() || options?.fallbackUrl?.trim() || "";
+        const raw = url?.trim() || options?.fallbackUrl?.trim() || "";
+        const resolved = resolveMixkitSoundUrl(raw);
         if (!resolved) {
             toast({ title: t("dash.common.alert"), description: t("dash.teacher.topics.editor.toast.pickSoundFirst") });
             return;

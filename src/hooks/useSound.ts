@@ -3,6 +3,13 @@ import {
     DEFAULT_MATCH_PAIR_SOUND_URL,
     DEFAULT_MATCH_WRONG_SOUND_URL,
 } from '@/lib/matchingSounds';
+import {
+    DEFAULT_ACHIEVEMENT_SOUND_URL,
+    DEFAULT_BACKGROUND_SOUND_URL,
+    DEFAULT_CORRECT_SOUND_URL,
+    DEFAULT_WRONG_SOUND_URL,
+    resolveMixkitSoundUrl,
+} from '@/lib/mixkitSoundUrls';
 import { DEFAULT_WHEEL_SPIN_SOUND_URL, WHEEL_SPIN_DURATION_MS } from '@/lib/wheelSpinSounds';
 
 export type SoundType =
@@ -18,15 +25,15 @@ export type SoundType =
 
 // Sound URLs - using free sound effects
 const SOUNDS: Record<SoundType, string> = {
-    correct: 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3',
-    wrong: 'https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3',
+    correct: DEFAULT_CORRECT_SOUND_URL,
+    wrong: DEFAULT_WRONG_SOUND_URL,
     click: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
     countdown: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
     wheel_spin: DEFAULT_WHEEL_SPIN_SOUND_URL,
     match_pair: DEFAULT_MATCH_PAIR_SOUND_URL,
     match_wrong: DEFAULT_MATCH_WRONG_SOUND_URL,
-    achievement: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
-    background: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3'
+    achievement: DEFAULT_ACHIEVEMENT_SOUND_URL,
+    background: DEFAULT_BACKGROUND_SOUND_URL,
 };
 
 type SoundOverrideValue = string | null | undefined;
@@ -50,7 +57,7 @@ export function mergeSoundOverrides(
             continue;
         }
         const trimmed = typeof url === "string" ? url.trim() : "";
-        if (trimmed) sounds[key] = trimmed;
+        if (trimmed) sounds[key] = resolveMixkitSoundUrl(trimmed);
     }
     return { sounds, disabled };
 }
