@@ -2,7 +2,7 @@
  * Build an educational illustration from lesson resources:
  * 1) Analyze PDFs, images, text, and video metadata (Gemini **text** models — not `gemini-2.5-flash`).
  * 2) Ask Gemini (text) for a single image-generation prompt string.
- * 3) Call **Nano Banana 2** (`gemini-3.1-flash-image-preview` only) and return inline image bytes — never `gemini-2.5-flash`.
+ * 3) Call **Nano Banana Pro** (`gemini-3-pro-image` only) and return inline image bytes — never `gemini-2.5-flash`.
  */
 import type { ContentMedia } from "@/data/challengeTypes";
 import { extractPdfText, extractPdfAsImages, pdfNeedsVisualPageImages } from "@/lib/pdfExtractor";
@@ -13,18 +13,18 @@ type GeminiPart =
     | { inline_data: { mime_type: string; data: string } };
 
 /**
- * **Nano Banana 2** — Gemini native image generation (`gemini-3.1-flash-image-preview`).
- * Image bytes are requested **only** from this model (no fallback to Pro / 2.5) so behavior matches Google’s Nano Banana 2 stack.
- * @see https://ai.google.dev/gemini-api/docs/image-generation
+ * **Nano Banana Pro** — Gemini native image generation (`gemini-3-pro-image`).
+ * Image bytes are requested **only** from this model (no fallback to Flash / 2.5) so behavior matches Google’s Nano Banana Pro stack.
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image
  */
-export const NANO_BANANA_2_IMAGE_MODEL = "gemini-3.1-flash-image-preview" as const;
+export const NANO_BANANA_PRO_IMAGE_MODEL = "gemini-3-pro-image" as const;
 
-/** Single-model chain: Nano Banana 2 only — never `gemini-2.5-flash` for pixels. */
-const IMAGE_MODELS: readonly string[] = [NANO_BANANA_2_IMAGE_MODEL];
+/** Single-model chain: Nano Banana Pro only — never `gemini-2.5-flash` for pixels. */
+const IMAGE_MODELS: readonly string[] = [NANO_BANANA_PRO_IMAGE_MODEL];
 
 /**
  * Text-only step: multimodal analysis → written image prompt. Do **not** use `gemini-2.5-flash` here
- * (per product requirement: image flow avoids 2.5 Flash; pixels are always Nano Banana 2).
+ * (per product requirement: image flow avoids 2.5 Flash; pixels are always Nano Banana Pro).
  */
 const PROMPT_MODELS = ["gemini-3-flash-preview", "gemini-2.5-pro"];
 
@@ -747,7 +747,7 @@ function buildUserMessageForImageModel(imagePrompt: string): string {
     }
     if (isPromptPrimarilyArabic(core)) {
         return (
-            "المطلوب: إنشاء صورة توضيحية تعليمية واحدة عالية الجودة (نموذج Nano Banana 2 / Gemini 3.1 Flash Image).\n" +
+            "المطلوب: إنشاء صورة توضيحية تعليمية واحدة عالية الجودة (نموذج Nano Banana Pro / Gemini 3 Pro Image).\n" +
             "اتبع المواصفات التالية بدقة (التخطيط، النصوص الظاهرة على الصورة، الأيقونات، الألوان). " +
             "النص العربي يجب أن يكون واضحاً ومقروءاً وبخط متناسق، مع محاذاة من اليمين إلى اليسار حيث ينطبق. " +
             "تجنّب تشويه الحروف أو دمجها.\n\n" +
@@ -756,7 +756,7 @@ function buildUserMessageForImageModel(imagePrompt: string): string {
         );
     }
     return (
-        "Generate a single high-quality educational illustration using Nano Banana 2 / Gemini 3.1 Flash Image. " +
+        "Generate a single high-quality educational illustration using Nano Banana Pro / Gemini 3 Pro Image. " +
             "Follow the specifications below exactly (layout, on-image text, icons, colors).\n\n" +
             "---\n\n" +
             core
@@ -782,7 +782,7 @@ export async function generateImageBytesFromPrompt(
                     responseModalities: ["IMAGE", "TEXT"],
                     imageConfig: {
                         aspectRatio: "16:9",
-                        // 2K helps legibility for Arabic / dense on-image text (Nano Banana 2 supports 1K/2K/4K)
+                        // 2K helps legibility for Arabic / dense on-image text (Nano Banana Pro supports 1K/2K/4K)
                         imageSize: arabicHeavy ? "2K" : "1K",
                     },
                 },

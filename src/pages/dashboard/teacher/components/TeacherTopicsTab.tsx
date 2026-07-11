@@ -66,6 +66,18 @@ import {
     downloadChallengeReportPdf,
     openChallengeReportPrintWindow,
 } from "@/lib/challengeReportPdf";
+import { isWahjReadingProgram } from "@/lib/wahjReadingReportConfig";
+import {
+    buildWahjParticipantReport,
+    buildWahjProgramParticipants,
+    buildWahjProgramReport,
+    getParticipantKey,
+} from "@/lib/wahjReadingReportData";
+import {
+    downloadWahjProgramReportPdf,
+    openWahjReportPrintWindow,
+} from "@/lib/wahjReadingReportPdf";
+import { createWahjReadingReportLink } from "@/lib/wahjReadingReportLinks";
 import {
     aggregateChallengeQuestionStats,
     getQuestionResultsFromAttempt,
@@ -275,7 +287,7 @@ const getAttemptLocalDateKey = (date: string | null) => {
 
 const getAttemptKey = (result: unknown, fallback = "") => {
     const row = toRecord(result);
-    return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result, guestLabel)}-${fallback}`);
+    return String(row.id ?? `${getAttemptTimestamp(result) || "attempt"}-${getParticipantName(result, "ضيف")}-${fallback}`);
 };
 
 const getAttemptQuestionRows = (result: unknown, topic: unknown) =>
@@ -381,6 +393,9 @@ const TeacherTopicsTab = ({
 
     // Selected subject state - defaults to prop or first available subject
     const [selectedSubjectId, setSelectedSubjectId] = useState<string>(propSubjectId || "");
+    const selectedSubjectName =
+        availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
+    const isWahjProgram = isWahjReadingProgram(currentGrade?.name, selectedSubjectName);
 
     // Auto-select first subject when grade changes or subjects load
     useEffect(() => {
@@ -435,6 +450,9 @@ const TeacherTopicsTab = ({
     const [singleChallengeResultsTopic, setSingleChallengeResultsTopic] = useState<ExtendedTopic | null>(null);
     const [expandedSingleAttempt, setExpandedSingleAttempt] = useState<unknown | null>(null);
     const [isSingleReportPdfDownloading, setIsSingleReportPdfDownloading] = useState(false);
+    const [wahjReportPickerOpen, setWahjReportPickerOpen] = useState(false);
+    const [wahjDownloadingKey, setWahjDownloadingKey] = useState<string | null>(null);
+    const [isWahjProgramReportDownloading, setIsWahjProgramReportDownloading] = useState(false);
     const [singleResultsResetOpen, setSingleResultsResetOpen] = useState(false);
     const [singleResultsResetConfirmText, setSingleResultsResetConfirmText] = useState("");
     const [reorderingTopicId, setReorderingTopicId] = useState<string | null>(null);
@@ -896,6 +914,104 @@ const TeacherTopicsTab = ({
             });
         } finally {
             setIsSingleReportPdfDownloading(false);
+        }
+    };
+
+    const wahjProgramParticipants = useMemo(() => {
+        if (!isWahjProgram || !selectedSubjectId) return [];
+        return buildWahjProgramParticipants(
+            singleResults,
+            allTeacherTopics,
+            selectedSubjectId,
+            guestLabel,
+        );
+    }, [isWahjProgram, selectedSubjectId, singleResults, allTeacherTopics, guestLabel]);
+
+    const handleCreateWahjReportLink = async (participantKey: string) => {
+        if (!selectedSubjectId) return;
+
+        setWahjDownloadingKey(participantKey);
+        try {
+            toast({
+                title: t("dash.teacher.topics.wahjReportGenerating"),
+            });
+
+            const basePayload = buildWahjParticipantReport(
+                participantKey,
+                singleResults,
+                allTeacherTopics,
+                selectedSubjectId,
+                guestLabel,
+            );
+
+            if (!basePayload) {
+                throw new Error(t("dash.teacher.topics.wahjReportFailed"));
+            }
+
+            const payload = {
+                ...basePayload,
+                className: currentGrade?.name,
+                subjectName: selectedSubjectName,
+            };
+
+            const reportLink = await createWahjReadingReportLink({
+                payload,
+                participantKey,
+                subjectId: selectedSubjectId,
+                createdByUserId: currentUser?.id || null,
+            });
+
+            window.open(reportLink.url, "_blank", "noopener,noreferrer");
+            try {
+                await navigator.clipboard.writeText(reportLink.url);
+            } catch {
+                // Opening the report is the primary action; clipboard can fail on some browsers.
+            }
+            setWahjReportPickerOpen(false);
+            toast({
+                title: t("dash.teacher.topics.wahjReportSuccess"),
+            });
+        } catch (error) {
+            console.error("Failed to create Wahj reading report link:", error);
+            toast({
+                title: t("dash.teacher.topics.wahjReportFailed"),
+                description: error instanceof Error ? error.message : undefined,
+                variant: "destructive",
+            });
+        } finally {
+            setWahjDownloadingKey(null);
+        }
+    };
+
+    const handleDownloadWahjProgramReport = async () => {
+        if (!selectedSubjectId) return;
+
+        const printWindow = openWahjReportPrintWindow(language);
+        setIsWahjProgramReportDownloading(true);
+        try {
+            toast({ title: t("dash.teacher.topics.wahjProgramReportGenerating") });
+
+            const payload = {
+                ...buildWahjProgramReport(singleResults, allTeacherTopics, selectedSubjectId, guestLabel),
+                className: currentGrade?.name,
+                subjectName: selectedSubjectName,
+            };
+
+            if (!payload.participantCount) {
+                throw new Error(t("dash.teacher.topics.wahjReportNoParticipants"));
+            }
+
+            await downloadWahjProgramReportPdf(payload, language, printWindow);
+            toast({ title: t("dash.teacher.topics.wahjProgramReportSuccess") });
+        } catch (error) {
+            console.error("Failed to download Wahj program report:", error);
+            toast({
+                title: t("dash.teacher.topics.wahjProgramReportFailed"),
+                description: error instanceof Error ? error.message : undefined,
+                variant: "destructive",
+            });
+        } finally {
+            setIsWahjProgramReportDownloading(false);
         }
     };
 
@@ -1480,8 +1596,6 @@ const TeacherTopicsTab = ({
         }
     };
 
-    const selectedSubjectName =
-        availableSubjects.find((s: any) => s.id === selectedSubjectId)?.name || "";
     const canManageSelectedSubject =
         !!selectedSubjectId && allowedSubjectIds.has(selectedSubjectId);
     const isLoadingTopicsList = isLoadingTeacherTopics;
@@ -2438,6 +2552,36 @@ const TeacherTopicsTab = ({
                                             <Download className="h-4 w-4 shrink-0" />
                                             {isSingleReportPdfDownloading ? t("dash.teacher.topics.loading") : t("dash.teacher.topics.downloadPdf")}
                                         </Button>
+                                        {isWahjProgram && (
+                                            <>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    dir={dir}
+                                                    className="gap-2 border-amber-500/40 bg-amber-50/80 text-amber-900 hover:bg-amber-100"
+                                                    onClick={() => setWahjReportPickerOpen(true)}
+                                                    disabled={!!wahjDownloadingKey || isWahjProgramReportDownloading}
+                                                >
+                                                    <BookMarked className="h-4 w-4 shrink-0" />
+                                                    {wahjDownloadingKey ? t("dash.teacher.topics.wahjReportGenerating") : t("dash.teacher.topics.wahjReportBtn")}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    dir={dir}
+                                                    className="gap-2 border-violet-500/40 bg-violet-50/80 text-violet-900 hover:bg-violet-100"
+                                                    onClick={() => void handleDownloadWahjProgramReport()}
+                                                    disabled={isWahjProgramReportDownloading || !!wahjDownloadingKey}
+                                                >
+                                                    <Users className="h-4 w-4 shrink-0" />
+                                                    {isWahjProgramReportDownloading
+                                                        ? t("dash.teacher.topics.wahjProgramReportGenerating")
+                                                        : t("dash.teacher.topics.wahjProgramReportBtn")}
+                                                </Button>
+                                            </>
+                                        )}
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -3029,6 +3173,27 @@ const TeacherTopicsTab = ({
                                                                 {pct}<span className="ms-0.5 text-xs font-bold opacity-80">%</span>
                                                             </span>
                                                         </div>
+                                                        {isWahjProgram && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                dir={dir}
+                                                                className="shrink-0 gap-1.5 border-amber-500/40 bg-amber-50/80 text-xs text-amber-900 hover:bg-amber-100"
+                                                                disabled={wahjDownloadingKey === getParticipantKey(r)}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    void handleCreateWahjReportLink(getParticipantKey(r));
+                                                                }}
+                                                            >
+                                                                {wahjDownloadingKey === getParticipantKey(r) ? (
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <BookMarked className="h-3.5 w-3.5" />
+                                                                )}
+                                                                {t("dash.teacher.topics.wahjReportPerParticipant")}
+                                                            </Button>
+                                                        )}
                                                     </button>
 
                                                     {isExpanded && (
@@ -3088,6 +3253,49 @@ const TeacherTopicsTab = ({
                             {t("dash.teacher.topics.noAttemptsRecorded")}
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={wahjReportPickerOpen} onOpenChange={setWahjReportPickerOpen}>
+                <DialogContent dir={dir} className="sm:max-w-lg">
+                    <DialogHeader className="text-start">
+                        <DialogTitle>{t("dash.teacher.topics.wahjReportPickerTitle")}</DialogTitle>
+                        <DialogDescription>{t("dash.teacher.topics.wahjReportPickerDesc")}</DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea dir={dir} className="max-h-[50vh]">
+                        {wahjProgramParticipants.length > 0 ? (
+                            <ul className="space-y-2 pe-2">
+                                {wahjProgramParticipants.map((participant) => (
+                                    <li key={participant.key}>
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between gap-3 rounded-xl border bg-background px-4 py-3 text-start transition-colors hover:border-amber-500/40 hover:bg-amber-50/60"
+                                            disabled={!!wahjDownloadingKey}
+                                            onClick={() => void handleCreateWahjReportLink(participant.key)}
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate font-bold text-foreground">{participant.name}</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {t("dash.teacher.topics.wahjReportPages", { n: participant.totalPages })}
+                                                    {" · "}
+                                                    {t("dash.teacher.topics.wahjReportQuotes", { n: participant.quotesCount })}
+                                                </p>
+                                            </div>
+                                            {wahjDownloadingKey === participant.key ? (
+                                                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-700" />
+                                            ) : (
+                                                <BookMarked className="h-4 w-4 shrink-0 text-amber-700" />
+                                            )}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                                {t("dash.teacher.topics.wahjReportNoParticipants")}
+                            </p>
+                        )}
+                    </ScrollArea>
                 </DialogContent>
             </Dialog>
 

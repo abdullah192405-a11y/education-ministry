@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import Grades from "./pages/Grades";
 import GradeDetail from "./pages/GradeDetail";
@@ -20,6 +20,7 @@ import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ExamPage from "./pages/ExamPage";
+import WahjReadingReport from "./pages/WahjReadingReport";
 
 // Dashboard Pages
 import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect, SuperadminDashboard } from "./pages/dashboard";
@@ -39,6 +40,12 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
       {children}
     </div>
   );
+};
+
+const ContextualWhatsAppButton = () => {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/wahj/reading-report/")) return null;
+  return <WhatsAppButton />;
 };
 
 const App = () => (
@@ -73,6 +80,7 @@ const App = () => (
                 {/* Join Challenge */}
                 <Route path="/join" element={<JoinChallenge />} />
                 <Route path="/join/:pin" element={<JoinChallenge />} />
+                <Route path="/wahj/reading-report/:token" element={<WahjReadingReport />} />
 
                 {/* Dashboard Routes */}
                 <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
@@ -131,7 +139,7 @@ const App = () => (
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
-              <WhatsAppButton />
+              <ContextualWhatsAppButton />
             </AppShell>
           </FloatingChromeProvider>
         </LanguageProvider>
