@@ -636,14 +636,14 @@ const WahjReadingReport = () => {
                 aria-label="الصفحة السابقة"
                 onClick={() => goTo(activeIndex - 1)}
                 disabled={activeIndex === 0}
-                className="absolute inset-y-24 start-0 z-20 hidden w-[13%] cursor-w-resize disabled:cursor-default md:block"
+                className="absolute inset-y-24 start-0 z-20 w-[18%] max-w-28 touch-manipulation disabled:pointer-events-none sm:w-[15%] sm:max-w-none md:cursor-w-resize"
             />
             <button
                 type="button"
                 aria-label="الصفحة التالية"
                 onClick={() => goTo(activeIndex + 1)}
                 disabled={activeIndex === scenes.length - 1}
-                className="absolute inset-y-24 end-0 z-20 hidden w-[13%] cursor-e-resize disabled:cursor-default md:block"
+                className="absolute inset-y-24 end-0 z-20 w-[18%] max-w-28 touch-manipulation disabled:pointer-events-none sm:w-[15%] sm:max-w-none md:cursor-e-resize"
             />
 
             <nav className="absolute inset-x-0 bottom-5 z-30 flex items-center justify-center px-5 sm:px-8" aria-label="مشاركة التقرير">
