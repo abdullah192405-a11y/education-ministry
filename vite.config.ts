@@ -4,6 +4,7 @@ import path from "path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { componentTagger } from "lovable-tagger";
 import { handleChallengeReportPdfRequest } from "./server/challengeReportPdfHandler";
+import { handleWahjReadingReportPageRequest } from "./server/wahjReadingReportPageHandler";
 
 type MiddlewareStack = {
   use: (
@@ -24,6 +25,40 @@ function registerChallengeReportPdfMiddleware(middlewares: MiddlewareStack, gemi
       next(error);
     }
   });
+}
+
+function registerWahjReadingReportPageMiddleware(
+  middlewares: MiddlewareStack,
+  options?: { dev?: boolean },
+): void {
+  middlewares.use(async (req, res, next) => {
+    if (!req.url) return next();
+
+    const pathname = new URL(req.url, "http://localhost").pathname;
+    if (!pathname.startsWith("/wahj/reading-report/")) return next();
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+
+    // In dev, let Vite serve the SPA shell with HMR instead of a stale dist build.
+    if (options?.dev) return next();
+
+    try {
+      await handleWahjReadingReportPageRequest(req, res);
+    } catch (error) {
+      next(error);
+    }
+  });
+}
+
+function wahjReadingReportPagePlugin(): PluginOption {
+  return {
+    name: "wahj-reading-report-page",
+    configureServer(server) {
+      registerWahjReadingReportPageMiddleware(server.middlewares, { dev: true });
+    },
+    configurePreviewServer(server) {
+      registerWahjReadingReportPageMiddleware(server.middlewares);
+    },
+  };
 }
 
 function challengeReportPdfPlugin(geminiApiKey?: string): PluginOption {
@@ -52,7 +87,7 @@ export default defineConfig(({ mode }) => {
       host: "::",
       port: 8080,
     },
-    plugins: [react(), challengeReportPdfPlugin(geminiApiKey), mode === "development" && componentTagger()].filter(Boolean),
+    plugins: [react(), challengeReportPdfPlugin(geminiApiKey), wahjReadingReportPagePlugin(), mode === "development" && componentTagger()].filter(Boolean),
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

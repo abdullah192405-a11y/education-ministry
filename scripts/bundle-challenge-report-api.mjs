@@ -30,3 +30,11 @@ await esbuild.build({
   outfile: netlifyOutfile,
 });
 console.log(`Bundled Netlify challenge report API -> ${netlifyOutfile}`);
+
+const wahjPageOutfile = path.join(rootDir, "netlify/functions/wahj-reading-report-page.js");
+await esbuild.build({
+  ...bundleOptions,
+  entryPoints: [path.join(rootDir, "scripts/netlify-wahj-reading-report-page-entry.ts")],
+  outfile: wahjPageOutfile,
+});
+console.log(`Bundled Netlify Wahj reading report page -> ${wahjPageOutfile}`);

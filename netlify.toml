@@ -43,6 +43,12 @@
   force = true
 
 [[redirects]]
+  from = "/wahj/reading-report/:token"
+  to = "/.netlify/functions/wahj-reading-report-page?token=:token"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
@@ -54,3 +60,6 @@
 
 [functions."challenge-report-pdf"]
   timeout = 60
+
+[functions."wahj-reading-report-page"]
+  included_files = ["dist/index.html"]

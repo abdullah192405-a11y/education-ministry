@@ -10,8 +10,24 @@ import { Check, Copy, Share2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { fetchWahjReadingReportByToken } from "@/lib/wahjReadingReportLinks";
 import type { WahjReadingReportPayload } from "@/lib/wahjReadingReportData";
+import {
+    applyWahjReadingReportSocialMeta,
+    buildWahjReadingReportSocialMeta,
+} from "@/lib/wahjReadingReportSocialMeta";
 
 const LOGO = "/brand/wahj-logo.png";
+
+const REPORT_SCENE_VISUALS: Record<string, string> = {
+    welcome: "/brand/wahj-report-0-welcome.png?v=2",
+    pages: "/brand/wahj-report-1-book.png",
+    progress: "/brand/wahj-report-2-progress.png",
+    focus: "/brand/wahj-report-3-focus.png",
+    quotes: "/brand/wahj-report-4-quotes.png",
+    community: "/brand/wahj-report-5-community.png",
+    insight: "/brand/wahj-report-6-insight.png",
+    "next-step": "/brand/wahj-report-7-next-step.png",
+    gift: "/brand/wahj-report-8-gift.png",
+};
 
 type SceneKind =
     | "welcome"
@@ -115,7 +131,8 @@ function buildScenes(payload: WahjReadingReportPayload): Scene[] {
         {
             id: "welcome",
             eyebrow: "تقرير قراء وهج",
-            title: `حياك ${payload.participantName}`,
+            title: "حياك",
+            value: payload.participantName,
             description: `جاهز تشوف أبرز محطات رحلتك في ${payload.programName}؟`,
             kind: "welcome",
             tone: "brand",
@@ -256,99 +273,48 @@ function BrandMark() {
     );
 }
 
-function SceneVisual({ kind }: { kind: SceneKind }) {
-    const frame = "relative h-60 w-80 overflow-visible sm:h-72 sm:w-[28rem]";
-
-    if (kind === "welcome") return (
-        <div className={frame}>
-            <div className="absolute -start-24 top-2 h-36 w-36 rounded-full border-[18px] border-white/20" />
-            <div className="absolute -start-12 top-20 h-20 w-20 rounded-full bg-[#55c5ca]/70" />
-            <div className="absolute -end-20 bottom-[-2rem] h-40 w-40 rounded-full border-[20px] border-white/25" />
-            <div className="absolute end-8 bottom-8 h-20 w-20 rounded-full bg-[#f4cf2f]/80" />
+function WelcomeSceneBackground() {
+    return (
+        <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden" aria-hidden>
+            <img
+                src={REPORT_SCENE_VISUALS.welcome}
+                alt=""
+                width={1024}
+                height={571}
+                decoding="async"
+                className="h-full w-full object-cover"
+            />
         </div>
     );
+}
 
-    if (kind === "book") return (
-        <div className={frame}>
-            <div className="absolute inset-x-16 bottom-5 h-32 rotate-[-5deg] rounded-[2.2rem] bg-gradient-to-br from-[#9650b1] to-[#5669cf] shadow-[0_24px_45px_rgba(65,67,140,.18)]" />
-            <div className="absolute start-16 bottom-12 h-32 w-28 rotate-[-8deg] rounded-2xl bg-white shadow-lg sm:start-24" />
-            <div className="absolute end-16 bottom-16 h-36 w-28 rotate-[8deg] rounded-2xl bg-[#e4f5f6] shadow-lg sm:end-24" />
-            <div className="absolute start-24 top-10 h-14 w-14 rounded-2xl bg-[#55c5ca] shadow-md sm:start-32" />
-            <div className="absolute end-20 top-12 h-12 w-12 rounded-full bg-[#f4cf2f] shadow-md sm:end-28" />
-        </div>
-    );
+function SceneVisual({ sceneId, kind }: { sceneId: string; kind: SceneKind }) {
+    if (sceneId === "welcome" || kind === "welcome") {
+        return null;
+    }
 
-    if (kind === "progress") return (
-        <div className={frame}>
-            <div className="absolute start-16 top-7 h-44 w-44 rounded-full bg-gradient-to-br from-[#9650b1] to-[#5669cf] shadow-[0_24px_45px_rgba(65,67,140,.2)] sm:start-32" />
-            <div className="absolute start-28 top-20 h-20 w-20 rounded-full bg-white/95 sm:start-44" />
-            <div className="absolute start-16 top-3 h-20 w-12 rotate-[-18deg] rounded-b-2xl bg-[#55c5ca] sm:start-32" />
-            <div className="absolute end-16 top-3 h-20 w-12 rotate-[18deg] rounded-b-2xl bg-[#f4cf2f] sm:end-32" />
-            <div className="absolute inset-x-0 top-[38%] text-center text-4xl font-bold text-[#9650b1]">✓</div>
-        </div>
-    );
+    const frame = "relative flex h-60 w-80 items-center justify-center overflow-visible sm:h-72 sm:w-[28rem]";
+    const visualSrc = REPORT_SCENE_VISUALS[sceneId];
 
-    if (kind === "focus") return (
-        <div className={frame}>
-            <div className="absolute start-20 top-14 h-36 w-32 rotate-[-6deg] rounded-b-[2.8rem] rounded-t-xl bg-gradient-to-b from-white to-[#e4e7f1] shadow-[0_24px_45px_rgba(65,67,140,.16)] sm:start-36" />
-            <div className="absolute start-16 top-8 h-12 w-40 rotate-[-6deg] rounded-full bg-[#7447ae] shadow-md sm:start-32" />
-            <div className="absolute start-24 top-20 h-14 w-24 rotate-[-6deg] rounded-xl bg-[#c28a63] sm:start-40" />
-            <div className="absolute end-14 top-24 h-16 w-14 rounded-e-full border-[11px] border-[#e4e7f1] sm:end-28" />
-            <div className="absolute start-32 top-0 h-10 w-2 rounded-full bg-white/75 blur-sm sm:start-48" />
-        </div>
-    );
-
-    if (kind === "quotes") return (
-        <div className={frame}>
-            {[0, 1, 2, 3].map((index) => (
-                <div
-                    key={index}
-                    className="absolute h-36 w-28 rounded-xl bg-white shadow-[0_10px_24px_rgba(59,68,100,.12)] ring-1 ring-slate-200/70"
-                    style={{ right: `${42 + index * 48}px`, top: `${65 - index * 7}px` }}
-                >
-                    <div className={`mx-auto mt-8 h-12 w-12 rounded-xl ${index % 2 ? "bg-[#55c5ca]" : "bg-[#9b419f]"}`} />
-                    <div className="mx-auto mt-5 h-1.5 w-14 rounded-full bg-slate-200" />
-                </div>
-            ))}
-        </div>
-    );
-
-    if (kind === "community") return (
-        <div className={frame}>
-            <div className="absolute inset-x-16 bottom-[-3rem] h-60 rounded-full bg-gradient-to-br from-[#a7c4ff] to-[#5b87ec] shadow-[0_20px_45px_rgba(75,105,179,.18)]" />
-            <div className="absolute start-24 bottom-16 h-20 w-32 rounded-full border border-white/55" />
-            <div className="absolute end-24 bottom-8 h-16 w-28 rounded-full border border-white/45" />
-            <div className="absolute inset-x-24 bottom-16 h-px bg-white/60" />
-        </div>
-    );
-
-    if (kind === "gift") return (
-        <div className={frame}>
-            <div className="absolute inset-x-10 top-14 rounded-2xl border-2 border-dashed border-[#9650b1] bg-white px-8 py-10 text-center shadow-[0_16px_34px_rgba(65,67,140,.12)]">
-                <div className="text-3xl font-bold tracking-[.16em] text-[#9650b1]">WAHJ</div>
-                <div className="mx-auto mt-4 h-1.5 w-3/4 rounded-full bg-[#55c5ca]" />
+    if (visualSrc) {
+        return (
+            <div className={frame}>
+                <img
+                    src={visualSrc}
+                    alt=""
+                    className="mx-auto h-full w-full max-w-[22rem] object-contain sm:max-w-[26rem]"
+                />
             </div>
-            <div className="absolute start-12 top-5 h-16 w-16 rounded-2xl bg-[#55c5ca] shadow-md" />
-            <div className="absolute end-12 top-7 h-14 w-14 rounded-full bg-[#f4cf2f] shadow-md" />
-        </div>
-    );
-
-    if (kind === "insight") return (
-        <div className={frame}>
-            <div className="absolute start-20 top-10 h-40 w-40 rounded-full bg-[#f4cf2f] shadow-[0_20px_38px_rgba(198,161,33,.15)] sm:start-36" />
-            <div className="absolute start-32 top-24 h-16 w-16 rounded-full bg-white sm:start-48" />
-            <div className="absolute start-16 top-20 h-4 w-14 rotate-[-20deg] rounded-full bg-[#55c5ca] sm:start-32" />
-            <div className="absolute end-16 top-20 h-4 w-14 rotate-[20deg] rounded-full bg-white/70 sm:end-32" />
-            <div className="absolute inset-x-32 bottom-12 h-9 rounded-lg bg-[#7447ae]" />
-        </div>
-    );
+        );
+    }
 
     return (
         <div className={frame}>
-            <div className="absolute start-12 top-8 h-40 w-40 rounded-full bg-[#55c5ca]/70" />
-            <div className="absolute end-14 bottom-8 h-28 w-28 rounded-3xl bg-[#f4cf2f]/80" />
-            <div className="absolute end-28 top-14 h-24 w-24 rounded-3xl bg-[#7447ae]/75" />
-            <img src={LOGO} alt="" className="absolute inset-x-0 top-20 mx-auto w-48 rounded-2xl bg-white p-3 shadow-[0_16px_34px_rgba(65,67,140,.14)]" />
+            <img
+                src={LOGO}
+                alt=""
+                className="mx-auto w-48 max-w-full object-contain"
+            />
         </div>
     );
 }
@@ -415,6 +381,18 @@ const WahjReadingReport = () => {
             alive = false;
         };
     }, [token]);
+
+    useEffect(() => {
+        if (!payload) return;
+
+        const meta = buildWahjReadingReportSocialMeta({
+            origin: window.location.origin,
+            token,
+            participantName: payload.participantName,
+        });
+
+        return applyWahjReadingReportSocialMeta(meta);
+    }, [payload, token]);
 
     const scenes = useMemo(() => (payload ? buildScenes(payload) : []), [payload]);
     const scene = scenes[activeIndex];
@@ -489,6 +467,8 @@ const WahjReadingReport = () => {
                 touchStart.current = null;
             }}
         >
+            {scene.id === "welcome" && <WelcomeSceneBackground />}
+
             <header className="absolute inset-x-0 top-0 z-30 px-4 pt-4 sm:px-7">
                 <div className="flex gap-1.5" dir="rtl" aria-label="تقدم التقرير">
                     {scenes.map((item, index) => (
@@ -526,9 +506,14 @@ const WahjReadingReport = () => {
                     initial="hidden"
                     animate="visible"
                     exit="exit"
-                    className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-5 pb-20 pt-24 sm:px-10 sm:pt-24"
+                    className={`relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-5 pb-20 pt-24 sm:px-10 sm:pt-24 ${
+                        scene.kind === "welcome" ? "justify-center" : ""
+                    }`}
                 >
-                    <motion.div variants={contentVariants} className="flex flex-1 flex-col">
+                    <motion.div
+                        variants={contentVariants}
+                        className={`flex flex-col ${scene.kind === "welcome" ? "" : "flex-1"}`}
+                    >
                         <motion.p
                             variants={itemVariants}
                             className={`mx-auto max-w-3xl text-center text-xs font-semibold sm:text-sm ${
@@ -539,25 +524,38 @@ const WahjReadingReport = () => {
                         </motion.p>
                         <motion.h1
                             variants={itemVariants}
-                            className={`mx-auto mt-2 max-w-3xl text-center text-2xl font-bold leading-[1.55] sm:text-3xl ${
-                                isBrand ? "text-white" : "text-[#171923]"
-                            }`}
+                            className={`mx-auto max-w-3xl text-center font-bold leading-[1.55] ${
+                                scene.kind === "welcome"
+                                    ? "mt-1 text-xl sm:text-2xl"
+                                    : "mt-2 text-2xl sm:text-3xl"
+                            } ${isBrand ? "text-white" : "text-[#171923]"}`}
                         >
                             {scene.title}
                         </motion.h1>
+                        {scene.kind === "welcome" && scene.value && (
+                            <motion.div variants={itemVariants} className="mx-auto mt-3 max-w-3xl text-center">
+                                <div
+                                    className={`break-words text-3xl font-bold leading-[1.3] sm:text-4xl ${accentStyles[scene.tone]}`}
+                                >
+                                    {scene.value}
+                                </div>
+                            </motion.div>
+                        )}
                         {scene.description && (
                             <motion.p
                                 variants={itemVariants}
                                 className={`mx-auto mt-2 max-w-xl text-center text-sm font-medium leading-7 sm:text-base sm:leading-8 ${
-                                    isBrand ? "text-white/80" : "text-[#171923]/75"
-                                }`}
+                                    scene.kind === "welcome" ? "mt-4" : ""
+                                } ${isBrand ? "text-white/80" : "text-[#171923]/75"}`}
                             >
                                 {scene.description}
                             </motion.p>
                         )}
-                        {scene.value && (
+                        {scene.kind !== "welcome" && scene.value && (
                             <motion.div variants={itemVariants} className="mx-auto mt-5 max-w-3xl text-center">
-                                <div className={`break-words text-4xl font-bold leading-tight tabular-nums sm:text-5xl ${accentStyles[scene.tone]}`}>
+                                <div
+                                    className={`break-words text-4xl font-bold leading-tight tabular-nums sm:text-5xl ${accentStyles[scene.tone]}`}
+                                >
                                     {scene.value}
                                 </div>
                                 {scene.unit && (
@@ -584,12 +582,14 @@ const WahjReadingReport = () => {
                             </motion.div>
                         ))}
 
-                        <motion.div
-                            variants={itemVariants}
-                            className="flex min-h-[260px] flex-1 items-center justify-center"
-                        >
-                            <SceneVisual kind={scene.kind} />
-                        </motion.div>
+                        {scene.kind !== "welcome" && (
+                            <motion.div
+                                variants={itemVariants}
+                                className="flex min-h-[260px] flex-1 items-center justify-center"
+                            >
+                                <SceneVisual sceneId={scene.id} kind={scene.kind} />
+                            </motion.div>
+                        )}
 
                         {scene.notes?.map((note) => (
                             <motion.p
