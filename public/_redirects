@@ -6,4 +6,5 @@ http://www.labforai.com/* https://www.labforai.com/:splat 301!
 
 # Netlify SPA fallback (also declared in netlify.toml)
 /api/challenge-report-pdf /.netlify/functions/challenge-report-pdf 200
+/wahj/reading-report/* /.netlify/functions/wahj-reading-report-page?token=:splat 200
 /* /index.html 200

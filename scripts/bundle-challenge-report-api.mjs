@@ -23,6 +23,15 @@ await esbuild.build({
 });
 console.log(`Bundled challenge report API -> ${vercelOutfile}`);
 
+const wahjVercelOutfile = path.join(rootDir, "api/wahj-reading-report-page.js");
+await esbuild.build({
+  ...bundleOptions,
+  format: "esm",
+  entryPoints: [path.join(rootDir, "scripts/wahj-reading-report-page-entry.ts")],
+  outfile: wahjVercelOutfile,
+});
+console.log(`Bundled Vercel Wahj reading report page -> ${wahjVercelOutfile}`);
+
 const netlifyOutfile = path.join(rootDir, "netlify/functions/challenge-report-pdf.js");
 await esbuild.build({
   ...bundleOptions,

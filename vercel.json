@@ -6,6 +6,10 @@
     },
     "rewrites": [
         {
+            "source": "/wahj/reading-report/:token",
+            "destination": "/api/wahj-reading-report-page?token=:token"
+        },
+        {
             "source": "/((?!api/).*)",
             "destination": "/index.html"
         }
@@ -15,6 +19,9 @@
             "maxDuration": 60,
             "memory": 3008,
             "includeFiles": "node_modules/@sparticuz/chromium/**"
+        },
+        "api/wahj-reading-report-page.js": {
+            "includeFiles": "dist/index.html"
         }
     }
 }

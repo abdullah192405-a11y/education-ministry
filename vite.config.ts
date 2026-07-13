@@ -38,11 +38,13 @@ function registerWahjReadingReportPageMiddleware(
     if (!pathname.startsWith("/wahj/reading-report/")) return next();
     if (req.method !== "GET" && req.method !== "HEAD") return next();
 
-    // In dev, let Vite serve the SPA shell with HMR instead of a stale dist build.
-    if (options?.dev) return next();
-
+    // Inject Wahj social metadata for crawlers in dev and preview.
     try {
-      await handleWahjReadingReportPageRequest(req, res);
+      await handleWahjReadingReportPageRequest(req, res, {
+        indexHtmlPath: options?.dev
+          ? path.join(process.cwd(), "index.html")
+          : undefined,
+      });
     } catch (error) {
       next(error);
     }

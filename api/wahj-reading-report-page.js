@@ -1,42 +1,6 @@
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// scripts/netlify-wahj-reading-report-page-entry.ts
-var netlify_wahj_reading_report_page_entry_exports = {};
-__export(netlify_wahj_reading_report_page_entry_exports, {
-  handler: () => handler
-});
-module.exports = __toCommonJS(netlify_wahj_reading_report_page_entry_exports);
-var import_node_stream = require("node:stream");
-
 // server/wahjReadingReportPageHandler.ts
-var import_node_fs = require("node:fs");
-var import_node_path = __toESM(require("node:path"), 1);
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 // src/lib/wahjReadingReportSocialMeta.ts
 var WAHJ_READING_REPORT_LOGO_PATH = "/brand/wahj-logo.png";
@@ -113,16 +77,16 @@ function injectWahjReadingReportSocialMeta(html, meta) {
 
 // server/wahjReadingReportPageHandler.ts
 function resolveIndexHtmlPath(customPath) {
-  if (customPath && (0, import_node_fs.existsSync)(customPath)) return customPath;
+  if (customPath && existsSync(customPath)) return customPath;
   const candidates = process.env.NODE_ENV === "production" ? [
-    import_node_path.default.join(process.cwd(), "dist", "index.html"),
-    import_node_path.default.join(process.cwd(), "index.html")
+    path.join(process.cwd(), "dist", "index.html"),
+    path.join(process.cwd(), "index.html")
   ] : [
-    import_node_path.default.join(process.cwd(), "index.html"),
-    import_node_path.default.join(process.cwd(), "dist", "index.html")
+    path.join(process.cwd(), "index.html"),
+    path.join(process.cwd(), "dist", "index.html")
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs.existsSync)(candidate)) return candidate;
+    if (existsSync(candidate)) return candidate;
   }
   throw new Error("Could not find index.html for Wahj reading report page.");
 }
@@ -174,7 +138,7 @@ async function handleWahjReadingReportPageRequest(req, res, options) {
     token,
     participantName
   });
-  const indexHtml = (0, import_node_fs.readFileSync)(resolveIndexHtmlPath(options?.indexHtmlPath), "utf8");
+  const indexHtml = readFileSync(resolveIndexHtmlPath(options?.indexHtmlPath), "utf8");
   const html = injectWahjReadingReportSocialMeta(indexHtml, meta);
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -186,84 +150,33 @@ async function handleWahjReadingReportPageRequest(req, res, options) {
   res.end(html);
 }
 
-// scripts/netlify-wahj-reading-report-page-entry.ts
-function normalizeHeaders(headers) {
-  const out = {};
-  for (const [key, value] of Object.entries(headers)) {
-    if (value != null) out[key.toLowerCase()] = value;
+// scripts/wahj-reading-report-page-entry.ts
+var config = {
+  api: {
+    bodyParser: false
   }
-  return out;
-}
-function createRequest(event) {
-  const token = event.queryStringParameters?.token;
-  const pathname = token ? `/wahj/reading-report/${token}` : event.path;
-  const stream = import_node_stream.Readable.from(Buffer.alloc(0));
-  stream.method = event.httpMethod;
-  stream.headers = normalizeHeaders(event.headers);
-  stream.url = pathname;
-  return stream;
-}
-function createResponse() {
-  let statusCode = 200;
-  const headers = {};
-  const chunks = [];
-  const res = {
-    statusCode: 200,
-    headersSent: false,
-    setHeader(name, value) {
-      headers[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
-    },
-    getHeader(name) {
-      return headers[name.toLowerCase()];
-    },
-    end(chunk) {
-      if (chunk != null) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      res.headersSent = true;
-      finish();
-    }
-  };
-  let resolveCompletion;
-  const completion = new Promise((resolve) => {
-    resolveCompletion = resolve;
-  });
-  function finish() {
-    resolveCompletion({
-      statusCode,
-      headers,
-      body: Buffer.concat(chunks).toString("utf8")
-    });
-  }
-  Object.defineProperty(res, "statusCode", {
-    get() {
-      return statusCode;
-    },
-    set(value) {
-      statusCode = value;
-    }
-  });
-  return { res, completion };
-}
-async function handler(event) {
-  const req = createRequest(event);
-  const { res, completion } = createResponse();
+};
+async function handler(req, res) {
   try {
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const token = requestUrl.searchParams.get("token") || void 0;
+    if (token) {
+      req.url = `/wahj/reading-report/${token}`;
+    }
     await handleWahjReadingReportPageRequest(req, res, {
       indexHtmlPath: `${process.cwd()}/dist/index.html`
     });
   } catch (error) {
-    console.error("wahj-reading-report-page Netlify handler failed:", error);
+    console.error("wahj-reading-report-page handler failed:", error);
     if (!res.headersSent) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.end(error instanceof Error ? error.message : "\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u062A\u0642\u0631\u064A\u0631 \u0642\u0631\u0627\u0621 \u0648\u0647\u062C.");
     }
   }
-  return completion;
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  handler
-});
+export {
+  config,
+  handler as default
+};
 //# sourceMappingURL=wahj-reading-report-page.js.map

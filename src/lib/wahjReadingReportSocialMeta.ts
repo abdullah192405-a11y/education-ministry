@@ -1,6 +1,7 @@
 export const WAHJ_READING_REPORT_LOGO_PATH = "/brand/wahj-logo.png";
-export const WAHJ_READING_REPORT_OG_IMAGE_PATH = "/brand/wahj-report-9-final.png";
+export const WAHJ_READING_REPORT_OG_IMAGE_PATH = "/brand/wahj-logo.png";
 export const WAHJ_READING_REPORT_SITE_NAME = "قراء وهج";
+export const WAHJ_READING_REPORT_TITLE = "تقرير قراء وهج";
 
 export type WahjReadingReportSocialMeta = {
     title: string;
@@ -27,9 +28,7 @@ export function buildWahjReadingReportSocialMeta(options: {
     token?: string;
     participantName?: string;
 }): WahjReadingReportSocialMeta {
-    const title = options.participantName
-        ? `تقرير قراء وهج — ${options.participantName}`
-        : "تقرير قراء وهج";
+    const title = WAHJ_READING_REPORT_TITLE;
     const description = "شاهد ملخص الرحلة في برنامج قراء وهج";
     const path = options.token ? `/wahj/reading-report/${options.token}` : "/wahj/reading-report";
     const origin = options.origin.replace(/\/$/, "");
