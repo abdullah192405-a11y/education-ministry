@@ -18,7 +18,7 @@ import {
 const LOGO = "/brand/wahj-logo.png";
 
 const REPORT_SCENE_VISUALS: Record<string, string> = {
-    welcome: "/brand/wahj-report-0-welcome.png?v=2",
+    "welcome-center": "/brand/wahj-report-0-center.png?v=3",
     pages: "/brand/wahj-report-1-book.png",
     progress: "/brand/wahj-report-2-progress.png",
     focus: "/brand/wahj-report-3-focus.png",
@@ -27,6 +27,7 @@ const REPORT_SCENE_VISUALS: Record<string, string> = {
     insight: "/brand/wahj-report-6-insight.png",
     "next-step": "/brand/wahj-report-7-next-step.png",
     gift: "/brand/wahj-report-8-gift.png",
+    final: "/brand/wahj-report-9-final.png",
 };
 
 type SceneKind =
@@ -273,18 +274,21 @@ function BrandMark() {
     );
 }
 
-function WelcomeSceneBackground() {
+function WelcomeCenterVisual({ itemVariants }: { itemVariants: Variants }) {
     return (
-        <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden" aria-hidden>
+        <motion.div
+            variants={itemVariants}
+            className="pointer-events-none mx-auto flex w-full flex-1 items-center justify-center py-2 sm:py-4"
+        >
             <img
-                src={REPORT_SCENE_VISUALS.welcome}
+                src={REPORT_SCENE_VISUALS["welcome-center"]}
                 alt=""
-                width={1024}
-                height={571}
+                width={500}
+                height={500}
                 decoding="async"
-                className="h-full w-full object-cover"
+                className="h-auto w-auto max-h-[min(46vh,18rem)] max-w-[min(78vw,18rem)] object-contain sm:max-h-[min(50vh,22rem)] sm:max-w-[min(72vw,22rem)]"
             />
-        </div>
+        </motion.div>
     );
 }
 
@@ -467,8 +471,6 @@ const WahjReadingReport = () => {
                 touchStart.current = null;
             }}
         >
-            {scene.id === "welcome" && <WelcomeSceneBackground />}
-
             <header className="absolute inset-x-0 top-0 z-30 px-4 pt-4 sm:px-7">
                 <div className="flex gap-1.5" dir="rtl" aria-label="تقدم التقرير">
                     {scenes.map((item, index) => (
@@ -506,13 +508,11 @@ const WahjReadingReport = () => {
                     initial="hidden"
                     animate="visible"
                     exit="exit"
-                    className={`relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-5 pb-20 pt-24 sm:px-10 sm:pt-24 ${
-                        scene.kind === "welcome" ? "justify-center" : ""
-                    }`}
+                    className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col px-5 pb-20 pt-24 sm:px-10 sm:pt-24"
                 >
                     <motion.div
                         variants={contentVariants}
-                        className={`flex flex-col ${scene.kind === "welcome" ? "" : "flex-1"}`}
+                        className={`flex flex-col ${scene.kind === "welcome" ? "min-h-[calc(100dvh-7rem)]" : "flex-1"}`}
                     >
                         <motion.p
                             variants={itemVariants}
@@ -550,6 +550,9 @@ const WahjReadingReport = () => {
                             >
                                 {scene.description}
                             </motion.p>
+                        )}
+                        {scene.kind === "welcome" && (
+                            <WelcomeCenterVisual itemVariants={itemVariants} />
                         )}
                         {scene.kind !== "welcome" && scene.value && (
                             <motion.div variants={itemVariants} className="mx-auto mt-5 max-w-3xl text-center">
