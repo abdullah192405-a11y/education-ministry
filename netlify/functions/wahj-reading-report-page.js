@@ -40,6 +40,8 @@ var import_node_path = __toESM(require("node:path"), 1);
 
 // src/lib/wahjReadingReportSocialMeta.ts
 var WAHJ_READING_REPORT_LOGO_PATH = "/brand/wahj-logo.png";
+var WAHJ_READING_REPORT_OG_IMAGE_PATH = "/brand/wahj-report-9-final.png";
+var WAHJ_READING_REPORT_SITE_NAME = "\u0642\u0631\u0627\u0621 \u0648\u0647\u062C";
 function escapeHtml(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -50,73 +52,73 @@ function buildWahjReadingReportSocialMeta(options) {
   const title = options.participantName ? `\u062A\u0642\u0631\u064A\u0631 \u0642\u0631\u0627\u0621 \u0648\u0647\u062C \u2014 ${options.participantName}` : "\u062A\u0642\u0631\u064A\u0631 \u0642\u0631\u0627\u0621 \u0648\u0647\u062C";
   const description = "\u0634\u0627\u0647\u062F \u0645\u0644\u062E\u0635 \u0627\u0644\u0631\u062D\u0644\u0629 \u0641\u064A \u0628\u0631\u0646\u0627\u0645\u062C \u0642\u0631\u0627\u0621 \u0648\u0647\u062C";
   const path2 = options.token ? `/wahj/reading-report/${options.token}` : "/wahj/reading-report";
+  const origin = options.origin.replace(/\/$/, "");
   return {
     title,
     description,
-    url: `${options.origin.replace(/\/$/, "")}${path2}`,
-    imageUrl: `${options.origin.replace(/\/$/, "")}${WAHJ_READING_REPORT_LOGO_PATH}`
+    url: `${origin}${path2}`,
+    imageUrl: `${origin}${WAHJ_READING_REPORT_OG_IMAGE_PATH}`,
+    siteName: WAHJ_READING_REPORT_SITE_NAME
   };
+}
+function replaceMetaTag(html, matcher, replacement) {
+  return matcher.test(html) ? html.replace(matcher, replacement) : html;
+}
+function upsertNamedMeta(html, name, content) {
+  const matcher = new RegExp(`<meta name="${name}"[\\s\\S]*?>`, "i");
+  const tag = `<meta name="${name}" content="${content}" />`;
+  if (matcher.test(html)) {
+    return html.replace(matcher, tag);
+  }
+  return html.replace(/<meta charset="UTF-8"\s*\/?>/i, `$&
+  ${tag}`);
+}
+function upsertPropertyMeta(html, property, content) {
+  const matcher = new RegExp(`<meta property="${property}"[\\s\\S]*?>`, "i");
+  const tag = `<meta property="${property}" content="${content}" />`;
+  if (matcher.test(html)) {
+    return html.replace(matcher, tag);
+  }
+  return html.replace(/<meta property="og:type"[\s\S]*?>/i, `$&
+  ${tag}`);
 }
 function injectWahjReadingReportSocialMeta(html, meta) {
   const title = escapeHtml(meta.title);
   const description = escapeAttr(meta.description);
   const image = escapeAttr(meta.imageUrl);
   const url = escapeAttr(meta.url);
-  let out = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`).replace(
-    /<meta name="description"[^>]*>/,
-    `<meta name="description" content="${description}" />`
-  ).replace(/<meta name="author"[^>]*>/, `<meta name="author" content="\u0642\u0631\u0627\u0621 \u0648\u0647\u062C" />`).replace(
-    /<meta property="og:title"[^>]*>/,
-    `<meta property="og:title" content="${title}" />`
-  ).replace(
-    /<meta property="og:description"[^>]*>/,
-    `<meta property="og:description" content="${description}" />`
-  ).replace(
-    /<meta property="og:image"[^>]*>/,
-    `<meta property="og:image" content="${image}" />`
-  ).replace(
-    /<meta name="twitter:title"[^>]*>/,
-    `<meta name="twitter:title" content="${title}" />`
-  ).replace(
-    /<meta name="twitter:image"[^>]*>/,
-    `<meta name="twitter:image" content="${image}" />`
-  ).replace(
-    /<link rel="icon"[^>]*>/,
-    `<link rel="icon" type="image/png" href="${WAHJ_READING_REPORT_LOGO_PATH}" />`
+  const siteName = escapeAttr(meta.siteName);
+  const imageAlt = escapeAttr(WAHJ_READING_REPORT_SITE_NAME);
+  let out = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`).replace(/<link rel="icon"[\s\S]*?>/i, `<link rel="icon" type="image/png" href="${WAHJ_READING_REPORT_LOGO_PATH}" />`);
+  out = upsertNamedMeta(out, "description", description);
+  out = upsertNamedMeta(out, "author", WAHJ_READING_REPORT_SITE_NAME);
+  out = upsertPropertyMeta(out, "og:title", title);
+  out = upsertPropertyMeta(out, "og:description", description);
+  out = upsertPropertyMeta(out, "og:image", image);
+  out = upsertPropertyMeta(out, "og:url", url);
+  out = upsertPropertyMeta(out, "og:site_name", siteName);
+  out = upsertPropertyMeta(out, "og:image:alt", imageAlt);
+  out = upsertNamedMeta(out, "twitter:title", title);
+  out = upsertNamedMeta(out, "twitter:description", description);
+  out = upsertNamedMeta(out, "twitter:image", image);
+  out = upsertNamedMeta(out, "twitter:image:alt", imageAlt);
+  out = replaceMetaTag(
+    out,
+    /<meta name="twitter:card"[\s\S]*?>/i,
+    `<meta name="twitter:card" content="summary_large_image" />`
   );
-  if (out.includes('property="og:url"')) {
-    out = out.replace(
-      /<meta property="og:url"[^>]*>/,
-      `<meta property="og:url" content="${url}" />`
-    );
-  } else {
-    out = out.replace(
-      /<meta property="og:type"[^>]*>/,
-      `$&
-  <meta property="og:url" content="${url}" />`
-    );
-  }
-  if (!out.includes('name="twitter:description"')) {
-    out = out.replace(
-      /<meta name="twitter:image"[^>]*>/,
-      `$&
-  <meta name="twitter:description" content="${description}" />`
-    );
-  } else {
-    out = out.replace(
-      /<meta name="twitter:description"[^>]*>/,
-      `<meta name="twitter:description" content="${description}" />`
-    );
-  }
   return out;
 }
 
 // server/wahjReadingReportPageHandler.ts
 function resolveIndexHtmlPath(customPath) {
   if (customPath && (0, import_node_fs.existsSync)(customPath)) return customPath;
-  const candidates = [
+  const candidates = process.env.NODE_ENV === "production" ? [
     import_node_path.default.join(process.cwd(), "dist", "index.html"),
     import_node_path.default.join(process.cwd(), "index.html")
+  ] : [
+    import_node_path.default.join(process.cwd(), "index.html"),
+    import_node_path.default.join(process.cwd(), "dist", "index.html")
   ];
   for (const candidate of candidates) {
     if ((0, import_node_fs.existsSync)(candidate)) return candidate;
@@ -134,6 +136,28 @@ function extractReportToken(pathname) {
   const match = pathname.match(/^\/wahj\/reading-report\/([^/?#]+)/);
   return match?.[1];
 }
+async function fetchParticipantNameForToken(token) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey || !token) return void 0;
+  try {
+    const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/get_wahj_reading_report_by_token`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ report_token: token })
+    });
+    if (!response.ok) return void 0;
+    const data = await response.json();
+    const row = Array.isArray(data) ? data[0] : data;
+    return row?.payload?.participantName || void 0;
+  } catch {
+    return void 0;
+  }
+}
 async function handleWahjReadingReportPageRequest(req, res, options) {
   if (req.method && req.method !== "GET" && req.method !== "HEAD") {
     res.statusCode = 405;
@@ -143,10 +167,11 @@ async function handleWahjReadingReportPageRequest(req, res, options) {
   const requestUrl = new URL(req.url || "/", resolveRequestOrigin(req));
   const token = extractReportToken(requestUrl.pathname);
   const origin = resolveRequestOrigin(req);
+  const participantName = options?.participantName ?? (token ? await fetchParticipantNameForToken(token) : void 0);
   const meta = buildWahjReadingReportSocialMeta({
     origin,
     token,
-    participantName: options?.participantName
+    participantName
   });
   const indexHtml = (0, import_node_fs.readFileSync)(resolveIndexHtmlPath(options?.indexHtmlPath), "utf8");
   const html = injectWahjReadingReportSocialMeta(indexHtml, meta);
