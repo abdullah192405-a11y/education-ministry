@@ -9,7 +9,11 @@ import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer
 import { Check, Copy, Share2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { fetchWahjReadingReportByToken } from "@/lib/wahjReadingReportLinks";
-import type { WahjReadingReportPayload } from "@/lib/wahjReadingReportData";
+import {
+    applyIntakeTotalsToReportPayload,
+    type WahjReadingReportPayload,
+} from "@/lib/wahjReadingReportData";
+import { formatWahjAttendance } from "@/lib/wahjIntakeLabels";
 import {
     applyWahjReadingReportSocialMeta,
     buildWahjReadingReportSocialMeta,
@@ -54,7 +58,7 @@ type Scene = {
     tone: SceneTone;
     facts?: Array<{ label: string; value: string }>;
     notes?: string[];
-    action?: "copy" | "share";
+    action?: "copy" | "copy-reference" | "share";
 };
 
 const toneStyles: Record<SceneTone, string> = {
@@ -127,6 +131,32 @@ function buildScenes(payload: WahjReadingReportPayload): Scene[] {
         ...(firstInsight?.evidence || []).slice(0, 1),
         ...(firstInsight?.successIndicators || []).slice(0, 1),
     ];
+    const intakeHistoryNotes = (payload.intakeAttempts || []).slice(-4).map((attempt) =>
+        `${attempt.label}: ${attempt.pagesRead} صفحة، ${attempt.benefitsCount} فائدة${attempt.score != null ? `، ${attempt.score}%` : ""}`,
+    );
+    const communityFacts = [
+        { label: "مؤشر التفاعل", value: `${payload.analytics.engagementIndex}/100` },
+        { label: "ثبات الإيقاع", value: payload.analytics.consistencyLabel },
+    ];
+    if (payload.latestDiscussionAttendance) {
+        communityFacts.push({
+            label: "الجلسات النقاشية",
+            value: formatWahjAttendance(payload.latestDiscussionAttendance),
+        });
+    }
+    if (payload.latestEnrichmentAttendance) {
+        communityFacts.push({
+            label: "اللقاءات الإثرائية",
+            value: formatWahjAttendance(payload.latestEnrichmentAttendance),
+        });
+    }
+    const focusFacts = [
+        { label: "أيام الرحلة", value: String(payload.daysCount) },
+        { label: "المحاولات", value: String(payload.attemptCount) },
+    ];
+    if (intakeHistoryNotes.length) {
+        focusFacts.push({ label: "آخر محاولاتك", value: `${payload.intakeAttempts?.length || 0} محاولة` });
+    }
 
     return [
         {
@@ -178,16 +208,14 @@ function buildScenes(payload: WahjReadingReportPayload): Scene[] {
             unit: "ساعة تركيز",
             kind: "focus",
             tone: "sun",
-            facts: [
-                { label: "أيام الرحلة", value: String(payload.daysCount) },
-                { label: "المحاولات", value: String(payload.attemptCount) },
-            ],
+            facts: focusFacts,
+            notes: intakeHistoryNotes.length ? intakeHistoryNotes : undefined,
         },
         {
             id: "quotes",
             eyebrow: "الفوائد والاقتباسات",
             title: "أثر الكلمة يبقى",
-            description: `نمطك القرائي: ${payload.analytics.readingStyleLabel}.`,
+            description: `سجّلت ${payload.quotesCount} فائدة من قراءتك. نمطك القرائي: ${payload.analytics.readingStyleLabel}.`,
             value: String(payload.quotesCount),
             unit: "فائدة واقتباس",
             kind: "quotes",
@@ -206,10 +234,7 @@ function buildScenes(payload: WahjReadingReportPayload): Scene[] {
             unit: `من ${payload.analytics.totalParticipants} مشارك`,
             kind: "community",
             tone: "paper",
-            facts: [
-                { label: "مؤشر التفاعل", value: `${payload.analytics.engagementIndex}/100` },
-                { label: "ثبات الإيقاع", value: payload.analytics.consistencyLabel },
-            ],
+            facts: communityFacts,
         },
         {
             id: "insight",
@@ -258,10 +283,14 @@ function buildScenes(payload: WahjReadingReportPayload): Scene[] {
             id: "final",
             eyebrow: "النهاية بداية",
             title: "رحلتك تستحق المشاركة",
-            description: "خلّ إنجازك يلهم قارئاً جديداً، ونشوفك في محطة أجمل مع وهج.",
+            description: payload.referenceId
+                ? "للمشاركة مرة أخرى، استخدم هذا الرقم حتى تُربط محاولاتك معاً. خلّ إنجازك يلهم قارئاً جديداً."
+                : "خلّ إنجازك يلهم قارئاً جديداً، ونشوفك في محطة أجمل مع وهج.",
+            value: payload.referenceId,
+            unit: payload.referenceId ? "رقم مشاركتك في قراء وهج" : undefined,
             kind: "final",
             tone: "brand",
-            action: "share",
+            action: payload.referenceId ? "copy-reference" : "share",
         },
     ];
 }
@@ -354,7 +383,7 @@ const WahjReadingReport = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [activeIndex, setActiveIndex] = useState(0);
-    const [copied, setCopied] = useState<"code" | "link" | null>(null);
+    const [copied, setCopied] = useState<"code" | "link" | "reference" | null>(null);
     const touchStart = useRef<number | null>(null);
 
     useEffect(() => {
@@ -370,7 +399,7 @@ const WahjReadingReport = () => {
             try {
                 const row = await fetchWahjReadingReportByToken(token);
                 if (!row?.payload) throw new Error("الرابط غير صالح أو انتهت صلاحيته.");
-                if (alive) setPayload(row.payload);
+                if (alive) setPayload(applyIntakeTotalsToReportPayload(row.payload));
             } catch (loadError) {
                 if (alive) {
                     setError(loadError instanceof Error ? loadError.message : "تعذر تحميل التقرير.");
@@ -422,8 +451,13 @@ const WahjReadingReport = () => {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [activeIndex, goTo]);
 
-    const copy = async (kind: "code" | "link") => {
-        const value = kind === "code" ? payload?.shareCode : window.location.href;
+    const copy = async (kind: "code" | "link" | "reference") => {
+        const value =
+            kind === "code"
+                ? payload?.shareCode
+                : kind === "reference"
+                    ? payload?.referenceId
+                    : window.location.href;
         if (!value) return;
 
         try {
@@ -557,7 +591,10 @@ const WahjReadingReport = () => {
                         {scene.kind !== "welcome" && scene.value && (
                             <motion.div variants={itemVariants} className="mx-auto mt-5 max-w-3xl text-center">
                                 <div
-                                    className={`break-words text-4xl font-bold leading-tight tabular-nums sm:text-5xl ${accentStyles[scene.tone]}`}
+                                    dir={scene.id === "final" ? "ltr" : undefined}
+                                    className={`break-words text-4xl font-bold leading-tight tabular-nums sm:text-5xl ${accentStyles[scene.tone]} ${
+                                        scene.id === "final" ? "tracking-wide" : ""
+                                    }`}
                                 >
                                     {scene.value}
                                 </div>
@@ -615,6 +652,18 @@ const WahjReadingReport = () => {
                                 >
                                     {copied === "code" ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
                                     {copied === "code" ? "تم نسخ الكود" : "انسخ كود المشاركة"}
+                                </button>
+                            </motion.div>
+                        )}
+                        {scene.action === "copy-reference" && (
+                            <motion.div variants={itemVariants} className="mx-auto mb-1 flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={() => void copy("reference")}
+                                    className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#7447ae] shadow-md transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                                >
+                                    {copied === "reference" ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
+                                    {copied === "reference" ? "تم نسخ الرقم" : "انسخ رقم المشاركة"}
                                 </button>
                             </motion.div>
                         )}

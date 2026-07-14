@@ -72,6 +72,16 @@ import {
     type OrderPiece,
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
+import { isWahjReadingProgram } from "@/lib/wahjReadingReportConfig";
+import {
+    WahjIntakeForm,
+    defaultWahjIntakeValues,
+    isWahjIntakeComplete,
+} from "@/components/wahj/WahjIntakeForm";
+import {
+    persistWahjIntakeForChallengeResult,
+    type WahjIntakeFormValues,
+} from "@/lib/wahjParticipantLinks";
 import {
     resolveWheelSpinSoundOverride,
     WHEEL_SPIN_DURATION_MS,
@@ -104,6 +114,12 @@ const SingleChallenge = () => {
         () => Boolean((topic as any)?.collect_single_challenge_participant_data),
         [topic]
     );
+    const isWahjProgram = useMemo(() => {
+        const subject = (topic as any)?.subject;
+        const gradeName = subject?.grade?.name;
+        const subjectName = subject?.name;
+        return isWahjReadingProgram(gradeName, subjectName);
+    }, [topic]);
     const teacherHostUserId = useMemo(() => {
         const id = (topic as any)?._TeacherTopics?.[0]?.teacher_profiles?.user_id;
         return typeof id === "string" && id.length > 0 ? id : undefined;
@@ -141,10 +157,17 @@ const SingleChallenge = () => {
     const [resultsSaved, setResultsSaved] = useState(false);
     const [lessonRatingOpen, setLessonRatingOpen] = useState(false);
     const [guestDisplayName, setGuestDisplayName] = useState("");
+    const [wahjIntake, setWahjIntake] = useState<WahjIntakeFormValues>(defaultWahjIntakeValues);
+    const [wahjParticipantId, setWahjParticipantId] = useState<string | undefined>();
+    const [wahjReferenceId, setWahjReferenceId] = useState<string | undefined>();
+    const [savedWahjReferenceId, setSavedWahjReferenceId] = useState<string | undefined>();
 
     useEffect(() => {
         const n = joinDisplayName?.trim();
-        if (n) setGuestDisplayName(n);
+        if (n) {
+            setGuestDisplayName(n);
+            setWahjIntake((prev) => ({ ...prev, displayName: n }));
+        }
     }, [joinDisplayName]);
 
     const [gameState, setGameState] = useState<GameState>("intro");
@@ -257,6 +280,17 @@ const SingleChallenge = () => {
         const hasFullProfile = !!currentUser?.id && !!studentProfile?.id;
         const needsGuestIdentity =
             collectParticipantData && !hasFullProfile;
+        const needsWahjIntake = isWahjProgram;
+
+        if (needsWahjIntake && !isWahjIntakeComplete(wahjIntake)) {
+            toast({
+                variant: "destructive",
+                title: "أكمل بيانات قراء وهج",
+                description: "أدخل الاسم والصفحات والفوائد وحضور الجلسات قبل بدء التحدي.",
+            });
+            return;
+        }
+
         if (needsGuestIdentity) {
             if (!teacherHostUserId) {
                 toast({
@@ -266,13 +300,17 @@ const SingleChallenge = () => {
                 });
                 return;
             }
-            if (!guestDisplayName.trim()) {
+            const displayName = isWahjProgram ? wahjIntake.displayName.trim() : guestDisplayName.trim();
+            if (!displayName) {
                 toast({
                     variant: "destructive",
                     title: "الاسم مطلوب",
                     description: "أدخل اسمك كما طلب المعلّم قبل بدء التحدي.",
                 });
                 return;
+            }
+            if (isWahjProgram) {
+                setGuestDisplayName(displayName);
             }
         }
 
@@ -625,6 +663,30 @@ const SingleChallenge = () => {
     };
 
     // --- Save results to database when game ends ---
+    const persistWahjIntakeAfterResult = async (challengeResultId: string) => {
+        if (!isWahjProgram || !subjectId || !topicId) return;
+        try {
+            const linked = await persistWahjIntakeForChallengeResult({
+                subjectId,
+                topicId,
+                intake: wahjIntake,
+                participantId: wahjParticipantId,
+                referenceId: wahjReferenceId,
+                challengeResultId,
+            });
+            setSavedWahjReferenceId(linked.referenceId);
+            setWahjParticipantId(linked.participantId);
+            setWahjReferenceId(linked.referenceId);
+        } catch (error) {
+            console.error("[Save] Wahj intake persist failed:", error);
+            toast({
+                variant: "destructive",
+                title: "تنبيه",
+                description: "تم حفظ نتيجة التحدي لكن تعذّر ربط بيانات قراء وهج. احتفظ برقم مشاركتك إن وُجد.",
+            });
+        }
+    };
+
     useEffect(() => {
         if (gameState !== "results" || resultsSaved) return;
         if (!topicId || !content) return;
@@ -682,7 +744,7 @@ const SingleChallenge = () => {
             if (
                 !hasFullProfile &&
                 collectParticipantData &&
-                guestDisplayName.trim() &&
+                (isWahjProgram ? wahjIntake.displayName.trim() : guestDisplayName.trim()) &&
                 teacherHostUserId
             ) {
                 setResultsSaved(true);
@@ -694,10 +756,14 @@ const SingleChallenge = () => {
                         category: (category || "mixed").toUpperCase(),
                     });
 
+                    const participantName = isWahjProgram
+                        ? wahjIntake.displayName.trim()
+                        : guestDisplayName.trim();
+
                     const savedResult = await saveResultMutation.mutateAsync({
                         sessionId: session.id,
                         userId: null,
-                        participantDisplayName: guestDisplayName.trim(),
+                        participantDisplayName: participantName,
                         participantExtra: null,
                         totalQuestions: results.totalQuestions,
                         correctAnswers: results.correctAnswers,
@@ -724,6 +790,10 @@ const SingleChallenge = () => {
 
                     if (answersToSave.length > 0) {
                         await saveAnswersMutation.mutateAsync(answersToSave);
+                    }
+
+                    if (isWahjProgram) {
+                        await persistWahjIntakeAfterResult(String(savedResult.id));
                     }
 
                     toast({
@@ -955,6 +1025,10 @@ const SingleChallenge = () => {
                     console.log("[Save] Step 2.5 complete. Saved", answersToSave.length, "answers.");
                 }
 
+                if (isWahjProgram) {
+                    await persistWahjIntakeAfterResult(String(savedResult.id));
+                }
+
                 if (isScheduledLikeSession && playerSessionIdFromJoin) {
                     try {
                         await updatePlayerSessionMutation.mutateAsync({
@@ -1123,6 +1197,11 @@ const SingleChallenge = () => {
         collectParticipantData,
         guestDisplayName,
         teacherHostUserId,
+        isWahjProgram,
+        wahjIntake,
+        wahjParticipantId,
+        wahjReferenceId,
+        subjectId,
         category,
         questions,
     ]);
@@ -1771,7 +1850,39 @@ const SingleChallenge = () => {
     };
 
     const hasFullProfileForUi = !!currentUser?.id && !!studentProfile?.id;
-    const showGuestIdentityForm = collectParticipantData && !hasFullProfileForUi;
+    const showGuestIdentityForm = collectParticipantData && !hasFullProfileForUi && !isWahjProgram;
+    const showWahjIntakeForm = isWahjProgram;
+
+    const handleCopyWahjReference = async () => {
+        const ref = savedWahjReferenceId || wahjReferenceId;
+        if (!ref) return;
+        try {
+            await navigator.clipboard.writeText(ref);
+            toast({ title: "تم نسخ الرقم", description: ref });
+        } catch {
+            toast({ variant: "destructive", title: "تعذّر النسخ", description: ref });
+        }
+    };
+
+    const renderWahjReferenceCard = () => {
+        const ref = savedWahjReferenceId || wahjReferenceId;
+        if (!ref) return null;
+        return (
+            <div className="mb-6 rounded-xl border border-primary/25 bg-primary/5 p-4 text-right relative z-10">
+                <p className="text-sm font-bold text-primary mb-1">رقم مشاركتك في قراء وهج</p>
+                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    للمشاركة مرة أخرى، استخدم هذا الرقم حتى تُربط محاولاتك معاً.
+                </p>
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3">
+                    <span className="font-black text-lg tracking-wide" dir="ltr">{ref}</span>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => void handleCopyWahjReference()}>
+                        <Check className="w-4 h-4" />
+                        نسخ
+                    </Button>
+                </div>
+            </div>
+        );
+    };
 
     const renderIntro = () => (
         <motion.div
@@ -1799,6 +1910,33 @@ const SingleChallenge = () => {
                     أجب بسرعة للحصول على نقاط إضافية!
                 </p>
 
+                {showWahjIntakeForm && (
+                    <div className="text-right mb-8 border rounded-xl p-4 bg-muted/30">
+                        {!teacherHostUserId && !hasFullProfileForUi && collectParticipantData && (
+                            <p className="text-xs text-destructive mb-4">
+                                تعذّر تفعيل التسجيل لهذا الدرس تقنياً. يمكنك المتابعة لاحقاً أو التواصل مع المعلّم.
+                            </p>
+                        )}
+                        <WahjIntakeForm
+                            subjectId={subjectId || ""}
+                            values={wahjIntake}
+                            onChange={setWahjIntake}
+                            participantId={wahjParticipantId}
+                            referenceId={wahjReferenceId}
+                            onParticipantResolved={({ participantId, referenceId, displayName }) => {
+                                setWahjParticipantId(participantId);
+                                setWahjReferenceId(referenceId);
+                                setGuestDisplayName(displayName);
+                                setWahjIntake((prev) => ({ ...prev, displayName }));
+                            }}
+                            onClearParticipant={() => {
+                                setWahjParticipantId(undefined);
+                                setWahjReferenceId(undefined);
+                            }}
+                        />
+                    </div>
+                )}
+
                 {showGuestIdentityForm && (
                     <div className="text-right space-y-4 mb-8 border rounded-xl p-4 bg-muted/30">
                         {!teacherHostUserId && (
@@ -1825,6 +1963,7 @@ const SingleChallenge = () => {
                     className="w-full gap-2 text-lg h-14"
                     disabled={
                         questions.length === 0 ||
+                        (showWahjIntakeForm && !isWahjIntakeComplete(wahjIntake)) ||
                         (showGuestIdentityForm &&
                             (!guestDisplayName.trim() || !teacherHostUserId))
                     }
@@ -2103,6 +2242,7 @@ const SingleChallenge = () => {
                                 : `لم تتجاوز ${SHARE_RESULT_THRESHOLD}% بعد — جرّب مرة أخرى لتحسين نتيجتك.`}
                             {" "}سُجّلت نتيجتك ويمكن لمعلّمك متابعتها.
                         </p>
+                        {renderWahjReferenceCard()}
                         <motion.div
                             initial={{ opacity: 0, y: 12 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -2236,6 +2376,8 @@ const SingleChallenge = () => {
                             <div className="text-xs text-muted-foreground">الوقت</div>
                         </div>
                     </motion.div>
+
+                    {renderWahjReferenceCard()}
 
                     {/* Badges */}
                     {results.badges.length > 0 && (

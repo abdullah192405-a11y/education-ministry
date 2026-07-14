@@ -4,10 +4,22 @@ import {
 } from "@/lib/challengeQuestionAnalytics";
 import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 import { WAHJ_READING_PROGRAM } from "@/lib/wahjReadingReportConfig";
+import type { WahjAttendanceLevel } from "@/lib/wahjIntakeLabels";
+import { parseWahjParticipantExtra, type WahjIntakeRow } from "@/lib/wahjParticipantLinks";
 
 export type WahjReaderPath = "eager" | "persistent" | "beginning";
 export type WahjReadingStylePath = "engaged" | "organizer" | "silent";
 export type WahjCommunityPath = "elite" | "distinguished" | "partner";
+
+export type WahjIntakeAttempt = {
+    label: string;
+    pagesRead: number;
+    benefitsCount: number;
+    discussionAttendance: WahjAttendanceLevel;
+    enrichmentAttendance: WahjAttendanceLevel;
+    date: string;
+    score?: number;
+};
 
 export type WahjAttemptTrendPoint = {
     label: string;
@@ -77,6 +89,10 @@ export type WahjReadingReportPayload = {
     discountValue: string;
     generatedAt: string;
     analytics: WahjReadingAnalytics;
+    referenceId?: string;
+    intakeAttempts?: WahjIntakeAttempt[];
+    latestDiscussionAttendance?: WahjAttendanceLevel;
+    latestEnrichmentAttendance?: WahjAttendanceLevel;
     aiReport?: import("./wahjReadingReportRecommendations").WahjAiReport;
 };
 
@@ -173,12 +189,26 @@ function getParticipantName(result: unknown, guestLabel = "ضيف"): string {
     );
 }
 
-export function getParticipantKey(result: unknown): string {
+export function getParticipantKey(
+    result: unknown,
+    intakeByResultId?: Map<string, WahjIntakeRow>,
+): string {
     const row = toRecord(result);
+    const extra = parseWahjParticipantExtra(row.participant_extra);
+    if (extra.wahjParticipantId) return `wahj:${extra.wahjParticipantId}`;
+
+    const resultId = getChallengeResultId(result);
+    const intakeRow = resultId ? intakeByResultId?.get(resultId) : undefined;
+    if (intakeRow?.participantKey) return intakeRow.participantKey;
+
     const userId = getStringField(row, ["user_id"]) || getStringField(toRecord(row.user), ["id"]);
     if (userId) return `user:${userId}`;
     const name = getParticipantName(result).replace(/\s+/g, " ").trim().toLowerCase();
     return `guest:${name}`;
+}
+
+function getChallengeResultId(result: unknown): string {
+    return getStringField(toRecord(result), ["id"]);
 }
 
 function getTopicIdFromResult(result: unknown): string {
@@ -295,19 +325,25 @@ function normalizeParticipantAggregate(aggregate: ParticipantAggregate): Partici
     let quotesCount = aggregate.quotesCount;
     let attempts = aggregate.attempts.map((attempt) => ({
         ...attempt,
-        quotes: defaultMetric(attempt.quotes, defaults.quotes),
+        quotes: aggregate.usesIntakeMetrics
+            ? Math.max(0, attempt.quotes)
+            : defaultMetric(attempt.quotes, defaults.quotes),
         score: defaultMetric(attempt.score, defaults.challengeScore),
     }));
     const scores = aggregate.scores.map((score) =>
         defaultMetric(score, defaults.challengeScore),
     );
 
-    if (totalPages <= 0) {
-        totalPages = defaults.pages;
-        attempts = distributeDefaultPages(attempts, defaults.pages);
+    if (!aggregate.usesIntakeMetrics) {
+        if (totalPages <= 0) {
+            totalPages = defaults.pages;
+            attempts = distributeDefaultPages(attempts, defaults.pages);
+        }
+        quotesCount = defaultMetric(quotesCount, defaults.quotes);
+    } else {
+        totalPages = Math.max(0, totalPages);
+        quotesCount = Math.max(0, quotesCount);
     }
-
-    quotesCount = defaultMetric(quotesCount, defaults.quotes);
 
     return {
         ...aggregate,
@@ -469,19 +505,62 @@ type ParticipantAggregate = {
     topicIds: Set<string>;
     attempts: AttemptRecord[];
     scores: number[];
+    usesIntakeMetrics?: boolean;
 };
+
+function buildIntakeByResultId(intakeRows?: WahjIntakeRow[]): Map<string, WahjIntakeRow> {
+    const map = new Map<string, WahjIntakeRow>();
+    for (const row of intakeRows ?? []) {
+        if (row.challengeResultId) map.set(row.challengeResultId, row);
+    }
+    return map;
+}
+
+function resolveAttemptMetrics(
+    result: unknown,
+    catalogs: Map<string, TopicQuestionCatalog>,
+    intakeByResultId: Map<string, WahjIntakeRow>,
+): { pages: number; quotes: number; fromIntake: boolean } {
+    const resultId = getChallengeResultId(result);
+    const intakeRow = resultId ? intakeByResultId.get(resultId) : undefined;
+    if (intakeRow) {
+        return {
+            pages: intakeRow.pagesRead,
+            quotes: intakeRow.benefitsCount,
+            fromIntake: true,
+        };
+    }
+
+    const row = toRecord(result);
+    const extra = parseWahjParticipantExtra(row.participant_extra);
+    if (
+        extra.wahjParticipantId &&
+        (typeof extra.wahjPagesRead === "number" || typeof extra.wahjBenefitsCount === "number")
+    ) {
+        return {
+            pages: Math.max(0, Number(extra.wahjPagesRead ?? 0)),
+            quotes: Math.max(0, Number(extra.wahjBenefitsCount ?? 0)),
+            fromIntake: true,
+        };
+    }
+
+    const parsed = extractMetricsFromAttempt(result, catalogs);
+    return { ...parsed, fromIntake: false };
+}
 
 function aggregateParticipants(
     results: unknown[],
     catalogs: Map<string, TopicQuestionCatalog>,
     guestLabel: string,
+    intakeRows?: WahjIntakeRow[],
 ): ParticipantAggregate[] {
+    const intakeByResultId = buildIntakeByResultId(intakeRows);
     const map = new Map<string, ParticipantAggregate>();
 
     for (const result of results) {
-        const key = getParticipantKey(result);
+        const key = getParticipantKey(result, intakeByResultId);
         const name = getParticipantName(result, guestLabel);
-        const { pages, quotes } = extractMetricsFromAttempt(result, catalogs);
+        const { pages, quotes, fromIntake } = resolveAttemptMetrics(result, catalogs, intakeByResultId);
         const timestamp = getResultTimestamp(result);
         const topicId = getTopicIdFromResult(result);
         const score = getChallengeResultScorePercent(result);
@@ -496,12 +575,14 @@ function aggregateParticipants(
             topicIds: new Set<string>(),
             attempts: [],
             scores: [],
+            usesIntakeMetrics: false,
         };
 
         existing.name = name;
         existing.totalPages += pages;
         existing.quotesCount += quotes;
         existing.attemptCount += 1;
+        existing.usesIntakeMetrics = existing.usesIntakeMetrics || fromIntake;
         if (topicId) existing.topicIds.add(topicId);
         if (timestamp !== null) existing.timestamps.push(timestamp);
         existing.scores.push(score);
@@ -510,6 +591,131 @@ function aggregateParticipants(
     }
 
     return Array.from(map.values()).map(normalizeParticipantAggregate);
+}
+
+function applyIntakeToAggregates(
+    aggregates: ParticipantAggregate[],
+    intakeRows: WahjIntakeRow[] | undefined,
+    results: unknown[],
+): ParticipantAggregate[] {
+    if (!intakeRows?.length) return aggregates;
+
+    const scoreByResultId = new Map<string, number>();
+    for (const result of results) {
+        const id = getChallengeResultId(result);
+        if (id) scoreByResultId.set(id, getChallengeResultScorePercent(result));
+    }
+
+    const intakeByKey = new Map<string, WahjIntakeRow[]>();
+    for (const row of intakeRows) {
+        const list = intakeByKey.get(row.participantKey) || [];
+        list.push(row);
+        intakeByKey.set(row.participantKey, list);
+    }
+
+    const aggregateByKey = new Map(aggregates.map((aggregate) => [aggregate.key, aggregate]));
+
+    for (const [key, rows] of intakeByKey) {
+        const sortedRows = [...rows].sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        const existing = aggregateByKey.get(key);
+
+        let totalPages = 0;
+        let quotesCount = 0;
+        const timestamps: number[] = [];
+        const attempts: AttemptRecord[] = [];
+        const scores: number[] = [];
+        const topicIds = new Set<string>();
+
+        for (const row of sortedRows) {
+            totalPages += row.pagesRead;
+            quotesCount += row.benefitsCount;
+            const timestamp = new Date(row.createdAt).getTime();
+            if (Number.isFinite(timestamp)) timestamps.push(timestamp);
+            if (row.topicId) topicIds.add(row.topicId);
+
+            const score = row.challengeResultId
+                ? (scoreByResultId.get(row.challengeResultId) ?? 0)
+                : 0;
+            if (row.challengeResultId && scoreByResultId.has(row.challengeResultId)) {
+                scores.push(score);
+            }
+
+            attempts.push({
+                timestamp: Number.isFinite(timestamp) ? timestamp : null,
+                pages: row.pagesRead,
+                quotes: row.benefitsCount,
+                score,
+                topicId: row.topicId,
+            });
+        }
+
+        aggregateByKey.set(
+            key,
+            normalizeParticipantAggregate({
+                key,
+                name: existing?.name || sortedRows[0]?.displayName || "",
+                totalPages,
+                quotesCount,
+                timestamps,
+                attemptCount: sortedRows.length,
+                topicIds,
+                attempts,
+                scores: scores.length ? scores : (existing?.scores || []),
+                usesIntakeMetrics: true,
+            }),
+        );
+    }
+
+    return Array.from(aggregateByKey.values());
+}
+
+function buildIntakeAttemptsForParticipant(
+    participantKey: string,
+    intakeRows: WahjIntakeRow[] | undefined,
+    results: unknown[],
+): {
+    attempts: WahjIntakeAttempt[];
+    referenceId?: string;
+    latestDiscussionAttendance?: WahjAttendanceLevel;
+    latestEnrichmentAttendance?: WahjAttendanceLevel;
+} {
+    if (!intakeRows?.length) return { attempts: [] };
+
+    const scoreByResultId = new Map<string, number>();
+    for (const result of results) {
+        const id = getChallengeResultId(result);
+        if (id) scoreByResultId.set(id, getChallengeResultScorePercent(result));
+    }
+
+    const rows = intakeRows
+        .filter((row) => row.participantKey === participantKey)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    if (!rows.length) return { attempts: [] };
+
+    const attempts = rows.map((row, index) => ({
+        label: `محاولة ${index + 1}`,
+        pagesRead: row.pagesRead,
+        benefitsCount: row.benefitsCount,
+        discussionAttendance: row.discussionAttendance,
+        enrichmentAttendance: row.enrichmentAttendance,
+        date: new Date(row.createdAt).toLocaleDateString("ar-SA", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        }),
+        score: row.challengeResultId ? scoreByResultId.get(row.challengeResultId) : undefined,
+    }));
+
+    const latest = rows[rows.length - 1];
+    return {
+        attempts,
+        referenceId: latest.referenceId,
+        latestDiscussionAttendance: latest.discussionAttendance,
+        latestEnrichmentAttendance: latest.enrichmentAttendance,
+    };
 }
 
 function buildAttemptTrend(attempts: AttemptRecord[]): WahjAttemptTrendPoint[] {
@@ -653,15 +859,58 @@ function buildProgramKeyFindings(
     ];
 }
 
+export function applyIntakeTotalsToReportPayload(
+    payload: WahjReadingReportPayload,
+): WahjReadingReportPayload {
+    const attempts = payload.intakeAttempts ?? [];
+    if (!attempts.length) return payload;
+
+    const totalBenefits = attempts.reduce((sum, attempt) => sum + attempt.benefitsCount, 0);
+    const totalPages = attempts.reduce((sum, attempt) => sum + attempt.pagesRead, 0);
+    if (totalBenefits <= 0 && totalPages <= 0) return payload;
+
+    const attemptCount = Math.max(attempts.length, payload.attemptCount);
+    const pages = totalPages || payload.totalPages;
+    const benefits = totalBenefits || payload.quotesCount;
+    const avgQuotesPerAttempt = round1(benefits / Math.max(1, attemptCount));
+    const readingStylePath = selectReadingStylePath(benefits);
+    const completionPercent = computeCompletionPercent(pages);
+
+    return {
+        ...payload,
+        totalPages: pages,
+        quotesCount: benefits,
+        attemptCount,
+        completionPercent,
+        focusHours: round1((pages * 2) / 60),
+        readingStylePath,
+        analytics: {
+            ...payload.analytics,
+            avgQuotesPerAttempt,
+            quoteEngagementLabel: quoteEngagementLabel(avgQuotesPerAttempt),
+            readingStyleLabel: readingStyleLabel(readingStylePath),
+            quotesDiffFromAvg: round1(benefits - payload.analytics.programAvgQuotes),
+            attemptTrend: attempts.map((attempt, index) => ({
+                label: attempt.date || attempt.label || `محاولة ${index + 1}`,
+                pages: attempt.pagesRead,
+                quotes: attempt.benefitsCount,
+                score: attempt.score ?? 0,
+            })),
+        },
+    };
+}
+
 export function buildWahjProgramParticipants(
     results: unknown[] | undefined,
     topics: unknown[] | undefined,
     subjectId: string,
     guestLabel = "ضيف",
+    intakeRows?: WahjIntakeRow[],
 ): WahjProgramParticipantSummary[] {
     const subjectResults = filterSubjectResults(results, topics, subjectId);
     const catalogs = buildTopicQuestionCatalogs(topics || [], subjectId);
-    const aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel);
+    let aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel, intakeRows);
+    aggregates = applyIntakeToAggregates(aggregates, intakeRows, subjectResults);
     return buildRankedSummaries(aggregates);
 }
 
@@ -671,15 +920,19 @@ export function buildWahjParticipantReport(
     topics: unknown[] | undefined,
     subjectId: string,
     guestLabel = "ضيف",
+    intakeRows?: WahjIntakeRow[],
 ): WahjReadingReportPayload | null {
     const subjectResults = filterSubjectResults(results, topics, subjectId);
     const catalogs = buildTopicQuestionCatalogs(topics || [], subjectId);
-    const aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel);
+    let aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel, intakeRows);
+    aggregates = applyIntakeToAggregates(aggregates, intakeRows, subjectResults);
     const summaries = buildRankedSummaries(aggregates);
 
     const summary = summaries.find((p) => p.key === participantKey);
     const target = aggregates.find((p) => p.key === participantKey);
     if (!summary || !target) return null;
+
+    const intakeMeta = buildIntakeAttemptsForParticipant(participantKey, intakeRows, subjectResults);
 
     const programAvgPages = summaries.length
         ? Math.round(summaries.reduce((s, p) => s + p.totalPages, 0) / summaries.length)
@@ -727,7 +980,7 @@ export function buildWahjParticipantReport(
         keyFindings: buildIndividualKeyFindings(summary, analyticsBase),
     };
 
-    return {
+    return applyIntakeTotalsToReportPayload({
         participantName: summary.name,
         programName: WAHJ_READING_PROGRAM.programName,
         daysCount: summary.daysCount,
@@ -744,7 +997,11 @@ export function buildWahjParticipantReport(
         discountValue: WAHJ_READING_PROGRAM.discountValue,
         generatedAt: new Date().toLocaleDateString("ar-SA", { dateStyle: "full" }),
         analytics,
-    };
+        referenceId: intakeMeta.referenceId,
+        intakeAttempts: intakeMeta.attempts,
+        latestDiscussionAttendance: intakeMeta.latestDiscussionAttendance,
+        latestEnrichmentAttendance: intakeMeta.latestEnrichmentAttendance,
+    });
 }
 
 export function buildWahjProgramReport(
@@ -752,10 +1009,12 @@ export function buildWahjProgramReport(
     topics: unknown[] | undefined,
     subjectId: string,
     guestLabel = "ضيف",
+    intakeRows?: WahjIntakeRow[],
 ): WahjProgramReportPayload {
     const subjectResults = filterSubjectResults(results, topics, subjectId);
     const catalogs = buildTopicQuestionCatalogs(topics || [], subjectId);
-    const aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel);
+    let aggregates = aggregateParticipants(subjectResults, catalogs, guestLabel, intakeRows);
+    aggregates = applyIntakeToAggregates(aggregates, intakeRows, subjectResults);
     const participants = buildRankedSummaries(aggregates);
 
     const totalPages = participants.reduce((s, p) => s + p.totalPages, 0);

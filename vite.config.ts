@@ -54,9 +54,9 @@ function registerWahjReadingReportPageMiddleware(
 function wahjReadingReportPagePlugin(): PluginOption {
   return {
     name: "wahj-reading-report-page",
-    configureServer(server) {
-      registerWahjReadingReportPageMiddleware(server.middlewares, { dev: true });
-    },
+    // Dev: skip HTML middleware — serving raw index.html bypasses Vite's React Refresh
+    // preamble and breaks the app (@vitejs/plugin-react-swc "can't detect preamble").
+    // WahjReadingReport applies social meta client-side after the payload loads.
     configurePreviewServer(server) {
       registerWahjReadingReportPageMiddleware(server.middlewares);
     },

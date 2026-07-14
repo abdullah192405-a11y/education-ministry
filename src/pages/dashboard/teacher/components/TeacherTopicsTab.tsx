@@ -78,6 +78,7 @@ import {
     openWahjReportPrintWindow,
 } from "@/lib/wahjReadingReportPdf";
 import { createWahjReadingReportLink } from "@/lib/wahjReadingReportLinks";
+import { fetchWahjIntakeForSubject, type WahjIntakeRow } from "@/lib/wahjParticipantLinks";
 import {
     aggregateChallengeQuestionStats,
     getQuestionResultsFromAttempt,
@@ -452,6 +453,7 @@ const TeacherTopicsTab = ({
     const [isSingleReportPdfDownloading, setIsSingleReportPdfDownloading] = useState(false);
     const [wahjReportPickerOpen, setWahjReportPickerOpen] = useState(false);
     const [wahjDownloadingKey, setWahjDownloadingKey] = useState<string | null>(null);
+    const [wahjIntakeRows, setWahjIntakeRows] = useState<WahjIntakeRow[]>([]);
     const [isWahjProgramReportDownloading, setIsWahjProgramReportDownloading] = useState(false);
     const [singleResultsResetOpen, setSingleResultsResetOpen] = useState(false);
     const [singleResultsResetConfirmText, setSingleResultsResetConfirmText] = useState("");
@@ -924,8 +926,30 @@ const TeacherTopicsTab = ({
             allTeacherTopics,
             selectedSubjectId,
             guestLabel,
+            wahjIntakeRows,
         );
-    }, [isWahjProgram, selectedSubjectId, singleResults, allTeacherTopics, guestLabel]);
+    }, [isWahjProgram, selectedSubjectId, singleResults, allTeacherTopics, guestLabel, wahjIntakeRows]);
+
+    useEffect(() => {
+        if (!isWahjProgram || !selectedSubjectId) {
+            setWahjIntakeRows([]);
+            return;
+        }
+
+        let cancelled = false;
+        fetchWahjIntakeForSubject(selectedSubjectId)
+            .then((rows) => {
+                if (!cancelled) setWahjIntakeRows(rows);
+            })
+            .catch((error) => {
+                console.error("Failed to load Wahj intake rows:", error);
+                if (!cancelled) setWahjIntakeRows([]);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isWahjProgram, selectedSubjectId]);
 
     const handleCreateWahjReportLink = async (participantKey: string) => {
         if (!selectedSubjectId) return;
@@ -942,6 +966,7 @@ const TeacherTopicsTab = ({
                 allTeacherTopics,
                 selectedSubjectId,
                 guestLabel,
+                wahjIntakeRows,
             );
 
             if (!basePayload) {
@@ -992,7 +1017,7 @@ const TeacherTopicsTab = ({
             toast({ title: t("dash.teacher.topics.wahjProgramReportGenerating") });
 
             const payload = {
-                ...buildWahjProgramReport(singleResults, allTeacherTopics, selectedSubjectId, guestLabel),
+                ...buildWahjProgramReport(singleResults, allTeacherTopics, selectedSubjectId, guestLabel, wahjIntakeRows),
                 className: currentGrade?.name,
                 subjectName: selectedSubjectName,
             };

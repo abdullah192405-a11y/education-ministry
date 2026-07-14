@@ -116,6 +116,27 @@ function renderWelcomeSummary(payload: WahjReadingReportPayload): string {
     `;
 }
 
+function renderReferenceIdSection(payload: WahjReadingReportPayload): string {
+    if (!payload.referenceId) return "";
+
+    const referenceId = escapeHtml(payload.referenceId);
+    return `
+        <article class="recommendation-section page-break-avoid share-section">
+            <div class="recommendation-section-head">
+                <span class="recommendation-index">🔖</span>
+                <div>
+                    <h4>رقم مشاركتك في قراء وهج</h4>
+                    <div class="section-kicker">احتفظ به للمشاركة القادمة</div>
+                </div>
+            </div>
+            <div class="recommendation-block narrative-block">
+                <p>للمشاركة مرة أخرى، استخدم هذا الرقم حتى تُربط محاولاتك معاً:</p>
+                <div class="code-box">${referenceId}</div>
+            </div>
+        </article>
+    `;
+}
+
 function renderShareCodeSection(payload: WahjReadingReportPayload): string {
     const discount = escapeHtml(payload.discountValue);
     const shareCode = escapeHtml(payload.shareCode);
@@ -241,6 +262,7 @@ export function buildWahjReadingReportHtml(payload: WahjReadingReportPayload): s
         </section>
 
         ${renderShareCodeSection(payload)}
+        ${renderReferenceIdSection(payload)}
 
         <footer class="footer">
             منصة Lab for AI — تقرير قراء وهج الفردي<br />
