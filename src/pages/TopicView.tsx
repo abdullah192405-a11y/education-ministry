@@ -46,6 +46,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { getLiveProviderLabel } from "@/lib/topicLiveSession";
+import TopicPdfViewer from "@/components/topic/TopicPdfViewer";
 
 interface TopicLiveSession {
     id: string;
@@ -164,23 +165,9 @@ const TopicView = () => {
             const type = (m.type || "").toLowerCase();
             let url = m.url;
 
-            // If it's a PDF and has base64 data but no URL, construct an Object URL from a Blob
-            // This is significantly faster for the browser to render than putting a 5MB base64 string directly in the DOM
-            if (type === 'pdf' && !url && m.pdf_base64) {
-                try {
-                    const byteCharacters = atob(m.pdf_base64);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                        byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], { type: 'application/pdf' });
-                    url = URL.createObjectURL(blob);
-                } catch (e) {
-                    console.error("Error creating PDF blob:", e);
-                    // Fallback to data URL if conversion fails
-                    url = `data:application/pdf;base64,${m.pdf_base64}`;
-                }
+            // Defer heavy base64 decoding — use a data URL the browser PDF viewer can load directly.
+            if (type === "pdf" && !url && m.pdf_base64) {
+                url = `data:application/pdf;base64,${m.pdf_base64}`;
             }
 
             return {
@@ -592,7 +579,7 @@ const TopicView = () => {
                 return (
                     <Card className="overflow-hidden border-0 shadow-xl ring-1 ring-border/60">
                         <CardContent className="p-0">
-                            <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-slate-950 p-6 text-white md:p-8">
+                            <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-slate-950 p-4 sm:p-6 text-white md:p-8">
                                 <div className="absolute -left-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                                 <div className="absolute -bottom-16 right-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
 
@@ -610,7 +597,7 @@ const TopicView = () => {
                                         </div>
 
                                         <div>
-                                            <p className="text-2xl md:text-3xl font-black tracking-tight">{session.title || t("topicView.live.lessonStream")}</p>
+                                            <p className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight">{session.title || t("topicView.live.lessonStream")}</p>
                                             <p className="mt-2 max-w-2xl text-sm md:text-base text-white/80">
                                                 {isLiveNow
                                                     ? t("topicView.live.descNow")
@@ -619,7 +606,7 @@ const TopicView = () => {
                                         </div>
                                     </div>
 
-                                    <Button asChild size="lg" className="h-12 rounded-full bg-white px-6 font-bold text-primary shadow-lg hover:bg-white/90">
+                                    <Button asChild size="lg" className="h-12 w-full sm:w-auto rounded-full bg-white px-6 font-bold text-primary shadow-lg hover:bg-white/90">
                                         <a href={session.meeting_url || "#"} target="_blank" rel="noopener noreferrer">
                                             {isLiveNow ? t("topicView.live.joinNow") : t("topicView.live.openLink")}
                                             <ExternalLink className="w-4 h-4" />
@@ -628,7 +615,7 @@ const TopicView = () => {
                                 </div>
                             </div>
 
-                            <div className="space-y-4 bg-background p-5 md:p-6">
+                            <div className="space-y-4 bg-background p-4 sm:p-5 md:p-6">
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     <div className="rounded-2xl border bg-muted/25 p-4">
                                         <p className="text-[11px] font-bold text-muted-foreground">{t("topicView.live.platform")}</p>
@@ -736,8 +723,8 @@ const TopicView = () => {
                 );
             case "text":
                 return (
-                    <Card className="p-6 md:p-8">
-                        <div className="prose prose-lg dark:prose-invert max-w-none text-right leading-relaxed">
+                    <Card className="p-4 sm:p-6 md:p-8">
+                        <div className="prose prose-sm sm:prose-lg dark:prose-invert max-w-none text-right leading-relaxed">
                             {currentMedia.content?.split('\n').map((paragraph: string, index: number) => {
                                 if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
                                     return <h3 key={index} className="text-xl font-bold mt-6 mb-3">{paragraph.replace(/\*\*/g, '')}</h3>;
@@ -770,36 +757,10 @@ const TopicView = () => {
                 }
 
                 return (
-                    <div className="w-full h-[65vh] min-h-[450px] rounded-2xl overflow-hidden border bg-background shadow-lg relative group transition-all duration-300">
-                        {/* Loading indicator behind the PDF */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/10 z-0">
-                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                            <p className="text-muted-foreground font-medium text-sm md:text-base">{t("topicView.pdf.loading")}</p>
-                        </div>
-
-                        {/* PDF Viewer - using object for better compatibility, falls back to iframe */}
-                        <object
-                            data={currentMedia.url}
-                            type="application/pdf"
-                            className="w-full h-full relative z-10 bg-transparent"
-                        >
-                            <iframe
-                                src={currentMedia.url}
-                                className="w-full h-full border-none"
-                                title={currentMedia.caption || t("topicView.pdf.viewPdf")}
-                            />
-                        </object>
-
-                        {/* Enhanced controls on hover */}
-                        <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-xl backdrop-blur-sm">
-                            <Button size="sm" variant="secondary" className="shadow-md font-bold" asChild>
-                                <a href={currentMedia.url} target="_blank" rel="noopener noreferrer">
-                                    <FileText className="w-4 h-4 ml-2" />
-                                    {t("topicView.pdf.openNewWindow")}
-                                </a>
-                            </Button>
-                        </div>
-                    </div>
+                    <TopicPdfViewer
+                        url={currentMedia.url}
+                        title={currentMedia.caption || t("topicView.pdf.viewPdf")}
+                    />
                 );
             }
             case "audio": {
@@ -888,40 +849,40 @@ const TopicView = () => {
     };
 
     return (
-        <div className="min-h-screen font-cairo bg-gradient-to-b from-background to-muted/30" dir={dir}>
+        <div className="min-h-screen font-cairo bg-gradient-to-b from-background to-muted/30 overflow-x-hidden" dir={dir}>
             <Header />
-            <main className="pt-24 pb-16">
-                <div className="container mx-auto px-4">
+            <main className="pt-20 sm:pt-24 pb-12 sm:pb-16">
+                <div className="container mx-auto px-3 sm:px-4">
                     {/* Breadcrumb */}
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mb-6 flex items-center gap-2 text-sm text-muted-foreground"
+                        className="mb-4 sm:mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-muted-foreground"
                     >
-                        <Link to="/grades" className="hover:text-primary transition-colors">
+                        <Link to="/grades" className="hover:text-primary transition-colors shrink-0">
                             {t("subjectView.breadcrumbGrades")}
                         </Link>
-                        <span>/</span>
-                        <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors">
+                        <span className="shrink-0">/</span>
+                        <Link to={`/grade/${grade.slug}`} className="hover:text-primary transition-colors truncate max-w-[40vw] sm:max-w-none">
                             {grade.name}
                         </Link>
-                        <span>/</span>
-                        <Link to={`/grade/${grade.slug}/subject/${subject.id}`} className="hover:text-primary transition-colors">
+                        <span className="shrink-0">/</span>
+                        <Link to={`/grade/${grade.slug}/subject/${subject.id}`} className="hover:text-primary transition-colors truncate max-w-[40vw] sm:max-w-none">
                             {subject.icon} {subject.name}
                         </Link>
-                        <span>/</span>
-                        <span className="text-foreground">{topic.title}</span>
+                        <span className="shrink-0">/</span>
+                        <span className="text-foreground truncate max-w-full">{topic.title}</span>
                     </motion.div>
 
                     {/* Content Header */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mb-8"
+                        className="mb-6 sm:mb-8"
                     >
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3">
                             <span
-                                className="px-3 py-1 rounded-full text-sm font-medium"
+                                className="px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium"
                                 style={{
                                     backgroundColor: `${subject.color}20`,
                                     color: subject.color
@@ -929,28 +890,28 @@ const TopicView = () => {
                             >
                                 {subject.icon} {subject.name}
                             </span>
-                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
-                                <Eye className="w-4 h-4" />
+                            <span className="flex items-center gap-1 text-muted-foreground text-xs sm:text-sm">
+                                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                 {((topic.views || 0) + (topic.activities?.length || 0)).toLocaleString(dateLocale)} {t("topicView.viewsSuffix")}
                             </span>
                             {topic.duration && (
-                                <span className="flex items-center gap-1 text-muted-foreground text-sm">
-                                    <Clock className="w-4 h-4" />
+                                <span className="flex items-center gap-1 text-muted-foreground text-xs sm:text-sm">
+                                    <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     {topic.duration}
                                 </span>
                             )}
                         </div>
-                        <h1 className="text-3xl md:text-4xl font-black mb-3">{topic.title}</h1>
-                        <p className="text-lg text-muted-foreground">{topic.description}</p>
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black mb-2 sm:mb-3 leading-tight">{topic.title}</h1>
+                        <p className="text-base sm:text-lg text-muted-foreground">{topic.description}</p>
                     </motion.div>
                     {/* Main Content Area */}
                     <div className="space-y-6">
                         {/* Progress Bar */}
-                        <div className="flex items-center gap-4 mb-4">
-                            <span className="text-sm text-muted-foreground">
+                        <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4 min-w-0">
+                            <span className="text-xs sm:text-sm text-muted-foreground shrink-0 whitespace-nowrap">
                                 {t("topicView.media.ofTotal", { current: currentMediaIndex + 1, total: totalMedia })}
                             </span>
-                            <Progress value={((currentMediaIndex + 1) / totalMedia) * 100} className="flex-1 h-2 rotate-180" />
+                            <Progress value={((currentMediaIndex + 1) / totalMedia) * 100} className="flex-1 min-w-0 h-2 rotate-180" />
                         </div>
 
                         {/* Media Content */}
@@ -968,31 +929,21 @@ const TopicView = () => {
 
                             {/* Caption */}
                             {currentMedia?.caption && currentMedia.type !== "live_session" && (
-                                <p className="text-center text-muted-foreground mt-4 text-lg">
+                                <p className="text-center text-muted-foreground mt-3 sm:mt-4 text-sm sm:text-lg px-1">
                                     {currentMedia.caption}
                                 </p>
                             )}
                         </div>
 
                         {/* Navigation */}
-                        <div className="flex items-center justify-between max-w-4xl mx-auto mt-8">
-                            <Button
-                                variant="outline"
-                                onClick={handlePrevMedia}
-                                disabled={currentMediaIndex === 0}
-                                className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base"
-                            >
-                                <ChevronBack className="w-3 h-3 md:w-4 md:h-4" />
-                                {t("topicView.previous")}
-                            </Button>
-
-                            <div className="flex flex-wrap justify-center gap-2 max-h-[200px] overflow-y-auto p-2">
+                        <div className="max-w-4xl mx-auto mt-6 sm:mt-8 space-y-3">
+                            <div className="flex gap-1.5 sm:gap-2 justify-start sm:justify-center overflow-x-auto pb-1 -mx-1 px-1 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-x-visible sm:max-h-[200px] sm:overflow-y-auto">
                                 {courseMedia.map((item: any, index: number) => (
                                     <button
                                         key={index}
                                         onClick={() => setCurrentMediaIndex(index)}
-                                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all border-2 ${index === currentMediaIndex
-                                            ? "bg-primary text-white border-primary scale-110 shadow-md"
+                                        className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-lg flex items-center justify-center transition-all border-2 ${index === currentMediaIndex
+                                            ? "bg-primary text-white border-primary scale-105 sm:scale-110 shadow-md"
                                             : index <= currentMediaIndex
                                                 ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
                                                 : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
@@ -1004,22 +955,34 @@ const TopicView = () => {
                                 ))}
                             </div>
 
-                            {currentMediaIndex < totalMedia - 1 ? (
-                                <Button onClick={handleNextMedia} className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base">
-                                    {t("topicView.next")}
-                                    <ChevronForward className="w-3 h-3 md:w-4 md:h-4" />
-                                </Button>
-                            ) : (
+                            <div className="flex items-stretch justify-between gap-2">
                                 <Button
-                                    onClick={handleJoinChallenge}
-                                    variant="hero"
-                                    disabled={isJoiningChallenge}
-                                    className="gap-1 md:gap-2 h-8 px-3 text-xs md:h-10 md:px-4 md:text-base"
+                                    variant="outline"
+                                    onClick={handlePrevMedia}
+                                    disabled={currentMediaIndex === 0}
+                                    className="gap-1 sm:gap-2 h-10 px-3 sm:px-4 text-xs sm:text-sm md:text-base shrink-0"
                                 >
-                                    <Gamepad2 className="w-3 h-3 md:w-4 md:h-4" />
-                                    {isJoiningChallenge ? t("topicView.preparing") : t("topicView.joinChallenge")}
+                                    <ChevronBack className="w-4 h-4" />
+                                    <span className="hidden sm:inline">{t("topicView.previous")}</span>
                                 </Button>
-                            )}
+
+                                {currentMediaIndex < totalMedia - 1 ? (
+                                    <Button onClick={handleNextMedia} className="gap-1 sm:gap-2 h-10 px-3 sm:px-4 text-xs sm:text-sm md:text-base flex-1 sm:flex-initial">
+                                        {t("topicView.next")}
+                                        <ChevronForward className="w-4 h-4" />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        onClick={handleJoinChallenge}
+                                        variant="hero"
+                                        disabled={isJoiningChallenge}
+                                        className="gap-1 sm:gap-2 h-10 px-3 sm:px-4 text-xs sm:text-sm md:text-base flex-1 sm:flex-initial"
+                                    >
+                                        <Gamepad2 className="w-4 h-4 shrink-0" />
+                                        {isJoiningChallenge ? t("topicView.preparing") : t("topicView.joinChallenge")}
+                                    </Button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Quick Challenge Access */}
@@ -1050,7 +1013,7 @@ const TopicView = () => {
                                         <CollapsibleTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-full p-6 md:p-8 flex items-center justify-between gap-4 text-start hover:bg-muted/20 transition-colors"
+                                                className="w-full p-4 sm:p-6 md:p-8 flex items-center justify-between gap-3 sm:gap-4 text-start hover:bg-muted/20 transition-colors"
                                             >
                                                 <div className="space-y-2 min-w-0">
                                                     <div className="flex flex-wrap items-center gap-2">
@@ -1075,7 +1038,7 @@ const TopicView = () => {
                                             </button>
                                         </CollapsibleTrigger>
 
-                                        <CollapsibleContent className="px-6 md:px-8 pb-6 md:pb-8 space-y-6 border-t border-primary/10">
+                                        <CollapsibleContent className="px-4 sm:px-6 md:px-8 pb-4 sm:pb-6 md:pb-8 space-y-4 sm:space-y-6 border-t border-primary/10">
                                         <p className="text-sm text-muted-foreground pt-4">
                                             {t("topicView.discussions.intro")}
                                         </p>
@@ -1084,13 +1047,13 @@ const TopicView = () => {
                                         </div>
 
                                         <div className="rounded-xl border bg-background p-4 space-y-2">
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                                 <h4 className="text-sm font-bold">{t("topicView.rate.title")}</h4>
                                                 <span className="text-xs text-muted-foreground">
                                                     {t("topicView.rate.summary", { count: ratingsTotal, avg: ratingsAvg.toFixed(1) })}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex flex-wrap items-center gap-1">
                                                 {[1, 2, 3, 4, 5].map((star) => (
                                                     <button
                                                         key={star}
@@ -1108,15 +1071,16 @@ const TopicView = () => {
                                             </div>
                                         </div>
 
-                                        <div className="rounded-2xl border bg-background p-4 md:p-5">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
+                                        <div className="rounded-xl border bg-background p-4 md:p-5">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="min-w-0">
                                                     <h4 className="text-sm font-bold">{t("topicView.compose.title")}</h4>
                                                     <span className="text-[11px] text-muted-foreground">{t("topicView.compose.sub")}</span>
                                                 </div>
                                                 <Button
                                                     onClick={() => setIsDiscussionComposerOpen(true)}
                                                     disabled={!canParticipateInDiscussions}
+                                                    className="w-full sm:w-auto shrink-0"
                                                 >
                                                     {t("topicView.compose.title")}
                                                 </Button>
@@ -1252,7 +1216,7 @@ const TopicView = () => {
                                                         value={discussion.id}
                                                         className="rounded-2xl border-2 border-muted/60 px-4 bg-background overflow-hidden"
                                                     >
-                                                        <AccordionTrigger className="hover:no-underline py-4 [&>svg]:ms-3">
+                                                        <AccordionTrigger className="hover:no-underline py-3 sm:py-4 [&>svg]:ms-2 sm:[&>svg]:ms-3">
                                                             <div className="flex items-start gap-3 min-w-0 flex-1 text-start">
                                                                 <Avatar className="h-10 w-10 border shrink-0">
                                                                     <AvatarImage

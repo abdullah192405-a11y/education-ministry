@@ -21,7 +21,7 @@ export function pdfNeedsVisualPageImages(extractedText: string): boolean {
 
 let pdfWorkerConfigured = false;
 
-async function getPdfJs() {
+export async function getPdfJs() {
     const pdfjsLib = await import("pdfjs-dist");
     if (!pdfWorkerConfigured) {
         pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
@@ -30,8 +30,20 @@ async function getPdfJs() {
     return pdfjsLib;
 }
 
-/** Copy buffer so the worker thread does not detach the caller's underlying ArrayBuffer. */
-async function readPdfArrayBuffer(source: File | Blob | string): Promise<ArrayBuffer> {
+export async function loadPdfDocumentFromUrl(url: string) {
+    const pdfjsLib = await getPdfJs();
+
+    try {
+        const raw = await readPdfArrayBuffer(url);
+        const data = new Uint8Array(raw);
+        return await pdfjsLib.getDocument({ data }).promise;
+    } catch (bufferError) {
+        console.warn("PDF buffer load failed, trying direct URL:", bufferError);
+        return await pdfjsLib.getDocument({ url }).promise;
+    }
+}
+
+export async function readPdfArrayBuffer(source: File | Blob | string): Promise<ArrayBuffer> {
     if (source instanceof File || source instanceof Blob) {
         return source.arrayBuffer();
     }

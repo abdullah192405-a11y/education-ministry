@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Grades from "./pages/Grades";
 import GradeDetail from "./pages/GradeDetail";
@@ -26,7 +26,6 @@ import WahjReadingReport from "./pages/WahjReadingReport";
 import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect, SuperadminDashboard } from "./pages/dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
-import WhatsAppButton from "./components/layout/WhatsAppButton";
 import ScrollToTop from "./components/ScrollToTop";
 import { FloatingChromeProvider } from "./contexts/FloatingChromeContext";
 import { LanguageProvider, useLanguage } from "./contexts/LanguageContext";
@@ -40,12 +39,6 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
       {children}
     </div>
   );
-};
-
-const ContextualWhatsAppButton = () => {
-  const { pathname } = useLocation();
-  if (pathname.startsWith("/wahj/reading-report/")) return null;
-  return <WhatsAppButton />;
 };
 
 const App = () => (
@@ -139,7 +132,6 @@ const App = () => (
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
-              <ContextualWhatsAppButton />
             </AppShell>
           </FloatingChromeProvider>
         </LanguageProvider>
