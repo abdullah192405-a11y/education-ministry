@@ -12,7 +12,7 @@ import {
     ChevronLeft, ChevronRight, Trophy, Zap, Clock, Target,
     CheckCircle2, XCircle, RotateCcw, Home, Share2, Check,
     ArrowLeft, ArrowRight, GripVertical, Sparkles, ArrowUp, ArrowDown,
-    Volume2, VolumeX, Music, Trash2
+    Volume2, VolumeX, Music, Trash2, Loader2
 } from "lucide-react";
 import {
     useTopic,
@@ -80,8 +80,11 @@ import {
 } from "@/components/wahj/WahjIntakeForm";
 import {
     persistWahjIntakeForChallengeResult,
+    buildReportChallengeResult,
     type WahjIntakeFormValues,
 } from "@/lib/wahjParticipantLinks";
+import { ensureWahjParticipantReportLink } from "@/lib/wahjReadingReportLinks";
+import { WahjPostChallengeDialog } from "@/components/wahj/WahjPostChallengeDialog";
 import {
     resolveWheelSpinSoundOverride,
     WHEEL_SPIN_DURATION_MS,
@@ -161,6 +164,11 @@ const SingleChallenge = () => {
     const [wahjParticipantId, setWahjParticipantId] = useState<string | undefined>();
     const [wahjReferenceId, setWahjReferenceId] = useState<string | undefined>();
     const [savedWahjReferenceId, setSavedWahjReferenceId] = useState<string | undefined>();
+    const [wahjIsReturningParticipant, setWahjIsReturningParticipant] = useState(false);
+    const [wahjPostChallengeOpen, setWahjPostChallengeOpen] = useState(false);
+    const [wahjReportUrl, setWahjReportUrl] = useState("");
+    const [wahjReportGenerating, setWahjReportGenerating] = useState(false);
+    const [wahjPostChallengeFailed, setWahjPostChallengeFailed] = useState(false);
 
     useEffect(() => {
         const n = joinDisplayName?.trim();
@@ -664,7 +672,7 @@ const SingleChallenge = () => {
 
     // --- Save results to database when game ends ---
     const persistWahjIntakeAfterResult = async (challengeResultId: string) => {
-        if (!isWahjProgram || !subjectId || !topicId) return;
+        if (!isWahjProgram || !subjectId || !topicId) return null;
         try {
             const linked = await persistWahjIntakeForChallengeResult({
                 subjectId,
@@ -677,6 +685,7 @@ const SingleChallenge = () => {
             setSavedWahjReferenceId(linked.referenceId);
             setWahjParticipantId(linked.participantId);
             setWahjReferenceId(linked.referenceId);
+            return linked;
         } catch (error) {
             console.error("[Save] Wahj intake persist failed:", error);
             toast({
@@ -684,6 +693,54 @@ const SingleChallenge = () => {
                 title: "تنبيه",
                 description: "تم حفظ نتيجة التحدي لكن تعذّر ربط بيانات قراء وهج. احتفظ برقم مشاركتك إن وُجد.",
             });
+            return null;
+        }
+    };
+
+    const beginWahjPostChallengeFlow = async (
+        savedResult: Record<string, unknown>,
+        linked: { participantId: string; referenceId: string; attemptId: string },
+    ) => {
+        if (!isWahjProgram || !subjectId || !topicId || !content) return;
+
+        setWahjReportGenerating(true);
+        setWahjPostChallengeFailed(false);
+
+        try {
+            const subject = (content as any)?.subject;
+            const reportResult = buildReportChallengeResult(
+                savedResult,
+                topicId,
+                linked,
+                wahjIntake,
+            );
+            const link = await ensureWahjParticipantReportLink({
+                participantId: linked.participantId,
+                subjectId,
+                topic: content,
+                savedChallengeResult: reportResult,
+                className: subject?.grade?.name,
+                subjectName: subject?.name,
+            });
+            setWahjReportUrl(link.url);
+            setWahjPostChallengeOpen(true);
+        } catch (error) {
+            console.error("[Wahj] post-challenge report failed:", error);
+            setWahjPostChallengeFailed(true);
+            toast({
+                variant: "destructive",
+                title: "تعذّر فتح التقرير",
+                description: "يمكنك مراجعة نتيجتك هنا. جرّب مرة أخرى لاحقاً أو تواصل مع المعلّم.",
+            });
+        } finally {
+            setWahjReportGenerating(false);
+        }
+    };
+
+    const handleWahjPostChallengeComplete = () => {
+        setWahjPostChallengeOpen(false);
+        if (wahjReportUrl) {
+            window.location.assign(wahjReportUrl);
         }
     };
 
@@ -748,6 +805,7 @@ const SingleChallenge = () => {
                 teacherHostUserId
             ) {
                 setResultsSaved(true);
+                if (isWahjProgram) setWahjReportGenerating(true);
                 try {
                     const session = await createSessionMutation.mutateAsync({
                         topicId: topicId as string,
@@ -793,13 +851,18 @@ const SingleChallenge = () => {
                     }
 
                     if (isWahjProgram) {
-                        await persistWahjIntakeAfterResult(String(savedResult.id));
+                        const linked = await persistWahjIntakeAfterResult(String(savedResult.id));
+                        if (linked?.participantId) {
+                            await beginWahjPostChallengeFlow(savedResult as Record<string, unknown>, linked);
+                        } else {
+                            setWahjPostChallengeFailed(true);
+                        }
+                    } else {
+                        toast({
+                            title: "تم حفظ النتيجة",
+                            description: "ستظهر للمعلّم مع الاسم والبيانات التي أدخلتها.",
+                        });
                     }
-
-                    toast({
-                        title: "تم حفظ النتيجة",
-                        description: "ستظهر للمعلّم مع الاسم والبيانات التي أدخلتها.",
-                    });
                 } catch (error) {
                     console.error("[Save] Guest identified single challenge failed:", error);
                     setResultsSaved(false);
@@ -933,6 +996,7 @@ const SingleChallenge = () => {
 
             try {
                 setResultsSaved(true);
+                if (isWahjProgram) setWahjReportGenerating(true);
                 const subjectData = content.subject;
                 // 0. Pre-check: Was this topic already completed?
                 // This must happen BEFORE we save the new activity!
@@ -1026,7 +1090,12 @@ const SingleChallenge = () => {
                 }
 
                 if (isWahjProgram) {
-                    await persistWahjIntakeAfterResult(String(savedResult.id));
+                    const linked = await persistWahjIntakeAfterResult(String(savedResult.id));
+                    if (linked?.participantId) {
+                        await beginWahjPostChallengeFlow(savedResult as Record<string, unknown>, linked);
+                    } else {
+                        setWahjPostChallengeFailed(true);
+                    }
                 }
 
                 if (isScheduledLikeSession && playerSessionIdFromJoin) {
@@ -1218,12 +1287,12 @@ const SingleChallenge = () => {
     };
 
     useEffect(() => {
-        if (gameState === "results" && topicId) {
+        if (gameState === "results" && topicId && !isWahjProgram) {
             setLessonRatingOpen(true);
         } else {
             setLessonRatingOpen(false);
         }
-    }, [gameState, topicId]);
+    }, [gameState, topicId, isWahjProgram]);
 
     // Recompute session badges when results screen is shown (includes prior attempts when logged in)
     useEffect(() => {
@@ -1852,37 +1921,24 @@ const SingleChallenge = () => {
     const hasFullProfileForUi = !!currentUser?.id && !!studentProfile?.id;
     const showGuestIdentityForm = collectParticipantData && !hasFullProfileForUi && !isWahjProgram;
     const showWahjIntakeForm = isWahjProgram;
+    const showWahjResultsScreen =
+        !isWahjProgram || wahjPostChallengeFailed;
+    const showWahjReportLoading =
+        isWahjProgram && wahjReportGenerating && !wahjPostChallengeFailed;
 
-    const handleCopyWahjReference = async () => {
-        const ref = savedWahjReferenceId || wahjReferenceId;
-        if (!ref) return;
-        try {
-            await navigator.clipboard.writeText(ref);
-            toast({ title: "تم نسخ الرقم", description: ref });
-        } catch {
-            toast({ variant: "destructive", title: "تعذّر النسخ", description: ref });
-        }
-    };
-
-    const renderWahjReferenceCard = () => {
-        const ref = savedWahjReferenceId || wahjReferenceId;
-        if (!ref) return null;
-        return (
-            <div className="mb-6 rounded-xl border border-primary/25 bg-primary/5 p-4 text-right relative z-10">
-                <p className="text-sm font-bold text-primary mb-1">رقم مشاركتك في قراء وهج</p>
-                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    للمشاركة مرة أخرى، استخدم هذا الرقم حتى تُربط محاولاتك معاً.
-                </p>
-                <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3">
-                    <span className="font-black text-lg tracking-wide" dir="ltr">{ref}</span>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => void handleCopyWahjReference()}>
-                        <Check className="w-4 h-4" />
-                        نسخ
-                    </Button>
-                </div>
-            </div>
-        );
-    };
+    const renderWahjReportLoading = () => (
+        <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-lg mx-auto"
+        >
+            <Card className="p-10 text-center">
+                <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+                <h2 className="text-xl font-black mb-2">جاري تجهيز تقريرك</h2>
+                <p className="text-sm text-muted-foreground">لحظة واحدة ونعرض لك رحلتك في قراء وهج...</p>
+            </Card>
+        </motion.div>
+    );
 
     const renderIntro = () => (
         <motion.div
@@ -1923,13 +1979,15 @@ const SingleChallenge = () => {
                             onChange={setWahjIntake}
                             participantId={wahjParticipantId}
                             referenceId={wahjReferenceId}
-                            onParticipantResolved={({ participantId, referenceId, displayName }) => {
+                            onParticipantResolved={({ participantId, referenceId, displayName, lookup }) => {
+                                setWahjIsReturningParticipant(Boolean(lookup));
                                 setWahjParticipantId(participantId);
                                 setWahjReferenceId(referenceId);
                                 setGuestDisplayName(displayName);
                                 setWahjIntake((prev) => ({ ...prev, displayName }));
                             }}
                             onClearParticipant={() => {
+                                setWahjIsReturningParticipant(false);
                                 setWahjParticipantId(undefined);
                                 setWahjReferenceId(undefined);
                             }}
@@ -2242,7 +2300,7 @@ const SingleChallenge = () => {
                                 : `لم تتجاوز ${SHARE_RESULT_THRESHOLD}% بعد — جرّب مرة أخرى لتحسين نتيجتك.`}
                             {" "}سُجّلت نتيجتك ويمكن لمعلّمك متابعتها.
                         </p>
-                        {renderWahjReferenceCard()}
+
                         <motion.div
                             initial={{ opacity: 0, y: 12 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -2377,7 +2435,6 @@ const SingleChallenge = () => {
                         </div>
                     </motion.div>
 
-                    {renderWahjReferenceCard()}
 
                     {/* Badges */}
                     {results.badges.length > 0 && (
@@ -2645,13 +2702,25 @@ const SingleChallenge = () => {
                     <AnimatePresence mode="wait">
                         {gameState === "intro" && renderIntro()}
                         {gameState === "playing" && renderQuestion()}
-                        {gameState === "results" && renderResults()}
+                        {gameState === "results" && showWahjReportLoading && renderWahjReportLoading()}
+                        {gameState === "results" && showWahjResultsScreen && renderResults()}
                     </AnimatePresence>
                 </div>
             </main>
             {gameState === "intro" && <Footer />}
 
-            {topicId && (
+            {topicId && isWahjProgram && (
+                <WahjPostChallengeDialog
+                    open={wahjPostChallengeOpen}
+                    referenceId={savedWahjReferenceId || wahjReferenceId}
+                    showReferenceStep={!wahjIsReturningParticipant}
+                    topicId={topicId}
+                    userId={currentUser?.id}
+                    onComplete={handleWahjPostChallengeComplete}
+                />
+            )}
+
+            {topicId && !isWahjProgram && (
                 <LessonEmojiRatingDialog
                     topicId={topicId}
                     userId={currentUser?.id}

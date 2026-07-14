@@ -145,6 +145,52 @@ export async function linkWahjAttemptToResult(
     if (error) throw error;
 }
 
+export function buildReportChallengeResult(
+    savedResult: Record<string, unknown>,
+    topicId: string,
+    linked: { participantId: string; referenceId: string; attemptId: string },
+    intake: WahjIntakeFormValues,
+): Record<string, unknown> {
+    const extra = serializeWahjParticipantExtra({
+        wahjParticipantId: linked.participantId,
+        wahjReferenceId: linked.referenceId,
+        wahjAttemptId: linked.attemptId,
+        wahjPagesRead: intake.pagesRead,
+        wahjBenefitsCount: intake.benefitsCount,
+    });
+
+    return {
+        ...savedResult,
+        participant_extra: extra,
+        session: {
+            topic_id: topicId,
+            topic: { id: topicId },
+        },
+    };
+}
+
+export async function fetchWahjIntakeForParticipant(participantId: string): Promise<WahjIntakeRow[]> {
+    const { data, error } = await publicClient.rpc("get_wahj_intake_for_participant", {
+        p_participant_id: participantId,
+    });
+    if (error) throw error;
+
+    return (data || []).map((row: Record<string, unknown>) => ({
+        participantId: String(row.participant_id),
+        referenceId: String(row.reference_id),
+        displayName: String(row.display_name),
+        participantKey: String(row.participant_key),
+        attemptId: String(row.attempt_id),
+        challengeResultId: row.challenge_result_id ? String(row.challenge_result_id) : null,
+        topicId: String(row.topic_id),
+        pagesRead: Number(row.pages_read ?? 0),
+        benefitsCount: Number(row.benefits_count ?? 0),
+        discussionAttendance: String(row.discussion_attendance) as WahjAttendanceLevel,
+        enrichmentAttendance: String(row.enrichment_attendance) as WahjAttendanceLevel,
+        createdAt: String(row.created_at ?? ""),
+    }));
+}
+
 export async function fetchWahjIntakeForSubject(subjectId: string): Promise<WahjIntakeRow[]> {
     const { data, error } = await supabase.rpc("get_wahj_intake_for_subject", {
         p_subject_id: subjectId,

@@ -1,4 +1,12 @@
 import { publicClient, supabase } from "@/lib/supabase";
+import {
+    applyIntakeTotalsToReportPayload,
+    buildWahjParticipantReport,
+} from "@/lib/wahjReadingReportData";
+import {
+    fetchWahjIntakeForParticipant,
+    type WahjIntakeRow,
+} from "@/lib/wahjParticipantLinks";
 import type { WahjReadingReportPayload } from "@/lib/wahjReadingReportData";
 import {
     buildFallbackIndividualAiReport,
@@ -197,6 +205,73 @@ export async function createWahjReadingReportLink({
     }
 
     throw new Error("Failed to generate a unique Wahj reading report link.");
+}
+
+export type EnsureWahjParticipantReportLinkInput = {
+    participantId: string;
+    subjectId: string;
+    topic: unknown;
+    savedChallengeResult: unknown;
+    className?: string;
+    subjectName?: string;
+    guestLabel?: string;
+};
+
+export async function ensureWahjParticipantReportLink(
+    input: EnsureWahjParticipantReportLinkInput,
+): Promise<WahjReadingReportLinkResult> {
+    const participantKey = `wahj:${input.participantId}`;
+    let intakeRows: WahjIntakeRow[] = [];
+
+    try {
+        intakeRows = await fetchWahjIntakeForParticipant(input.participantId);
+    } catch (error) {
+        console.warn("[Wahj] fetchWahjIntakeForParticipant failed:", error);
+    }
+
+    const basePayload = buildWahjParticipantReport(
+        participantKey,
+        [input.savedChallengeResult],
+        [input.topic],
+        input.subjectId,
+        input.guestLabel ?? "ضيف",
+        intakeRows,
+    );
+
+    if (!basePayload) {
+        throw new Error("تعذّر بناء تقرير قراء وهج لهذه المحاولة.");
+    }
+
+    const enrichedPayload = applyIntakeTotalsToReportPayload(
+        await enrichWahjIndividualReportPayload({
+            ...basePayload,
+            className: input.className,
+            subjectName: input.subjectName,
+        }),
+    );
+
+    const { data: token, error } = await publicClient.rpc("upsert_wahj_reading_report_link", {
+        p_participant_key: participantKey,
+        p_subject_id: input.subjectId,
+        p_participant_name: enrichedPayload.participantName,
+        p_payload: enrichedPayload,
+    });
+
+    if (error) {
+        if (isMissingReportTable(error)) throw buildMissingReportTableError();
+        throw error;
+    }
+
+    const reportToken = String(token ?? "");
+    if (!reportToken) {
+        throw new Error("تعذّر إنشاء رابط التقرير.");
+    }
+
+    return {
+        token: reportToken,
+        url: getReportUrl(reportToken),
+        payload: enrichedPayload,
+    };
 }
 
 export async function fetchWahjReadingReportByToken(

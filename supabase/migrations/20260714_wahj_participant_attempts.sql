@@ -302,6 +302,47 @@ GRANT EXECUTE ON FUNCTION public.create_wahj_reading_attempt(UUID, TEXT, INT, IN
 GRANT EXECUTE ON FUNCTION public.link_wahj_attempt_to_result(UUID, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_wahj_intake_for_subject(TEXT) TO anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.get_wahj_intake_for_participant(p_participant_id UUID)
+RETURNS TABLE (
+  participant_id UUID,
+  reference_id TEXT,
+  display_name TEXT,
+  participant_key TEXT,
+  attempt_id UUID,
+  challenge_result_id UUID,
+  topic_id TEXT,
+  pages_read INT,
+  benefits_count INT,
+  discussion_attendance TEXT,
+  enrichment_attendance TEXT,
+  created_at TIMESTAMPTZ
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    p.id AS participant_id,
+    p.reference_id,
+    p.display_name,
+    'wahj:' || p.id::text AS participant_key,
+    a.id AS attempt_id,
+    a.challenge_result_id,
+    a.topic_id,
+    a.pages_read,
+    a.benefits_count,
+    a.discussion_attendance,
+    a.enrichment_attendance,
+    a.created_at
+  FROM public.wahj_participants p
+  JOIN public.wahj_reading_attempts a ON a.participant_id = p.id
+  WHERE p.id = p_participant_id
+  ORDER BY a.created_at ASC;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_wahj_intake_for_participant(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_wahj_intake_for_participant(UUID) TO anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.attach_wahj_extra_to_challenge_result(
   p_challenge_result_id UUID,
   p_participant_extra TEXT
@@ -324,3 +365,80 @@ $$;
 
 REVOKE ALL ON FUNCTION public.attach_wahj_extra_to_challenge_result(UUID, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.attach_wahj_extra_to_challenge_result(UUID, TEXT) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.upsert_wahj_reading_report_link(
+  p_participant_key TEXT,
+  p_subject_id TEXT,
+  p_participant_name TEXT,
+  p_payload JSONB
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_token TEXT;
+  v_chars CONSTANT TEXT := 'abcdefghijklmnopqrstuvwxyz0123456789';
+  i INT;
+  v_attempt INT;
+BEGIN
+  IF coalesce(trim(p_participant_key), '') = ''
+     OR coalesce(trim(p_subject_id), '') = ''
+     OR p_payload IS NULL THEN
+    RAISE EXCEPTION 'participant_key, subject_id, and payload are required';
+  END IF;
+
+  SELECT token INTO v_token
+  FROM public.wahj_reading_report_links
+  WHERE participant_key = trim(p_participant_key)
+    AND subject_id = trim(p_subject_id)
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_token IS NOT NULL THEN
+    UPDATE public.wahj_reading_report_links
+    SET
+      participant_name = trim(p_participant_name),
+      payload = p_payload,
+      updated_at = NOW()
+    WHERE token = v_token;
+
+    RETURN v_token;
+  END IF;
+
+  FOR v_attempt IN 1..5 LOOP
+    v_token := '';
+    FOR i IN 1..8 LOOP
+      v_token := v_token || substr(v_chars, floor(random() * length(v_chars) + 1)::int, 1);
+    END LOOP;
+
+    BEGIN
+      INSERT INTO public.wahj_reading_report_links (
+        token,
+        participant_key,
+        participant_name,
+        subject_id,
+        payload,
+        updated_at
+      )
+      VALUES (
+        v_token,
+        trim(p_participant_key),
+        trim(p_participant_name),
+        trim(p_subject_id),
+        p_payload,
+        NOW()
+      );
+      RETURN v_token;
+    EXCEPTION WHEN unique_violation THEN
+      CONTINUE;
+    END;
+  END LOOP;
+
+  RAISE EXCEPTION 'Failed to generate a unique Wahj reading report token';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.upsert_wahj_reading_report_link(TEXT, TEXT, TEXT, JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.upsert_wahj_reading_report_link(TEXT, TEXT, TEXT, JSONB) TO anon, authenticated;
