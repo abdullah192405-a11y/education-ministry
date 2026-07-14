@@ -165,14 +165,13 @@ const TopicView = () => {
             const type = (m.type || "").toLowerCase();
             let url = m.url;
 
-            // Defer heavy base64 decoding — use a data URL the browser PDF viewer can load directly.
-            if (type === "pdf" && !url && m.pdf_base64) {
-                url = `data:application/pdf;base64,${m.pdf_base64}`;
-            }
+            // Keep base64 separate — the PDF viewer resolves a blob URL lazily to avoid crashes.
+            const pdfBase64 = type === "pdf" ? (m.pdf_base64 || null) : null;
 
             return {
                 type,
                 url,
+                pdfBase64,
                 content: m.content,
                 caption: m.caption || m.fileName || m.file_name || m.type
             };
@@ -744,7 +743,7 @@ const TopicView = () => {
                     </Card>
                 );
             case "pdf": {
-                if (!currentMedia.url) {
+                if (!currentMedia.url && !currentMedia.pdfBase64) {
                     return (
                         <div className="w-full h-[400px] flex flex-col items-center justify-center bg-muted/20 rounded-2xl border border-dashed text-center p-6">
                             <FileText className="w-16 h-16 text-muted-foreground/30 mb-4" />
@@ -759,6 +758,7 @@ const TopicView = () => {
                 return (
                     <TopicPdfViewer
                         url={currentMedia.url}
+                        pdfBase64={currentMedia.pdfBase64}
                         title={currentMedia.caption || t("topicView.pdf.viewPdf")}
                     />
                 );

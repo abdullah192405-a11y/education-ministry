@@ -2,7 +2,12 @@ import { Component, type ReactNode, useCallback, useEffect, useRef, useState } f
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/contexts/LanguageContext";
-import { loadPdfDocumentFromUrl } from "@/lib/pdfExtractor";
+import {
+    isPdfTooLargeForClientRender,
+    loadTopicPdfDocument,
+    renderTopicPdfPageImageUrl,
+    resolveTopicPdfBlobUrl,
+} from "@/lib/topicPdfPageRenderer";
 import {
     ChevronLeft,
     ChevronRight,
@@ -13,7 +18,8 @@ import {
 } from "lucide-react";
 
 interface TopicPdfViewerProps {
-    url: string;
+    url?: string | null;
+    pdfBase64?: string | null;
     title?: string;
 }
 
@@ -39,60 +45,117 @@ class TopicPdfViewerBoundary extends Component<
         return { hasError: true };
     }
 
+    componentDidCatch(error: unknown) {
+        console.error("Topic PDF viewer crashed:", error);
+    }
+
     render() {
         if (this.state.hasError) {
-            return <TopicPdfEmbedFallback url={this.props.url} title={this.props.title} />;
+            return (
+                <TopicPdfEmbedFallback
+                    url={this.props.url}
+                    pdfBase64={this.props.pdfBase64}
+                    title={this.props.title}
+                />
+            );
         }
         return this.props.children;
     }
 }
 
-const TopicPdfEmbedFallback = ({ url, title }: TopicPdfViewerProps) => {
+const TopicPdfEmbedFallback = ({ url, pdfBase64, title }: TopicPdfViewerProps) => {
     const { t } = useTranslation();
+    const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        let objectUrl: string | null = null;
+
+        const prepare = async () => {
+            try {
+                if (url && !url.startsWith("data:")) {
+                    if (!cancelled) setEmbedUrl(url);
+                    return;
+                }
+
+                const resolved = await resolveTopicPdfBlobUrl(url, pdfBase64);
+                objectUrl = resolved.startsWith("blob:") ? resolved : null;
+                if (!cancelled) {
+                    setEmbedUrl(resolved);
+                }
+            } catch (error) {
+                console.error("Failed to prepare PDF embed:", error);
+            }
+        };
+
+        void prepare();
+
+        return () => {
+            cancelled = true;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [url, pdfBase64]);
+
+    const openUrl = embedUrl || url || undefined;
 
     return (
         <div className="flex h-[min(82vh,960px)] min-h-[420px] flex-col overflow-hidden rounded-2xl border bg-background shadow-lg sm:min-h-[520px]">
             <div className="flex items-center justify-end gap-2 border-b bg-background/95 px-3 py-2 sm:px-4">
-                <Button size="sm" variant="secondary" className="h-9 text-xs font-semibold" asChild>
-                    <a href={url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4" />
-                        {t("topicView.pdf.openNewWindow")}
-                    </a>
-                </Button>
+                {openUrl ? (
+                    <Button size="sm" variant="secondary" className="h-9 text-xs font-semibold" asChild>
+                        <a href={openUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4" />
+                            {t("topicView.pdf.openNewWindow")}
+                        </a>
+                    </Button>
+                ) : null}
             </div>
-            <iframe
-                src={url}
-                title={title || t("topicView.pdf.viewPdf")}
-                className="h-full w-full flex-1 border-0 bg-white"
-            />
+            {embedUrl ? (
+                <iframe
+                    src={embedUrl}
+                    title={title || t("topicView.pdf.viewPdf")}
+                    className="h-full w-full flex-1 border-0 bg-white"
+                />
+            ) : (
+                <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                    {t("topicView.pdf.loading")}
+                </div>
+            )}
         </div>
     );
 };
 
-const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
+const TopicPdfViewerInner = ({ url, pdfBase64, title }: TopicPdfViewerProps) => {
     const { t, dir } = useTranslation();
     const ChevronPrev = dir === "rtl" ? ChevronRight : ChevronLeft;
     const ChevronNext = dir === "rtl" ? ChevronLeft : ChevronRight;
 
     const shellRef = useRef<HTMLDivElement>(null);
-    const viewportRef = useRef<HTMLDivElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
-    const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
+    const blobUrlRef = useRef<string | null>(null);
+    const pageImageUrlRef = useRef<string | null>(null);
     const renderGenerationRef = useRef(0);
 
     const [pageNum, setPageNum] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
-    const [pdfReady, setPdfReady] = useState(0);
+    const [pageImageUrl, setPageImageUrl] = useState<string | null>(null);
+    const [openUrl, setOpenUrl] = useState<string | null>(null);
     const [loadingDoc, setLoadingDoc] = useState(true);
     const [renderingPage, setRenderingPage] = useState(false);
     const [useEmbedFallback, setUseEmbedFallback] = useState(false);
-    const [containerWidth, setContainerWidth] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
+    const revokePageImage = useCallback(() => {
+        if (pageImageUrlRef.current) {
+            URL.revokeObjectURL(pageImageUrlRef.current);
+            pageImageUrlRef.current = null;
+        }
+    }, []);
+
     const destroyPdfDoc = useCallback(() => {
-        renderTaskRef.current?.cancel();
-        renderTaskRef.current = null;
+        revokePageImage();
 
         const doc = pdfDocRef.current;
         pdfDocRef.current = null;
@@ -103,21 +166,41 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
                 // Ignore teardown errors during rapid media switches.
             }
         }
-    }, []);
+
+        if (blobUrlRef.current?.startsWith("blob:")) {
+            URL.revokeObjectURL(blobUrlRef.current);
+        }
+        blobUrlRef.current = null;
+    }, [revokePageImage]);
 
     useEffect(() => {
         let cancelled = false;
 
-        const loadDocument = async () => {
+        const initialize = async () => {
             setLoadingDoc(true);
             setUseEmbedFallback(false);
             setPageNum(1);
             setTotalPages(0);
-            setPdfReady(0);
+            setPageImageUrl(null);
             destroyPdfDoc();
 
+            if (isPdfTooLargeForClientRender(pdfBase64)) {
+                setUseEmbedFallback(true);
+                setLoadingDoc(false);
+                return;
+            }
+
             try {
-                const pdf = await loadPdfDocumentFromUrl(url);
+                const blobUrl = await resolveTopicPdfBlobUrl(url, pdfBase64);
+                if (cancelled) {
+                    if (blobUrl.startsWith("blob:")) URL.revokeObjectURL(blobUrl);
+                    return;
+                }
+
+                blobUrlRef.current = blobUrl;
+                setOpenUrl(blobUrl);
+
+                const pdf = await loadTopicPdfDocument(blobUrl);
                 if (cancelled) {
                     try {
                         pdf.destroy();
@@ -129,7 +212,6 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
 
                 pdfDocRef.current = pdf;
                 setTotalPages(pdf.numPages);
-                setPdfReady((value) => value + 1);
             } catch (loadError) {
                 console.error("Failed to load PDF:", loadError);
                 if (!cancelled) {
@@ -142,38 +224,17 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
             }
         };
 
-        void loadDocument();
+        void initialize();
 
         return () => {
             cancelled = true;
             destroyPdfDoc();
         };
-    }, [url, destroyPdfDoc]);
-
-    useEffect(() => {
-        const viewport = viewportRef.current;
-        if (!viewport) return;
-
-        const updateWidth = () => setContainerWidth(viewport.clientWidth);
-        updateWidth();
-
-        const observer = new ResizeObserver(updateWidth);
-        observer.observe(viewport);
-        return () => observer.disconnect();
-    }, [useEmbedFallback]);
-
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(Boolean(document.fullscreenElement));
-        };
-
-        document.addEventListener("fullscreenchange", handleFullscreenChange);
-        return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    }, []);
+    }, [url, pdfBase64, destroyPdfDoc]);
 
     useEffect(() => {
         const pdfDoc = pdfDocRef.current;
-        if (!pdfDoc || !canvasRef.current || containerWidth <= 0 || useEmbedFallback || pdfReady === 0) {
+        if (!pdfDoc || useEmbedFallback || totalPages <= 0) {
             return;
         }
 
@@ -182,49 +243,19 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
 
         const renderPage = async () => {
             setRenderingPage(true);
+            revokePageImage();
 
             try {
-                const page = await pdfDoc.getPage(pageNum);
-                if (cancelled || generation !== renderGenerationRef.current) return;
+                const maxWidth = isMobileViewport() ? 720 : 1200;
+                const nextImageUrl = await renderTopicPdfPageImageUrl(pdfDoc, pageNum, maxWidth);
 
-                const mobile = isMobileViewport();
-                const maxPixels = mobile ? 1_800_000 : 4_000_000;
-                const maxDimension = mobile ? 2048 : 4096;
-                const deviceRatio = Math.min(window.devicePixelRatio || 1, mobile ? 1.25 : 2);
-
-                const baseViewport = page.getViewport({ scale: 1 });
-                const horizontalPadding = 24;
-                let renderScale = Math.max((containerWidth - horizontalPadding) / baseViewport.width, 0.2);
-                let viewport = page.getViewport({ scale: renderScale });
-
-                while (
-                    viewport.width * viewport.height * deviceRatio * deviceRatio > maxPixels ||
-                    viewport.width * deviceRatio > maxDimension ||
-                    viewport.height * deviceRatio > maxDimension
-                ) {
-                    renderScale *= 0.85;
-                    viewport = page.getViewport({ scale: renderScale });
+                if (cancelled || generation !== renderGenerationRef.current) {
+                    URL.revokeObjectURL(nextImageUrl);
+                    return;
                 }
 
-                const canvas = canvasRef.current;
-                if (!canvas || cancelled || generation !== renderGenerationRef.current) return;
-
-                const context = canvas.getContext("2d", { alpha: false });
-                if (!context) return;
-
-                canvas.width = Math.max(1, Math.floor(viewport.width * deviceRatio));
-                canvas.height = Math.max(1, Math.floor(viewport.height * deviceRatio));
-                canvas.style.width = `${Math.floor(viewport.width)}px`;
-                canvas.style.height = `${Math.floor(viewport.height)}px`;
-                context.setTransform(deviceRatio, 0, 0, deviceRatio, 0, 0);
-
-                renderTaskRef.current?.cancel();
-                const task = page.render({
-                    canvasContext: context,
-                    viewport,
-                });
-                renderTaskRef.current = task;
-                await task.promise;
+                pageImageUrlRef.current = nextImageUrl;
+                setPageImageUrl(nextImageUrl);
             } catch (renderError) {
                 if (isRenderingCancelled(renderError) || cancelled || generation !== renderGenerationRef.current) {
                     return;
@@ -242,10 +273,17 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
 
         return () => {
             cancelled = true;
-            renderTaskRef.current?.cancel();
-            renderTaskRef.current = null;
         };
-    }, [pageNum, containerWidth, useEmbedFallback, pdfReady]);
+    }, [pageNum, totalPages, useEmbedFallback, revokePageImage]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(Boolean(document.fullscreenElement));
+        };
+
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    }, []);
 
     const toggleFullscreen = async () => {
         const shell = shellRef.current;
@@ -258,12 +296,14 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
                 await shell.requestFullscreen();
             }
         } catch {
-            window.open(url, "_blank", "noopener,noreferrer");
+            if (openUrl) {
+                window.open(openUrl, "_blank", "noopener,noreferrer");
+            }
         }
     };
 
     if (useEmbedFallback) {
-        return <TopicPdfEmbedFallback url={url} title={title} />;
+        return <TopicPdfEmbedFallback url={url} pdfBase64={pdfBase64} title={title} />;
     }
 
     const isBusy = loadingDoc || renderingPage;
@@ -323,20 +363,19 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
                         >
                             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                         </Button>
-                        <Button size="sm" variant="secondary" className="h-9 px-2 text-xs font-semibold" asChild>
-                            <a href={url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-4 w-4" />
-                                <span className="hidden sm:inline">{t("topicView.pdf.openNewWindow")}</span>
-                            </a>
-                        </Button>
+                        {openUrl ? (
+                            <Button size="sm" variant="secondary" className="h-9 px-2 text-xs font-semibold" asChild>
+                                <a href={openUrl} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="h-4 w-4" />
+                                    <span className="hidden sm:inline">{t("topicView.pdf.openNewWindow")}</span>
+                                </a>
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
             </div>
 
-            <div
-                ref={viewportRef}
-                className="relative flex-1 overflow-auto bg-neutral-100 dark:bg-neutral-900"
-            >
+            <div className="relative flex-1 overflow-auto bg-neutral-100 dark:bg-neutral-900">
                 {isBusy && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/70 backdrop-blur-[1px]">
                         <div className="mb-3 h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
@@ -345,22 +384,18 @@ const TopicPdfViewerInner = ({ url, title }: TopicPdfViewerProps) => {
                 )}
 
                 <div className="flex min-h-full justify-center p-3 sm:p-5">
-                    <div className="rounded-lg bg-white shadow-[0_8px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5">
-                        <canvas
-                            ref={canvasRef}
-                            role="img"
-                            aria-label={title || t("topicView.pdf.viewPdf")}
-                            className="block max-w-none rounded-lg"
+                    {pageImageUrl ? (
+                        <img
+                            src={pageImageUrl}
+                            alt={title || t("topicView.pdf.viewPdf")}
+                            className="block max-w-full rounded-lg bg-white shadow-[0_8px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5"
                         />
-                    </div>
+                    ) : (
+                        <div className="flex min-h-[240px] items-center justify-center rounded-lg bg-white/80 px-6">
+                            <FileText className="h-10 w-10 text-muted-foreground/40" />
+                        </div>
+                    )}
                 </div>
-
-                {!isBusy && totalPages === 0 && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
-                        <FileText className="h-12 w-12 text-muted-foreground/40" />
-                        <p className="text-sm text-muted-foreground">{t("topicView.pdf.loadError")}</p>
-                    </div>
-                )}
             </div>
         </div>
     );
