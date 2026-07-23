@@ -155,14 +155,6 @@ const Register = () => {
                 return;
             }
 
-            const nameParts = trimmedName.split(/\s+/);
-            await signUp.create({
-                emailAddress: normalizedEmail,
-                password,
-                firstName: nameParts[0],
-                lastName: nameParts.slice(1).join(" ") || undefined,
-            });
-
             await createPendingRegistration({
                 email: normalizedEmail,
                 name: trimmedName,
@@ -171,6 +163,22 @@ const Register = () => {
                 organizationId: selectedOrganizationId || null,
                 gradeId: selectedGradeId || null,
             });
+
+            const nameParts = trimmedName.split(/\s+/);
+            try {
+                await signUp.create({
+                    emailAddress: normalizedEmail,
+                    password,
+                    firstName: nameParts[0],
+                    lastName: nameParts.slice(1).join(" ") || undefined,
+                });
+            } catch (clerkErr: any) {
+                // Incomplete prior attempt — continue to email verification.
+                const code = clerkErr?.errors?.[0]?.code;
+                if (code !== "form_identifier_exists") {
+                    throw clerkErr;
+                }
+            }
 
             await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
 
