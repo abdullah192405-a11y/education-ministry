@@ -16,7 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSignUp, useAuth } from "@clerk/clerk-react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { createPendingRegistrationAndSendEmail } from "@/lib/pendingRegistration";
+import { createPendingRegistration } from "@/lib/pendingRegistration";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -117,12 +117,16 @@ const Register = () => {
             setError(t("register.errSelectStudentGrade"));
             return;
         }
-        if (password.length < 6) {
+        if (password.length < 8) {
             setError(t("register.errPasswordShort"));
             return;
         }
         if (password !== confirmPassword) {
             setError(t("register.errPasswordsNoMatch"));
+            return;
+        }
+        if (!isClerkLoaded || !signUp) {
+            setError(t("register.errCreate"));
             return;
         }
 
@@ -137,6 +141,7 @@ const Register = () => {
             localStorage.removeItem("edu_user");
 
             const normalizedEmail = email.trim().toLowerCase();
+            const trimmedName = name.trim();
 
             const { data: existingUser } = await supabase
                 .from("users")
@@ -150,20 +155,29 @@ const Register = () => {
                 return;
             }
 
-            // Store pending signup + send PIN + activation link email, then open verify page
-            const { email: sentEmail } = await createPendingRegistrationAndSendEmail({
+            const nameParts = trimmedName.split(/\s+/);
+            await signUp.create({
+                emailAddress: normalizedEmail,
+                password,
+                firstName: nameParts[0],
+                lastName: nameParts.slice(1).join(" ") || undefined,
+            });
+
+            await createPendingRegistration({
                 email: normalizedEmail,
-                name: name.trim(),
+                name: trimmedName,
                 role,
                 password,
                 organizationId: selectedOrganizationId || null,
                 gradeId: selectedGradeId || null,
             });
 
-            navigate(`/verify-email?email=${encodeURIComponent(sentEmail)}`, { replace: true });
+            await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+
+            navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, { replace: true });
         } catch (err: any) {
-            console.error("[Register] pending signup error:", err);
-            setError(err?.message || t("register.errCreate"));
+            console.error("[Register] Clerk signup error:", err);
+            setError(err?.errors?.[0]?.longMessage || err?.errors?.[0]?.message || err?.message || t("register.errCreate"));
             setIsLoading(false);
         }
     };
@@ -466,7 +480,7 @@ const Register = () => {
                                                         value={password}
                                                         onChange={(e) => setPassword(e.target.value)}
                                                         required
-                                                        minLength={6}
+                                                        minLength={8}
                                                     />
                                                     <button
                                                         type="button"
@@ -490,7 +504,7 @@ const Register = () => {
                                                         value={confirmPassword}
                                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                                         required
-                                                        minLength={6}
+                                                        minLength={8}
                                                     />
                                                 </div>
                                             </div>

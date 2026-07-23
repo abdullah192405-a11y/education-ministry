@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import {
     ChevronLeft,
     ChevronRight,
     KeyRound,
-    Link2,
     Mail,
     Loader2,
 } from "lucide-react";
@@ -19,8 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import {
-    findPendingByEmailAndPin,
-    findPendingByToken,
+    findPendingByEmail,
     isPendingExpired,
 } from "@/lib/pendingRegistration";
 import { completeVerifiedRegistration } from "@/lib/completeRegistration";
@@ -35,89 +33,27 @@ const VerifyEmail = () => {
     const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
 
     const emailFromQuery = (searchParams.get("email") || "").trim().toLowerCase();
-    const tokenFromQuery = (searchParams.get("token") || "").trim();
 
     const [email, setEmail] = useState(emailFromQuery);
     const [pin, setPin] = useState("");
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isResending, setIsResending] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
-    const [autoStatus, setAutoStatus] = useState<"idle" | "working" | "done" | "failed">(
-        tokenFromQuery ? "working" : "idle"
-    );
-    const linkAttempted = useRef(false);
 
-    const finishWithPending = async (pending: NonNullable<Awaited<ReturnType<typeof findPendingByToken>>>) => {
-        if (isPendingExpired(pending)) {
-            setError(t("verify.errExpired"));
-            setAutoStatus("failed");
-            return;
+    const handleResendCode = async () => {
+        if (!isClerkLoaded || !signUp) return;
+        setError("");
+        setIsResending(true);
+        try {
+            await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+        } catch (err: any) {
+            console.error("[VerifyEmail] resend code:", err);
+            setError(err?.errors?.[0]?.message || err?.message || t("verify.errGeneric"));
+        } finally {
+            setIsResending(false);
         }
-
-        const { user } = await completeVerifiedRegistration({
-            pending,
-            signUp: isClerkLoaded ? signUp : null,
-            setActive,
-            detailsStudent: t("register.studentPendingShort"),
-            detailsTeacher: t("register.adminPendingShort"),
-        });
-
-        localStorage.setItem(
-            "edu_user",
-            JSON.stringify({
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                details: user.details,
-            })
-        );
-        queryClient.setQueryData(["current_user"], user);
-
-        const role = String(user.role || "").toUpperCase();
-        setSuccessMessage(
-            role === "TEACHER" ? t("register.teacherPending") : t("register.studentPending")
-        );
-        setAutoStatus("done");
-        setTimeout(() => navigate("/login"), 2800);
     };
-
-    // Auto-activate when opening the email link
-    useEffect(() => {
-        if (!tokenFromQuery || linkAttempted.current) return;
-        if (!isClerkLoaded) return;
-        linkAttempted.current = true;
-
-        const run = async () => {
-            setIsLoading(true);
-            setError("");
-            setAutoStatus("working");
-            try {
-                const pending = await findPendingByToken(tokenFromQuery);
-                if (!pending) {
-                    setError(t("verify.errInvalidLink"));
-                    setAutoStatus("failed");
-                    return;
-                }
-                if (emailFromQuery && pending.email.toLowerCase() !== emailFromQuery) {
-                    setError(t("verify.errInvalidLink"));
-                    setAutoStatus("failed");
-                    return;
-                }
-                setEmail(pending.email);
-                await finishWithPending(pending);
-            } catch (err: any) {
-                console.error("[VerifyEmail] link activation:", err);
-                setError(err?.message || t("verify.errGeneric"));
-                setAutoStatus("failed");
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        run();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when Clerk is ready + token present
-    }, [tokenFromQuery, isClerkLoaded]);
 
     const handlePinSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,18 +68,65 @@ const VerifyEmail = () => {
             setError(t("register.errEnterCode"));
             return;
         }
+        if (!isClerkLoaded || !signUp) {
+            setError(t("verify.errGeneric"));
+            return;
+        }
 
         setIsLoading(true);
         try {
-            const pending = await findPendingByEmailAndPin(normalizedEmail, pin);
-            if (!pending) {
+            const result = await signUp.attemptEmailAddressVerification({ code: pin.trim() });
+
+            if (result.status !== "complete") {
                 setError(t("register.errInvalidCode"));
                 return;
             }
-            await finishWithPending(pending);
+
+            if (result.createdSessionId && setActive) {
+                await setActive({ session: result.createdSessionId });
+            }
+
+            const pending = await findPendingByEmail(normalizedEmail);
+            if (!pending) {
+                setError(t("verify.errExpired"));
+                return;
+            }
+            if (isPendingExpired(pending)) {
+                setError(t("verify.errExpired"));
+                return;
+            }
+
+            const { user } = await completeVerifiedRegistration({
+                pending,
+                detailsStudent: t("register.studentPendingShort"),
+                detailsTeacher: t("register.adminPendingShort"),
+            });
+
+            localStorage.setItem(
+                "edu_user",
+                JSON.stringify({
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    details: user.details,
+                })
+            );
+            queryClient.setQueryData(["current_user"], user);
+
+            const role = String(user.role || "").toUpperCase();
+            setSuccessMessage(
+                role === "TEACHER" ? t("register.teacherPending") : t("register.studentPending")
+            );
+            setTimeout(() => navigate("/login"), 2800);
         } catch (err: any) {
-            console.error("[VerifyEmail] PIN activation:", err);
-            setError(err?.message || t("verify.errGeneric"));
+            console.error("[VerifyEmail] Clerk verification:", err);
+            setError(
+                err?.errors?.[0]?.longMessage ||
+                    err?.errors?.[0]?.message ||
+                    err?.message ||
+                    t("register.errInvalidCode")
+            );
         } finally {
             setIsLoading(false);
         }
@@ -211,20 +194,6 @@ const VerifyEmail = () => {
                                     </CardContent>
                                 </Card>
                             </motion.div>
-                        ) : autoStatus === "working" ? (
-                            <motion.div
-                                key="auto"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                            >
-                                <Card>
-                                    <CardContent className="py-12 text-center space-y-4">
-                                        <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto" />
-                                        <h3 className="text-lg font-bold">{t("verify.activatingLink")}</h3>
-                                        <p className="text-sm text-muted-foreground">{t("verify.pleaseWait")}</p>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
                         ) : (
                             <motion.div
                                 key="form"
@@ -240,9 +209,8 @@ const VerifyEmail = () => {
                                     </CardHeader>
                                     <CardContent>
                                         <form onSubmit={handlePinSubmit} className="space-y-5">
-                                            <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground flex gap-2">
-                                                <Link2 className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
-                                                <span>{t("verify.hintBoth")}</span>
+                                            <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                                                {t("verify.hintBoth")}
                                             </div>
 
                                             <div>
@@ -315,6 +283,23 @@ const VerifyEmail = () => {
                                                         <CheckCircle className="w-5 h-5" />
                                                         {t("verify.activateWithPin")}
                                                     </>
+                                                )}
+                                            </Button>
+
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="w-full"
+                                                onClick={handleResendCode}
+                                                disabled={isResending || isLoading || !isClerkLoaded}
+                                            >
+                                                {isResending ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        {t("forgot.sending")}
+                                                    </>
+                                                ) : (
+                                                    t("verify.resendCode")
                                                 )}
                                             </Button>
 

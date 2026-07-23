@@ -2,63 +2,21 @@ import { supabase } from "@/lib/supabase";
 import type { PendingRegistrationRow } from "@/lib/pendingRegistration";
 import { markPendingUsed } from "@/lib/pendingRegistration";
 
-type SignUpResource = {
-    create: (params: {
-        emailAddress: string;
-        password: string;
-        firstName?: string;
-        lastName?: string;
-    }) => Promise<{ status: string; createdSessionId: string | null }>;
-};
-
-type SetActiveFn = ((params: { session: string }) => Promise<void>) | undefined;
-
 /**
- * After email PIN/link verification: create Clerk + Supabase user + registration request.
+ * After Clerk email verification: create Supabase user + registration request.
+ * Clerk account is already created/verified by the caller.
  */
 export async function completeVerifiedRegistration(opts: {
     pending: PendingRegistrationRow;
-    signUp: SignUpResource | null | undefined;
-    setActive: SetActiveFn;
     detailsStudent: string;
     detailsTeacher: string;
-}): Promise<{ user: Record<string, unknown>; sessionId: string | null }> {
-    const { pending, signUp, setActive, detailsStudent, detailsTeacher } = opts;
+}): Promise<{ user: Record<string, unknown> }> {
+    const { pending, detailsStudent, detailsTeacher } = opts;
     const email = pending.email.trim().toLowerCase();
     const name = pending.name.trim();
     const role = pending.role as "STUDENT" | "TEACHER";
-    const password = pending.password_temp;
     const now = new Date().toISOString();
 
-    let sessionId: string | null = null;
-
-    // 1. Clerk account (best-effort; app login also supports password_hash)
-    if (signUp && password) {
-        try {
-            const nameParts = name.split(" ");
-            const result = await signUp.create({
-                emailAddress: email,
-                password,
-                firstName: nameParts[0],
-                lastName: nameParts.slice(1).join(" ") || undefined,
-            });
-
-            if (result.status === "complete" && result.createdSessionId) {
-                sessionId = result.createdSessionId;
-                if (setActive) {
-                    await setActive({ session: result.createdSessionId });
-                }
-            }
-        } catch (err: any) {
-            // Identifier already exists from a previous incomplete attempt — continue with DB user
-            const code = err?.errors?.[0]?.code;
-            if (code !== "form_identifier_exists") {
-                console.warn("[completeRegistration] Clerk signup warning:", err);
-            }
-        }
-    }
-
-    // 2. Supabase users row
     let dbUser: Record<string, unknown> | null = null;
 
     const { data: existing } = await supabase
@@ -68,7 +26,6 @@ export async function completeVerifiedRegistration(opts: {
         .maybeSingle();
 
     if (existing) {
-        dbUser = existing;
         await supabase
             .from("users")
             .update({
@@ -131,7 +88,6 @@ export async function completeVerifiedRegistration(opts: {
         }
     }
 
-    // 3. Registration approval request
     const requestRow: Record<string, unknown> = {
         applicant_user_id: dbUser.id,
         applicant_role: role,
@@ -155,5 +111,5 @@ export async function completeVerifiedRegistration(opts: {
 
     await markPendingUsed(pending.id);
 
-    return { user: dbUser, sessionId };
+    return { user: dbUser };
 }

@@ -1,6 +1,5 @@
 import md5 from "js-md5";
 import { supabase } from "@/lib/supabase";
-import { sendVerificationCode } from "@/lib/email";
 
 export type PendingRole = "STUDENT" | "TEACHER";
 
@@ -39,18 +38,16 @@ function randomToken(): string {
     return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
 
-/** Create a pending signup, email PIN + activation link, return token for navigation. */
-export async function createPendingRegistrationAndSendEmail(
-    payload: PendingRegistrationPayload,
-    appUrl: string = typeof window !== "undefined" ? window.location.origin : ""
-): Promise<{ email: string; token: string; pin: string }> {
+/** Store pending signup metadata. Email verification is handled by Clerk. */
+export async function createPendingRegistration(
+    payload: PendingRegistrationPayload
+): Promise<{ email: string; token: string }> {
     const email = payload.email.trim().toLowerCase();
     const name = payload.name.trim();
     const pin = randomPin();
     const token = randomToken();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-    // Replace any previous unused pending row for this email
     await supabase
         .from("pending_registrations")
         .delete()
@@ -75,54 +72,22 @@ export async function createPendingRegistrationAndSendEmail(
         throw new Error(error.message || "Failed to create pending registration");
     }
 
-    try {
-        await sendVerificationCode({
-            email,
-            name,
-            code: pin,
-            token,
-            appUrl,
-        });
-    } catch (sendErr) {
-        await supabase.from("pending_registrations").delete().eq("token", token);
-        throw sendErr;
-    }
-
-    return { email, token, pin };
+    return { email, token };
 }
 
-export async function findPendingByToken(token: string): Promise<PendingRegistrationRow | null> {
-    const { data, error } = await supabase
-        .from("pending_registrations")
-        .select("*")
-        .eq("token", token)
-        .is("used_at", null)
-        .maybeSingle();
-
-    if (error) {
-        console.error("[pendingRegistration] findByToken:", error);
-        return null;
-    }
-    return data as PendingRegistrationRow | null;
-}
-
-export async function findPendingByEmailAndPin(
-    email: string,
-    pin: string
-): Promise<PendingRegistrationRow | null> {
+export async function findPendingByEmail(email: string): Promise<PendingRegistrationRow | null> {
     const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase
         .from("pending_registrations")
         .select("*")
         .ilike("email", normalizedEmail)
-        .eq("pin", pin.trim())
         .is("used_at", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
     if (error) {
-        console.error("[pendingRegistration] findByEmailAndPin:", error);
+        console.error("[pendingRegistration] findByEmail:", error);
         return null;
     }
     return data as PendingRegistrationRow | null;

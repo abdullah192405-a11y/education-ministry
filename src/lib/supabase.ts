@@ -9,8 +9,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+/** Anonymous client for public RPCs — separate storage key avoids dual GoTrueClient warning. */
 export const publicClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         persistSession: false,
-    }
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: 'sb-public-anon',
+    },
 });

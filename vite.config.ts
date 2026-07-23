@@ -89,7 +89,12 @@ export default defineConfig(({ mode }) => {
       host: "::",
       port: 8080,
     },
-    plugins: [react(), challengeReportPdfPlugin(geminiApiKey), wahjReadingReportPagePlugin(), mode === "development" && componentTagger()].filter(Boolean),
+    plugins: [
+      react(),
+      challengeReportPdfPlugin(geminiApiKey),
+      wahjReadingReportPagePlugin(),
+      mode === "development" && componentTagger(),
+    ].filter(Boolean),
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
