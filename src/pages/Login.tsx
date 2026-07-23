@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ function rpcLoginSucceeded(row: Record<string, unknown> | null): row is Record<s
 
 const Login = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const queryClient = useQueryClient();
     const { signIn, setActive, isLoaded: isClerkLoaded } = useSignIn();
     const { signOut, isSignedIn } = useAuth();
@@ -81,6 +82,12 @@ const Login = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (searchParams.get("error") === "pending") {
+            setError(t("login.errAccountPending"));
+        }
+    }, [searchParams, t]);
 
     const handleGoogleLogin = async () => {
         if (!isClerkLoaded || !signIn) return;
@@ -94,10 +101,11 @@ const Login = () => {
                 await signOut();
             }
 
+            const origin = window.location.origin;
             await signIn.authenticateWithRedirect({
                 strategy: "oauth_google",
-                redirectUrl: "/sso-callback",
-                redirectUrlComplete: "/sso-callback",
+                redirectUrl: `${origin}/sso-callback`,
+                redirectUrlComplete: `${origin}/sso-complete`,
             });
         } catch (err: any) {
             console.error("[Login] Google sign-in error:", err);
@@ -162,6 +170,51 @@ const Login = () => {
                             }, 1000);
                             return;
                         }
+
+                        // Clerk session is valid but no app user row yet — create a student profile.
+                        const now = new Date().toISOString();
+                        const displayName = normalizedEmail.split("@")[0] || "مستخدم";
+                        const { data: createdUser, error: createErr } = await supabase
+                            .from("users")
+                            .insert({
+                                email: normalizedEmail,
+                                name: displayName,
+                                role: "STUDENT",
+                                verified: true,
+                                is_active: true,
+                                details: "طالب (Clerk)",
+                                updated_at: now,
+                            })
+                            .select()
+                            .single();
+
+                        if (!createErr && createdUser) {
+                            await supabase.from("student_profiles").insert({
+                                user_id: createdUser.id,
+                                total_points: 0,
+                                total_challenges: 0,
+                                completed_topics: 0,
+                                average_score: 0,
+                                longest_streak: 0,
+                                current_streak: 0,
+                                total_study_hours: 0,
+                                updated_at: now,
+                            });
+                            localStorage.setItem("edu_user", JSON.stringify({
+                                id: createdUser.id,
+                                name: createdUser.name,
+                                email: createdUser.email,
+                                role: createdUser.role,
+                                details: createdUser.details,
+                            }));
+                            setLoginSuccess(createdUser.name);
+                            queryClient.setQueryData(["current_user"], createdUser);
+                            setTimeout(() => navigate(getDashboardPath(createdUser.role)), 1000);
+                            return;
+                        }
+
+                        setError(t("login.errGeneric"));
+                        return;
                     }
                 } catch {
                     // Clerk auth failed; continue to existing Supabase + legacy fallbacks.

@@ -835,7 +835,6 @@ const USER_WITH_ORG_SELECT = "*, organizations(*)";
 export const useUser = () => {
     // Get Clerk auth state (works because ClerkProvider wraps the app)
     let clerkUserId: string | null | undefined = undefined;
-    let clerkEmail: string | undefined = undefined;
     let isClerkSignedIn = false;
 
     try {
@@ -847,13 +846,11 @@ export const useUser = () => {
     }
 
     return useQuery({
-        queryKey: ["current_user"],
+        queryKey: ["current_user", isClerkSignedIn ? clerkUserId : null],
         queryFn: async () => {
-            // 1. Try Clerk session first (Google login users)
+            // 1. Try Clerk session first (Google / Clerk email users)
             if (isClerkSignedIn && clerkUserId) {
                 try {
-                    // We can't get the email from useAuth directly,
-                    // so we check localStorage first for the cached user
                     const stored = localStorage.getItem("edu_user");
                     if (stored) {
                         const parsed = JSON.parse(stored);
@@ -861,12 +858,11 @@ export const useUser = () => {
                             const { data: user } = await supabase
                                 .from("users")
                                 .select(USER_WITH_ORG_SELECT)
-                                .eq("email", parsed.email)
+                                .ilike("email", parsed.email)
                                 .maybeSingle();
 
                             if (user) return user;
                         }
-                        // Return cached data if DB lookup fails
                         return parsed;
                     }
                 } catch {
@@ -892,7 +888,7 @@ export const useUser = () => {
                         const { data: userByEmail } = await supabase
                             .from("users")
                             .select(USER_WITH_ORG_SELECT)
-                            .eq("email", authUser.email)
+                            .ilike("email", authUser.email)
                             .maybeSingle();
 
                         if (userByEmail) return userByEmail;
@@ -912,7 +908,7 @@ export const useUser = () => {
                         const { data: user } = await supabase
                             .from("users")
                             .select(USER_WITH_ORG_SELECT)
-                            .eq("email", parsed.email)
+                            .ilike("email", parsed.email)
                             .maybeSingle();
 
                         if (user) return user;

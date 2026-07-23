@@ -17,6 +17,7 @@ import JoinChallenge from "./pages/JoinChallenge";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ExamPage from "./pages/ExamPage";
@@ -26,6 +27,7 @@ import WahjReadingReport from "./pages/WahjReadingReport";
 import { StudentDashboard, AdminDashboard, ChallengeAnalytics, TeacherDashboard, DashboardRedirect, SuperadminDashboard } from "./pages/dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClerkSSOCallback from "./components/ClerkSSOCallback";
+import ClerkSSOComplete from "./components/ClerkSSOComplete";
 import ScrollToTop from "./components/ScrollToTop";
 import { FloatingChromeProvider } from "./contexts/FloatingChromeContext";
 import { LanguageProvider, useLanguage } from "./contexts/LanguageContext";
@@ -122,9 +124,11 @@ const App = () => (
                 {/* Auth Routes */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/sso-callback" element={<ClerkSSOCallback />} />
+                <Route path="/sso-complete" element={<ClerkSSOComplete />} />
 
                 {/* Exam Route - accessible by link only */}
                 <Route path="/exam/:pin" element={<ExamPage />} />

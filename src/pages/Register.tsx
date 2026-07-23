@@ -5,18 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    User, Lock, Eye, EyeOff, LogIn, Sparkles,
-    Shield, GraduationCap, BookOpen, ChevronLeft,
-    Mail, CheckCircle, AlertCircle, UserPlus, ArrowLeft, ArrowRight,
-    KeyRound, ChevronRight,
+    User, Lock, Eye, EyeOff,
+    GraduationCap, BookOpen, ChevronLeft,
+    Mail, AlertCircle, UserPlus, ArrowLeft, ArrowRight,
+    ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useGrades, useOrganizations } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSignUp, useAuth } from "@clerk/clerk-react";
-import md5 from "js-md5";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { createPendingRegistrationAndSendEmail } from "@/lib/pendingRegistration";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -36,14 +36,14 @@ const Register = () => {
     const { t, dir } = useTranslation();
     const [role, setRole] = useState<UserRole | null>(null);
     const { data: organizations = [], isLoading: isLoadingOrganizations } = useOrganizations({ includeInactive: true });
-    const { signUp, isLoaded: isClerkLoaded, setActive } = useSignUp();
+    const { signUp, isLoaded: isClerkLoaded } = useSignUp();
     const { signOut, isSignedIn } = useAuth();
     const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
     const ChangeRoleIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
     const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
 
     // Form state
-    const [step, setStep] = useState<1 | 2 | 3>(1); // Step 1: Role, Step 2: Details, Step 3: Verify Code
+    const [step, setStep] = useState<1 | 2>(1); // Step 1: Role, Step 2: Details → then /verify-email
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -54,9 +54,6 @@ const Register = () => {
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-    const [registerSuccess, setRegisterSuccess] = useState(false);
-    const [verificationCode, setVerificationCode] = useState("");
-    const [successMessage, setSuccessMessage] = useState("");
     const { data: grades = [] } = useGrades({
         organizationId: selectedOrganizationId || null,
         enabled: !!selectedOrganizationId && role === "STUDENT",
@@ -83,10 +80,11 @@ const Register = () => {
                 await signOut();
             }
 
+            const origin = window.location.origin;
             await signUp.authenticateWithRedirect({
                 strategy: "oauth_google",
-                redirectUrl: "/sso-callback",
-                redirectUrlComplete: "/sso-callback",
+                redirectUrl: `${origin}/sso-callback`,
+                redirectUrlComplete: `${origin}/sso-complete`,
             });
         } catch (err: any) {
             console.error("[Register] Google sign-up error:", err);
@@ -95,131 +93,14 @@ const Register = () => {
         }
     };
 
-    // Helper: create user in Supabase DB after Clerk signup completes
-    const createSupabaseUser = async () => {
-        const now = new Date().toISOString();
-
-        const { data: newUser, error: userError } = await supabase
-            .from("users")
-            .insert({
-                email,
-                name,
-                role: role,
-                verified: false,
-                is_active: false,
-                password_hash: String(md5(password)).toLowerCase(),
-                organization_id: selectedOrganizationId || null,
-                details:
-                    role === "STUDENT"
-                        ? t("register.studentPendingShort")
-                        : t("register.adminPendingShort"),
-                updated_at: now,
-                individual_tier: null,
-            })
-            .select()
-            .single();
-
-        if (userError) {
-            if (userError.message.includes("duplicate") || userError.message.includes("unique")) {
-                const { data: existingUser } = await supabase
-                    .from("users")
-                    .select("*")
-                    .eq("email", email)
-                    .maybeSingle();
-                if (existingUser) return existingUser;
-            }
-            console.error("User insert error:", userError);
-            return null;
-        }
-
-        // Create role-specific profile
-        if (role === "STUDENT") {
-            await supabase.from("student_profiles").insert({
-                user_id: newUser.id,
-                grade_id: selectedGradeId || null,
-                total_points: 0,
-                total_challenges: 0,
-                completed_topics: 0,
-                average_score: 0,
-                longest_streak: 0,
-                current_streak: 0,
-                total_study_hours: 0,
-                updated_at: now,
-            });
-        } else if (role === "TEACHER") {
-            await supabase.from("teacher_profiles").insert({
-                user_id: newUser.id,
-                grade_id: null,
-                total_students: 0,
-                total_topics: 0,
-                total_challenges: 0,
-                average_score: 0,
-                updated_at: now,
-            });
-        }
-
-        return newUser;
-    };
-
-    const createRegistrationRequest = async (applicantUserId: string) => {
-        const now = new Date().toISOString();
-        const requestRow: Record<string, any> = {
-            applicant_user_id: applicantUserId,
-            applicant_role: role,
-            organization_id: selectedOrganizationId || null,
-            grade_id: role === "STUDENT" ? selectedGradeId || null : null,
-            status: "PENDING",
-            created_at: now,
-            updated_at: now,
-        };
-        if (role === "TEACHER") {
-            requestRow.approver_role = "ADMIN";
-        } else {
-            requestRow.approver_role = "TEACHER";
-            requestRow.teacher_user_id = null;
-        }
-        const { error } = await supabase
-            .from("registration_requests")
-            .upsert(requestRow, { onConflict: "applicant_user_id" });
-        if (error) throw error;
-    };
-
-    // Helper: finish registration after Clerk is done
-    const finishRegistration = async (sessionId: string | null) => {
-        // Set the active session in Clerk
-        if (sessionId) {
-            await setActive({ session: sessionId });
-        }
-
-        // Create user in Supabase DB
-        const dbUser = await createSupabaseUser();
-
-        if (dbUser) {
-            await createRegistrationRequest(dbUser.id);
-            localStorage.setItem("edu_user", JSON.stringify({
-                id: dbUser.id,
-                name: dbUser.name,
-                email: dbUser.email,
-                role: dbUser.role,
-                details: dbUser.details,
-            }));
-            queryClient.setQueryData(["current_user"], dbUser);
-        }
-
-        setSuccessMessage(
-            role === "TEACHER"
-                ? t("register.teacherPending")
-                : t("register.studentPending")
-        );
-        setRegisterSuccess(true);
-        setTimeout(() => navigate("/login"), 2800);
-    };
-
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
 
-        // Validation
+        if (!role) {
+            setError(t("register.errGeneric"));
+            return;
+        }
         if (!name.trim()) {
             setError(t("register.errEnterName"));
             return;
@@ -245,15 +126,9 @@ const Register = () => {
             return;
         }
 
-        if (!isClerkLoaded || !signUp) {
-            setError(t("register.errLoadingSystem"));
-            return;
-        }
-
         setIsLoading(true);
 
         try {
-            // Sign out any existing sessions and clear cache
             if (isSignedIn) {
                 await signOut();
             }
@@ -261,91 +136,34 @@ const Register = () => {
             queryClient.clear();
             localStorage.removeItem("edu_user");
 
-            // 1. Create user in Clerk (appears in Clerk dashboard)
-            const nameParts = name.trim().split(" ");
-            const firstName = nameParts[0];
-            const lastName = nameParts.slice(1).join(" ") || undefined;
+            const normalizedEmail = email.trim().toLowerCase();
 
-            const result = await signUp.create({
-                emailAddress: email,
-                password: password,
-                firstName: firstName,
-                lastName: lastName,
+            const { data: existingUser } = await supabase
+                .from("users")
+                .select("id")
+                .ilike("email", normalizedEmail)
+                .maybeSingle();
+
+            if (existingUser) {
+                setError(t("register.errEmailExists"));
+                setIsLoading(false);
+                return;
+            }
+
+            // Store pending signup + send PIN + activation link email, then open verify page
+            const { email: sentEmail } = await createPendingRegistrationAndSendEmail({
+                email: normalizedEmail,
+                name: name.trim(),
+                role,
+                password,
+                organizationId: selectedOrganizationId || null,
+                gradeId: selectedGradeId || null,
             });
 
-            console.log("[Register] Clerk signUp status:", result.status);
-
-            if (result.status === "complete") {
-                // No email verification needed — complete directly
-                await finishRegistration(result.createdSessionId);
-
-            } else if (result.status === "missing_requirements") {
-                // Email verification is required by Clerk
-                await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-                setStep(3); // Show verification code input
-                setIsLoading(false);
-            } else {
-                setError(t("register.errGeneric"));
-                setIsLoading(false);
-            }
-
+            navigate(`/verify-email?email=${encodeURIComponent(sentEmail)}`, { replace: true });
         } catch (err: any) {
-            console.error("[Register] Clerk signup error:", err);
-
-            const clerkErrors = err?.errors;
-            if (clerkErrors && clerkErrors.length > 0) {
-                const firstError = clerkErrors[0];
-                if (firstError.code === "form_identifier_exists") {
-                    setError(t("register.errEmailExists"));
-                } else if (firstError.code === "form_password_pwned") {
-                    setError(t("register.errPasswordPwned"));
-                } else if (firstError.code === "form_password_too_short") {
-                    setError(t("register.errPasswordTooShort"));
-                } else {
-                    setError(firstError.longMessage || firstError.message || t("register.errCreate"));
-                }
-            } else {
-                setError(err.message || t("register.errUnexpected"));
-            }
-            setIsLoading(false);
-        }
-    };
-
-    const handleVerifyCode = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
-
-        if (!verificationCode.trim()) {
-            setError(t("register.errEnterCode"));
-            return;
-        }
-
-        if (!isClerkLoaded || !signUp) return;
-
-        setIsLoading(true);
-
-        try {
-            const result = await signUp.attemptEmailAddressVerification({
-                code: verificationCode,
-            });
-
-            console.log("[Register] Verification result:", result.status);
-
-            if (result.status === "complete") {
-                await finishRegistration(result.createdSessionId);
-            } else {
-                setError(t("register.errVerifyFailed"));
-                setIsLoading(false);
-            }
-
-        } catch (err: any) {
-            console.error("[Register] Verification error:", err);
-            const clerkErrors = err?.errors;
-            if (clerkErrors && clerkErrors.length > 0) {
-                setError(clerkErrors[0].longMessage || t("register.errInvalidCode"));
-            } else {
-                setError(t("register.errVerify"));
-            }
+            console.error("[Register] pending signup error:", err);
+            setError(err?.message || t("register.errCreate"));
             setIsLoading(false);
         }
     };
@@ -386,33 +204,12 @@ const Register = () => {
                             {t("register.title")}
                         </h1>
                         <p className="text-muted-foreground">
-                            {step === 1 ? t("register.step1Desc") : step === 2 ? t("register.step2Desc") : t("register.step3Desc")}
+                            {step === 1 ? t("register.step1Desc") : t("register.step2Desc")}
                         </p>
                     </motion.div>
 
                     <AnimatePresence mode="wait">
-                        {registerSuccess ? (
-                            <motion.div
-                                key="success"
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="text-center"
-                            >
-                                <Card>
-                                    <CardContent className="py-12">
-                                        <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-                                            <CheckCircle className="w-10 h-10 text-success" />
-                                        </div>
-                                        <h3 className="text-xl font-bold mb-2">{t("register.successTitle")}</h3>
-                                        <p className="text-muted-foreground mb-2">{successMessage || t("register.successFallback")}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {t("register.redirecting")}
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-
-                        ) : step === 1 ? (
+                        {step === 1 ? (
                             <motion.div
                                 key="step1"
                                 initial={{ opacity: 0, x: -20 }}
@@ -540,91 +337,6 @@ const Register = () => {
                                 </Card>
                             </motion.div>
 
-                        ) : step === 3 ? (
-                            /* Step 3: Email Verification Code */
-                            <motion.div
-                                key="step3"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                            >
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2 text-lg">
-                                            <KeyRound className="w-5 h-5 text-primary" />
-                                            {t("register.verifyEmailTitle")}
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <form onSubmit={handleVerifyCode} className="space-y-4">
-                                            <p className="text-sm text-muted-foreground">
-                                                {t("register.codeSentTo")} <strong className="text-foreground">{email}</strong>
-                                            </p>
-
-                                            {/* Verification Code */}
-                                            <div>
-                                                <label className="text-sm font-medium mb-2 block">{t("register.codeLabel")}</label>
-                                                <div className="relative">
-                                                    <KeyRound className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
-                                                    <Input
-                                                        type="text"
-                                                        placeholder={t("register.codePlaceholder")}
-                                                        className={`${dir === "rtl" ? "pr-10" : "pl-10"} text-center text-lg tracking-widest`}
-                                                        dir="ltr"
-                                                        value={verificationCode}
-                                                        onChange={(e) => setVerificationCode(e.target.value)}
-                                                        required
-                                                        maxLength={6}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Error Message */}
-                                            <AnimatePresence>
-                                                {error && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, y: -10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0, y: -10 }}
-                                                        className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm"
-                                                    >
-                                                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                                        {error}
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-
-                                            {/* Verify Button */}
-                                            <Button
-                                                type="submit"
-                                                className="w-full h-12 text-lg gap-2"
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <>
-                                                        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                        {t("register.verifying")}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckCircle className="w-5 h-5" />
-                                                        {t("register.confirmCode")}
-                                                    </>
-                                                )}
-                                            </Button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => { setStep(2); setError(""); }}
-                                                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-                                            >
-                                                {t("register.backToPrev")}
-                                            </button>
-                                        </form>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-
                         ) : (
                             /* Step 2: Registration Form */
                             <motion.div
@@ -657,6 +369,9 @@ const Register = () => {
                                     </CardHeader>
                                     <CardContent>
                                         <form onSubmit={handleRegister} className="space-y-4">
+                                            {/* Clerk bot protection / captcha mount point */}
+                                            <div id="clerk-captcha" />
+
                                             {/* Name */}
                                             <div>
                                                 <label className="text-sm font-medium mb-2 block">{t("register.fullName")}</label>
