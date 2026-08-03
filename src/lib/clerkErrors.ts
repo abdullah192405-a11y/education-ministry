@@ -30,6 +30,35 @@ function rawClerkText(err: unknown): string {
     return String(e?.errors?.[0]?.longMessage || e?.errors?.[0]?.message || e?.message || "");
 }
 
+const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const LOWER = "abcdefghijkmnopqrstuvwxyz";
+const DIGITS = "23456789";
+const SYMBOLS = "!@#$%&*?";
+
+function pick(chars: string): string {
+    return chars[Math.floor(Math.random() * chars.length)];
+}
+
+/** Random example that always includes upper, lower, digit, and symbol. */
+export function randomPasswordExample(length = 10): string {
+    const required = [pick(UPPER), pick(LOWER), pick(DIGITS), pick(SYMBOLS)];
+    const all = UPPER + LOWER + DIGITS + SYMBOLS;
+    const rest = Array.from({ length: Math.max(0, length - required.length) }, () => pick(all));
+    const chars = [...required, ...rest];
+    for (let i = chars.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join("");
+}
+
+function translateKey(t: TFunction, key: TranslationKey): string {
+    if (key === "register.errPasswordPwned") {
+        return t(key, { example: randomPasswordExample() });
+    }
+    return t(key);
+}
+
 /**
  * Resolve a Clerk (or Clerk-shaped) error to a localized UI message.
  * Falls back to `fallback` — never returns English Clerk API strings.
@@ -42,7 +71,7 @@ export function getClerkErrorMessage(
     const e = err as ClerkLikeError | null;
     const code = e?.errors?.[0]?.code;
     if (code && CLERK_ERROR_KEYS[code]) {
-        return t(CLERK_ERROR_KEYS[code]);
+        return translateKey(t, CLERK_ERROR_KEYS[code]);
     }
 
     const lower = rawClerkText(err).toLowerCase();
@@ -53,7 +82,7 @@ export function getClerkErrorMessage(
         lower.includes("not strong enough") ||
         lower.includes("found in an online")
     ) {
-        return t("register.errPasswordPwned");
+        return translateKey(t, "register.errPasswordPwned");
     }
     if (lower.includes("password") && (lower.includes("short") || lower.includes("at least") || lower.includes("too long"))) {
         return t("register.errPasswordShort");
