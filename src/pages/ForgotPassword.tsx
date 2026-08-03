@@ -8,6 +8,7 @@ import { Mail, ArrowRight, ArrowLeft, CheckCircle, AlertCircle, Loader2, Lock, K
 import { useSignIn, useAuth } from "@clerk/clerk-react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { getClerkErrorMessage } from "@/lib/clerkErrors";
 
 const ForgotPassword = () => {
     const { isLoaded, signIn, setActive } = useSignIn();
@@ -44,7 +45,7 @@ const ForgotPassword = () => {
             setStep("req_code");
         } catch (err: any) {
             console.error("[ForgotPassword] Error sending code:", err);
-            setError(err.errors?.[0]?.message || err.message || t("forgot.errSendCode"));
+            setError(getClerkErrorMessage(err, t, "forgot.errSendCode"));
         } finally {
             setIsLoading(false);
         }
@@ -86,7 +87,7 @@ const ForgotPassword = () => {
             }
         } catch (err: any) {
             console.error("[ForgotPassword] Error resetting password:", err);
-            setError(err.errors?.[0]?.message || err.message || t("forgot.errInvalidCode"));
+            setError(getClerkErrorMessage(err, t, "forgot.errInvalidCode"));
         } finally {
             setIsLoading(false);
         }

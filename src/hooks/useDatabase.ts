@@ -2841,7 +2841,9 @@ export const useCreateSubject = () => {
             if (error) throw error;
             return data;
         },
-        onSuccess: (data) => {
+        onSuccess: () => {
+            // SubjectsTab / admin UI load subjects via useGrades — must refresh grades list.
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
             queryClient.invalidateQueries({ queryKey: ["subjects"] });
             queryClient.invalidateQueries({ queryKey: ["grade"] });
             queryClient.invalidateQueries({ queryKey: ["admin_stats"] });
@@ -2860,6 +2862,7 @@ export const useUpdateSubject = () => {
             return data;
         },
         onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
             queryClient.invalidateQueries({ queryKey: ["subject", data.id] });
             queryClient.invalidateQueries({ queryKey: ["grade"] });
         }
@@ -2874,6 +2877,7 @@ export const useDeleteSubject = () => {
             if (error) throw error;
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["grades"] });
             queryClient.invalidateQueries({ queryKey: ["subjects"] });
             queryClient.invalidateQueries({ queryKey: ["grade"] });
             queryClient.invalidateQueries({ queryKey: ["admin_stats"] });

@@ -104,20 +104,45 @@ const SubjectsTab = () => {
     };
 
     const handleSave = async () => {
+        const name = formData.name.trim();
+        if (!name || !formData.grade_id) {
+            toast({
+                variant: "destructive",
+                title: t("dash.common.error"),
+                description: t("dash.admin.subjects.toast.requiredFields"),
+            });
+            return;
+        }
+
+        const payload = {
+            ...formData,
+            name,
+            description: formData.description.trim(),
+        };
+
         try {
             if (editingSubject) {
                 await updateSubjectMutation.mutateAsync({
                     id: editingSubject.id,
-                    updates: formData
+                    updates: payload,
                 });
                 toast({ title: t("dash.admin.subjects.toast.updated"), description: t("dash.admin.subjects.toast.updatedDesc") });
             } else {
-                await createSubjectMutation.mutateAsync(formData);
+                await createSubjectMutation.mutateAsync(payload);
                 toast({ title: t("dash.admin.subjects.toast.added"), description: t("dash.admin.subjects.toast.addedDesc") });
             }
             setIsDialogOpen(false);
-        } catch (error) {
-            toast({ variant: "destructive", title: t("dash.common.error"), description: t("dash.admin.subjects.toast.saveErr") });
+        } catch (error: any) {
+            const isDuplicate =
+                error?.code === "23505" ||
+                String(error?.message || "").includes("subjects_grade_id_name_key");
+            toast({
+                variant: "destructive",
+                title: t("dash.common.error"),
+                description: isDuplicate
+                    ? t("dash.admin.subjects.toast.duplicateName")
+                    : t("dash.admin.subjects.toast.saveErr"),
+            });
         }
     };
 

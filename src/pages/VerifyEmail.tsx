@@ -22,6 +22,7 @@ import {
     isPendingExpired,
 } from "@/lib/pendingRegistration";
 import { completeVerifiedRegistration } from "@/lib/completeRegistration";
+import { getClerkErrorMessage } from "@/lib/clerkErrors";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const VerifyEmail = () => {
@@ -49,7 +50,7 @@ const VerifyEmail = () => {
             await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
         } catch (err: any) {
             console.error("[VerifyEmail] resend code:", err);
-            setError(err?.errors?.[0]?.message || err?.message || t("verify.errGeneric"));
+            setError(getClerkErrorMessage(err, t, "verify.errGeneric"));
         } finally {
             setIsResending(false);
         }
@@ -121,12 +122,7 @@ const VerifyEmail = () => {
             setTimeout(() => navigate("/login"), 2800);
         } catch (err: any) {
             console.error("[VerifyEmail] Clerk verification:", err);
-            setError(
-                err?.errors?.[0]?.longMessage ||
-                    err?.errors?.[0]?.message ||
-                    err?.message ||
-                    t("register.errInvalidCode")
-            );
+            setError(getClerkErrorMessage(err, t, "register.errInvalidCode"));
         } finally {
             setIsLoading(false);
         }

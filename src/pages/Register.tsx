@@ -17,6 +17,7 @@ import { useSignUp, useAuth } from "@clerk/clerk-react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createPendingRegistration } from "@/lib/pendingRegistration";
+import { getClerkErrorMessage } from "@/lib/clerkErrors";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -185,7 +186,7 @@ const Register = () => {
             navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, { replace: true });
         } catch (err: any) {
             console.error("[Register] Clerk signup error:", err);
-            setError(err?.errors?.[0]?.longMessage || err?.errors?.[0]?.message || err?.message || t("register.errCreate"));
+            setError(getClerkErrorMessage(err, t, "register.errCreate"));
             setIsLoading(false);
         }
     };

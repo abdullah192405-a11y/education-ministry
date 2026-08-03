@@ -16,6 +16,7 @@ import { useSignIn, useAuth } from "@clerk/clerk-react";
 import md5 from "js-md5";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { getClerkErrorMessage } from "@/lib/clerkErrors";
 
 // Map role from DB to dashboard path
 const getDashboardPath = (role: string) => {
@@ -363,7 +364,7 @@ const Login = () => {
             }, 1000);
 
         } catch (err: any) {
-            setError(err.message || t("login.errGeneric"));
+            setError(getClerkErrorMessage(err, t, "login.errGeneric"));
         } finally {
             setIsLoading(false);
         }
