@@ -74,6 +74,7 @@ import {
     type SoundOption,
     type TeacherSoundCategory,
 } from "@/lib/teacherUploadedSounds";
+import { normalizeBackgroundSoundSelection } from "@/lib/topicSoundSettings";
 import { cn, getYouTubeThumbnail, getYouTubeId } from "@/lib/utils";
 import { getChallengeTypeStyle, ALL_CHALLENGE_ITEM_TYPES } from "@/lib/challengeTypeStyles";
 import ContentResourceThumbnail from "./ContentResourceThumbnail";
@@ -424,7 +425,9 @@ const ContentEditor = ({
     const [duration, setDuration] = useState(content?.duration || "");
     const [correctSoundUrl, setCorrectSoundUrl] = useState(content?.correctSoundUrl || "");
     const [wrongSoundUrl, setWrongSoundUrl] = useState(content?.wrongSoundUrl || "");
-    const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(content?.answeringBackgroundSoundUrl || "");
+    const [answeringBackgroundSoundUrl, setAnsweringBackgroundSoundUrl] = useState(
+        normalizeBackgroundSoundSelection(content?.answeringBackgroundSoundUrl)
+    );
     const [wheelSpinSoundUrl, setWheelSpinSoundUrl] = useState(
         normalizeWheelSpinSoundSelection(content?.wheelSpinSoundUrl)
     );
@@ -513,7 +516,7 @@ const ContentEditor = ({
         setNewLiveDraft(createDefaultLiveSessionDraft());
         setCorrectSoundUrl(content?.correctSoundUrl || "");
         setWrongSoundUrl(content?.wrongSoundUrl || "");
-        setAnsweringBackgroundSoundUrl(content?.answeringBackgroundSoundUrl || "");
+        setAnsweringBackgroundSoundUrl(normalizeBackgroundSoundSelection(content?.answeringBackgroundSoundUrl));
         setWheelSpinSoundUrl(normalizeWheelSpinSoundSelection(content?.wheelSpinSoundUrl));
     }, [content?.id]);
 
@@ -1127,9 +1130,7 @@ const ContentEditor = ({
                 duration,
                 correctSoundUrl: correctSoundUrl || null,
                 wrongSoundUrl: wrongSoundUrl || null,
-                answeringBackgroundSoundUrl: isSoundDisabled(answeringBackgroundSoundUrl)
-                    ? SOUND_DISABLED_SENTINEL
-                    : answeringBackgroundSoundUrl || null,
+                answeringBackgroundSoundUrl: normalizeBackgroundSoundSelection(answeringBackgroundSoundUrl),
                 wheelSpinSoundUrl: isSoundDisabled(wheelSpinSoundUrl)
                     ? SOUND_DISABLED_SENTINEL
                     : resolveWheelSpinSoundUrl(wheelSpinSoundUrl),
@@ -1466,15 +1467,11 @@ const ContentEditor = ({
                                     <div className="flex items-center gap-2">
                                         <select
                                             value={
-                                                isSoundDisabled(answeringBackgroundSoundUrl)
-                                                    ? SOUND_DISABLED_SENTINEL
-                                                    : answeringBackgroundSoundUrl || "__default__"
+                                                normalizeBackgroundSoundSelection(answeringBackgroundSoundUrl)
                                             }
                                             onChange={(e) => {
                                                 const value = e.target.value;
-                                                if (value === "__default__") {
-                                                    setAnsweringBackgroundSoundUrl("");
-                                                } else if (value === SOUND_DISABLED_SENTINEL) {
+                                                if (value === SOUND_DISABLED_SENTINEL) {
                                                     setAnsweringBackgroundSoundUrl(SOUND_DISABLED_SENTINEL);
                                                 } else {
                                                     setAnsweringBackgroundSoundUrl(value);
@@ -1482,7 +1479,6 @@ const ContentEditor = ({
                                             }}
                                             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         >
-                                            <option value="__default__">{t("dash.teacher.topics.editor.defaultOption")}</option>
                                             <option value={SOUND_DISABLED_SENTINEL}>{t("dash.teacher.topics.editor.sound.disabled")}</option>
                                             {getMergedSoundOptions(backgroundSoundPresets, customBackgroundSoundOptions).map((preset) => (
                                                 <option key={`bg-preset-${preset.url}`} value={preset.url}>

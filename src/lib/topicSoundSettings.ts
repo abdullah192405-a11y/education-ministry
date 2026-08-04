@@ -7,12 +7,19 @@ export function isSoundDisabled(url?: string | null): boolean {
     return url?.trim() === SOUND_DISABLED_SENTINEL;
 }
 
-/**
- * Background override for useSound: undefined = default preset, null = disabled, string = custom URL.
- */
-export function resolveBackgroundSoundOverride(url?: string | null): string | null | undefined {
-    if (isSoundDisabled(url)) return null;
+/** Editor/storage value for background sound: disabled sentinel or chosen URL. */
+export function normalizeBackgroundSoundSelection(url?: string | null): string {
+    if (isSoundDisabled(url)) return SOUND_DISABLED_SENTINEL;
     const trimmed = url?.trim() || "";
-    if (!trimmed) return undefined;
-    return resolveMixkitSoundUrl(trimmed);
+    return trimmed || SOUND_DISABLED_SENTINEL;
+}
+
+/**
+ * Background override for useSound: null = disabled, string = custom URL.
+ * Blank legacy values are treated as disabled so new lessons start without sound.
+ */
+export function resolveBackgroundSoundOverride(url?: string | null): string | null {
+    const normalized = normalizeBackgroundSoundSelection(url);
+    if (isSoundDisabled(normalized)) return null;
+    return resolveMixkitSoundUrl(normalized);
 }
