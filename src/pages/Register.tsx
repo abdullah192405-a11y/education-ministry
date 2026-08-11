@@ -8,7 +8,7 @@ import {
     User, Lock, Eye, EyeOff,
     GraduationCap, BookOpen, ChevronLeft,
     Mail, AlertCircle, UserPlus, ArrowLeft, ArrowRight,
-    ChevronRight,
+    ChevronRight, RefreshCw, Copy, Check,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useGrades, useOrganizations } from "@/hooks/useDatabase";
@@ -17,7 +17,7 @@ import { useSignUp, useAuth } from "@clerk/clerk-react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createPendingRegistration } from "@/lib/pendingRegistration";
-import { getClerkErrorMessage } from "@/lib/clerkErrors";
+import { getClerkErrorMessage, generateStrongPassword } from "@/lib/clerkErrors";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -50,6 +50,8 @@ const Register = () => {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [isGeneratedPassword, setIsGeneratedPassword] = useState(false);
+    const [passwordCopied, setPasswordCopied] = useState(false);
     const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
     const [selectedGradeId, setSelectedGradeId] = useState("");
     const [error, setError] = useState("");
@@ -67,6 +69,22 @@ const Register = () => {
     const handleRoleSelect = (selectedRole: UserRole) => {
         setRole(selectedRole);
         setStep(2);
+    };
+
+    const handleGeneratePassword = () => {
+        const generated = generateStrongPassword();
+        setPassword(generated);
+        setConfirmPassword(generated);
+        setShowPassword(true);
+        setIsGeneratedPassword(true);
+        setPasswordCopied(false);
+        setError("");
+    };
+
+    const handleCopyPassword = () => {
+        navigator.clipboard.writeText(password);
+        setPasswordCopied(true);
+        setTimeout(() => setPasswordCopied(false), 2000);
     };
 
     const handleGoogleSignUp = async () => {
@@ -479,15 +497,29 @@ const Register = () => {
 
                                             {/* Password */}
                                             <div>
-                                                <label className="text-sm font-medium mb-2 block">{t("common.password")}</label>
+                                                <div className="flex items-center justify-between mb-2 gap-2">
+                                                    <label className="text-sm font-medium">{t("common.password")}</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleGeneratePassword}
+                                                        className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                                                    >
+                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                        {t("register.generatePassword")}
+                                                    </button>
+                                                </div>
                                                 <div className="relative">
                                                     <Lock className={`absolute ${dir === "rtl" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground`} />
                                                     <Input
                                                         type={showPassword ? "text" : "password"}
                                                         placeholder={t("register.passwordMin6Placeholder")}
-                                                        className={dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"}
+                                                        className={`${dir === "rtl" ? "pr-10 pl-10" : "pl-10 pr-10"} ${isGeneratedPassword ? "font-mono" : ""}`}
+                                                        dir={isGeneratedPassword ? "ltr" : undefined}
                                                         value={password}
-                                                        onChange={(e) => setPassword(e.target.value)}
+                                                        onChange={(e) => {
+                                                            setPassword(e.target.value);
+                                                            setIsGeneratedPassword(false);
+                                                        }}
                                                         required
                                                         minLength={8}
                                                     />
@@ -509,13 +541,43 @@ const Register = () => {
                                                     <Input
                                                         type={showPassword ? "text" : "password"}
                                                         placeholder={t("register.confirmPasswordPlaceholder")}
-                                                        className={dir === "rtl" ? "pr-10" : "pl-10"}
+                                                        className={`${dir === "rtl" ? "pr-10" : "pl-10"} ${isGeneratedPassword ? "font-mono" : ""}`}
+                                                        dir={isGeneratedPassword ? "ltr" : undefined}
                                                         value={confirmPassword}
-                                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                                        onChange={(e) => {
+                                                            setConfirmPassword(e.target.value);
+                                                            setIsGeneratedPassword(false);
+                                                        }}
                                                         required
                                                         minLength={8}
                                                     />
                                                 </div>
+
+                                                {isGeneratedPassword && (
+                                                    <div className="mt-2 flex items-start justify-between gap-2 rounded-lg bg-muted/50 p-2.5">
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t("register.passwordGeneratedHint")}
+                                                        </p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCopyPassword}
+                                                            title={t("register.copyPassword")}
+                                                            className="flex items-center gap-1 flex-shrink-0 text-xs font-medium text-primary hover:underline"
+                                                        >
+                                                            {passwordCopied ? (
+                                                                <>
+                                                                    <Check className="w-3.5 h-3.5" />
+                                                                    {t("register.passwordCopied")}
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Copy className="w-3.5 h-3.5" />
+                                                                    {t("register.copyPassword")}
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Error Message */}

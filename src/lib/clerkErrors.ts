@@ -35,8 +35,18 @@ const LOWER = "abcdefghijkmnopqrstuvwxyz";
 const DIGITS = "23456789";
 const SYMBOLS = "!@#$%&*?";
 
+function randomInt(max: number): number {
+    try {
+        const buf = new Uint32Array(1);
+        crypto.getRandomValues(buf);
+        return buf[0] % max;
+    } catch {
+        return Math.floor(Math.random() * max);
+    }
+}
+
 function pick(chars: string): string {
-    return chars[Math.floor(Math.random() * chars.length)];
+    return chars[randomInt(chars.length)];
 }
 
 /** Random example that always includes upper, lower, digit, and symbol. */
@@ -46,10 +56,15 @@ export function randomPasswordExample(length = 10): string {
     const rest = Array.from({ length: Math.max(0, length - required.length) }, () => pick(all));
     const chars = [...required, ...rest];
     for (let i = chars.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = randomInt(i + 1);
         [chars[i], chars[j]] = [chars[j], chars[i]];
     }
     return chars.join("");
+}
+
+/** Password to actually fill into a sign-up form (long enough to pass Clerk's strength check). */
+export function generateStrongPassword(length = 14): string {
+    return randomPasswordExample(Math.max(12, Math.min(length, 24)));
 }
 
 function translateKey(t: TFunction, key: TranslationKey): string {
