@@ -65,6 +65,31 @@ export function filterGradesForPublicCatalog<
     );
 }
 
+/**
+ * The hide/show action in the teacher dashboard's lessons tab flips `topics.is_active`;
+ * a hidden lesson stays editable for its teacher but leaves the student catalog.
+ * `status: "draft"` is the same state as mapped inside the teacher dashboard.
+ */
+export function isTopicHiddenFromStudents(topic: unknown): boolean {
+    const row = topic as { is_active?: unknown; isActive?: unknown; status?: unknown } | null | undefined;
+    const active = row?.is_active ?? row?.isActive;
+    if (active === false) return true;
+    return String(row?.status ?? "").trim().toLowerCase() === "draft";
+}
+
+/** Staff roles keep seeing hidden lessons — flagged as hidden — so they can review them. */
+export function canSeeHiddenTopics(role: string | null | undefined): boolean {
+    const r = String(role ?? "").trim().toUpperCase();
+    return (
+        r === "TEACHER" ||
+        r === "ADMIN" ||
+        r === "SUPERADMIN" ||
+        r === "معلم" ||
+        r === "معلمة" ||
+        r === "مسؤول"
+    );
+}
+
 export type ContentVisibilityFocus =
     | null
     | { kind: "all" }
