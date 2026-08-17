@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSignIn, useAuth } from "@clerk/clerk-react";
+import { useSignIn, useAuth, useClerk } from "@clerk/clerk-react";
 import md5 from "js-md5";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -75,6 +75,7 @@ const Login = () => {
     const queryClient = useQueryClient();
     const { signIn, setActive, isLoaded: isClerkLoaded } = useSignIn();
     const { signOut, isSignedIn } = useAuth();
+    const clerk = useClerk();
     const { t, dir } = useTranslation();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -102,15 +103,24 @@ const Login = () => {
                 await signOut();
             }
 
+            // signOut() swaps the Clerk client, so the resource captured at render time is
+            // stale — read the current sign-in resource instead.
+            const signInResource = clerk.client?.signIn ?? signIn;
+
             const origin = window.location.origin;
-            await signIn.authenticateWithRedirect({
+            await signInResource.authenticateWithRedirect({
                 strategy: "oauth_google",
                 redirectUrl: `${origin}/sso-callback`,
                 redirectUrlComplete: `${origin}/sso-complete`,
             });
         } catch (err: any) {
             console.error("[Login] Google sign-in error:", err);
-            setError(t("login.errGoogle"));
+            // Already signed in with Clerk — finish through the normal sync screen.
+            if (err?.errors?.[0]?.code === "session_exists") {
+                navigate("/sso-complete", { replace: true });
+                return;
+            }
+            setError(getClerkErrorMessage(err, t, "login.errGoogle"));
             setIsGoogleLoading(false);
         }
     };
@@ -153,7 +163,10 @@ const Login = () => {
 
                         if (clerkDbUser) {
                             if (clerkDbUser.is_active === false) {
+                                // Credentials are valid but the account awaits approval — end the
+                                // Clerk session and come back with the pending notice.
                                 setError(t("login.errAccountPending"));
+                                await signOut({ redirectUrl: "/login?error=pending" }).catch(() => undefined);
                                 return;
                             }
 

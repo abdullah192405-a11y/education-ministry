@@ -5,7 +5,7 @@ import { getChallengeResultScorePercent } from "@/lib/challengeResultScore";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Eye, Gamepad2, MoreVertical, Edit,
+    Eye, EyeOff, Gamepad2, MoreVertical, Edit,
     Trash, Plus, BookOpen, Video, Calendar,
     AlertTriangle, ListChecks, Target, Clock, Image as ImageIcon,
     FileText, CheckCircle, XCircle, Save, X, BookMarked, GraduationCap, BarChart3, QrCode, Copy, ExternalLink, Download,
@@ -427,7 +427,9 @@ const TeacherTopicsTab = ({
         thumbnail: topic.thumbnail || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop",
         views: Number(topic.views || 0),
         createdAt: topic.created_at || topic.createdAt || "",
-        status: "published" as const,
+        // `topics.is_active` is the hide/show flag: false keeps the lesson out of the
+        // student catalog while the teacher keeps editing it.
+        status: topic.is_active === false ? ("draft" as const) : ("published" as const),
         mediaCount: topic.mediaItems?.length || topic.media?.length || 0,
         quizCount: topic.challengeItems?.length || topic.challenge_questions?.length || topic.quiz?.length || 0,
         media: (topic.mediaItems || topic.media || []).map((m: any) => ({
@@ -1505,15 +1507,26 @@ const TeacherTopicsTab = ({
         if (!topic) return;
 
         const newStatus = topic.status === "published" ? "draft" : "published";
+        const nextIsActive = newStatus === "published";
+
+        setTopics(prev => prev.map(t => (t.id === id ? { ...t, status: newStatus } : t)));
 
         updateTopicMutation.mutate({
             id: topic.id,
-            updates: { status: newStatus }
+            updates: { is_active: nextIsActive }
         }, {
             onSuccess: () => {
                 toast({
                     title: newStatus === "published" ? t("dash.teacher.topics.toast.published") : t("dash.teacher.topics.toast.drafted"),
                     description: topic.title,
+                });
+            },
+            onError: (error: Error) => {
+                setTopics(prev => prev.map(t => (t.id === id ? { ...t, status: topic.status } : t)));
+                toast({
+                    variant: "destructive",
+                    title: t("dash.teacher.topics.toast.visibilityFailed"),
+                    description: error?.message || topic.title,
                 });
             }
         });
@@ -1884,12 +1897,22 @@ const TeacherTopicsTab = ({
                                                         />
                                                         <button
                                                             onClick={() => handleTogglePublish(topic.id)}
-                                                            className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${topic.status === "published"
+                                                            title={topic.status === "published"
+                                                                ? t("dash.teacher.topics.hideFromStudents")
+                                                                : t("dash.teacher.topics.showToStudents")}
+                                                            className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${topic.status === "published"
                                                                 ? "bg-success text-success-foreground"
                                                                 : "bg-warning text-warning-foreground"
                                                                 }`}
                                                         >
-                                                            {topic.status === "published" ? t("dash.teacher.topics.publishedBadge") : t("dash.teacher.topics.draft")}
+                                                            {topic.status === "published" ? (
+                                                                t("dash.teacher.topics.publishedBadge")
+                                                            ) : (
+                                                                <>
+                                                                    <EyeOff className="w-3 h-3" />
+                                                                    {t("dash.teacher.topics.hiddenBadge")}
+                                                                </>
+                                                            )}
                                                         </button>
                                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Link to={`/grade/${selectedGradeId}/subject/${selectedSubjectId}/topic/${topic.id}`}>
@@ -1918,6 +1941,22 @@ const TeacherTopicsTab = ({
                                                                     <DropdownMenuContent align="end">
                                                                         <DropdownMenuItem className="gap-2" onClick={() => handleEditTopic(topic)}>
                                                                             <Edit className="w-4 h-4" />{t("dash.common.edit")}</DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            className="gap-2"
+                                                                            onClick={() => handleTogglePublish(topic.id)}
+                                                                        >
+                                                                            {topic.status === "published" ? (
+                                                                                <>
+                                                                                    <EyeOff className="w-4 h-4" />
+                                                                                    {t("dash.teacher.topics.hideFromStudents")}
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <Eye className="w-4 h-4" />
+                                                                                    {t("dash.teacher.topics.showToStudents")}
+                                                                                </>
+                                                                            )}
+                                                                        </DropdownMenuItem>
                                                                         {canTransferTopics && (
                                                                             <DropdownMenuItem
                                                                                 className="gap-2"

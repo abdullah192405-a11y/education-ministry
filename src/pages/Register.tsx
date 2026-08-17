@@ -13,11 +13,12 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useGrades, useOrganizations } from "@/hooks/useDatabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSignUp, useAuth } from "@clerk/clerk-react";
+import { useSignUp, useAuth, useClerk } from "@clerk/clerk-react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createPendingRegistration } from "@/lib/pendingRegistration";
 import { getClerkErrorMessage, generateStrongPassword } from "@/lib/clerkErrors";
+import { saveSignupIntent, clearSignupIntent } from "@/lib/signupIntent";
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -39,6 +40,7 @@ const Register = () => {
     const { data: organizations = [], isLoading: isLoadingOrganizations } = useOrganizations({ includeInactive: true });
     const { signUp, isLoaded: isClerkLoaded } = useSignUp();
     const { signOut, isSignedIn } = useAuth();
+    const clerk = useClerk();
     const ChevronBack = dir === "rtl" ? ChevronRight : ChevronLeft;
     const ChangeRoleIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
     const ArrowForward = dir === "rtl" ? ArrowLeft : ArrowRight;
@@ -90,6 +92,22 @@ const Register = () => {
     const handleGoogleSignUp = async () => {
         if (!isClerkLoaded || !signUp) return;
 
+        // Google sign-up must carry the same choices as the password flow, otherwise the
+        // account lands with no role/organization and can never be approved.
+        if (!role) {
+            setError(t("register.errGeneric"));
+            setStep(1);
+            return;
+        }
+        if (!selectedOrganizationId) {
+            setError(t("register.googleNeedsOrg"));
+            return;
+        }
+        if (role === "STUDENT" && !selectedGradeId) {
+            setError(t("register.errSelectStudentGrade"));
+            return;
+        }
+
         setIsGoogleLoading(true);
         setError("");
 
@@ -99,15 +117,26 @@ const Register = () => {
                 await signOut();
             }
 
+            // signOut() swaps the Clerk client, so the resource captured at render time is
+            // stale — read the current sign-up resource instead.
+            const signUpResource = clerk.client?.signUp ?? signUp;
+
+            saveSignupIntent({
+                role,
+                organizationId: selectedOrganizationId || null,
+                gradeId: role === "STUDENT" ? selectedGradeId || null : null,
+            });
+
             const origin = window.location.origin;
-            await signUp.authenticateWithRedirect({
+            await signUpResource.authenticateWithRedirect({
                 strategy: "oauth_google",
                 redirectUrl: `${origin}/sso-callback`,
                 redirectUrlComplete: `${origin}/sso-complete`,
             });
         } catch (err: any) {
             console.error("[Register] Google sign-up error:", err);
-            setError(t("register.errCreate"));
+            clearSignupIntent();
+            setError(getClerkErrorMessage(err, t, "register.errCreate"));
             setIsGoogleLoading(false);
         }
     };
@@ -174,15 +203,8 @@ const Register = () => {
                 return;
             }
 
-            await createPendingRegistration({
-                email: normalizedEmail,
-                name: trimmedName,
-                role,
-                password,
-                organizationId: selectedOrganizationId || null,
-                gradeId: selectedGradeId || null,
-            });
-
+            // Create the Clerk attempt first: it rejects weak passwords and taken emails, so
+            // a rejected signup never leaves a pending row behind.
             const nameParts = trimmedName.split(/\s+/);
             try {
                 await signUp.create({
@@ -192,12 +214,28 @@ const Register = () => {
                     lastName: nameParts.slice(1).join(" ") || undefined,
                 });
             } catch (clerkErr: any) {
-                // Incomplete prior attempt — continue to email verification.
                 const code = clerkErr?.errors?.[0]?.code;
-                if (code !== "form_identifier_exists") {
+                const attemptEmail = String(signUp.emailAddress || "").trim().toLowerCase();
+                // Only resume when this same email already has an unfinished attempt on this
+                // client; a genuinely taken email must surface as "email already registered".
+                const canResumeAttempt =
+                    code === "form_identifier_exists" &&
+                    attemptEmail === normalizedEmail &&
+                    signUp.status === "missing_requirements";
+
+                if (!canResumeAttempt) {
                     throw clerkErr;
                 }
             }
+
+            await createPendingRegistration({
+                email: normalizedEmail,
+                name: trimmedName,
+                role,
+                password,
+                organizationId: selectedOrganizationId || null,
+                gradeId: selectedGradeId || null,
+            });
 
             await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
 
@@ -268,39 +306,6 @@ const Register = () => {
                                         <p className="text-sm text-muted-foreground">
                                             {t("register.selectRoleDesc")}
                                         </p>
-
-                                        {/* Google Sign-Up Button */}
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="w-full h-12 text-base gap-3 border-2 hover:bg-muted/50 transition-all"
-                                            onClick={handleGoogleSignUp}
-                                            disabled={isGoogleLoading || !isClerkLoaded}
-                                        >
-                                            {isGoogleLoading ? (
-                                                <>
-                                                    <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                                                    {t("register.signingUp")}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <GoogleIcon />
-                                                    {t("register.googleSignup")}
-                                                </>
-                                            )}
-                                        </Button>
-
-                                        {/* Divider */}
-                                        <div className="relative">
-                                            <div className="absolute inset-0 flex items-center">
-                                                <span className="w-full border-t" />
-                                            </div>
-                                            <div className="relative flex justify-center text-xs uppercase">
-                                                <span className="bg-card px-2 text-muted-foreground">
-                                                    {t("register.orSelectRole")}
-                                                </span>
-                                            </div>
-                                        </div>
 
                                         {/* Student Role */}
                                         <button
@@ -495,6 +500,44 @@ const Register = () => {
                                                 </div>
                                             )}
 
+                                            {/* One-click Google sign-up (keeps the role/organization chosen above) */}
+                                            <div className="rounded-xl border border-dashed p-3 space-y-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="w-full h-12 text-base gap-3 border-2 hover:bg-muted/50 transition-all"
+                                                    onClick={handleGoogleSignUp}
+                                                    disabled={isGoogleLoading || isLoading || !isClerkLoaded}
+                                                >
+                                                    {isGoogleLoading ? (
+                                                        <>
+                                                            <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                                            {t("register.signingUp")}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <GoogleIcon />
+                                                            {t("register.googleSignupWithRole")}
+                                                        </>
+                                                    )}
+                                                </Button>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {t("register.googleRoleHint")}
+                                                </p>
+                                            </div>
+
+                                            {/* Divider */}
+                                            <div className="relative">
+                                                <div className="absolute inset-0 flex items-center">
+                                                    <span className="w-full border-t" />
+                                                </div>
+                                                <div className="relative flex justify-center text-xs">
+                                                    <span className="bg-card px-2 text-muted-foreground">
+                                                        {t("register.orUsePassword")}
+                                                    </span>
+                                                </div>
+                                            </div>
+
                                             {/* Password */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2 gap-2">
@@ -602,7 +645,7 @@ const Register = () => {
                                                     ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
                                                     : "bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
                                                     }`}
-                                                disabled={isLoading}
+                                                disabled={isLoading || isGoogleLoading}
                                             >
                                                 {isLoading ? (
                                                     <>

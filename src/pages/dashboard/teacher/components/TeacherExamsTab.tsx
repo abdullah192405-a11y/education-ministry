@@ -59,6 +59,8 @@ import { useDashboardLocale } from "@/contexts/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import { questionAttachmentFields } from "@/lib/questionAttachments";
 import { useTeacherVisibleClasses } from "@/hooks/useTeacherVisibleClasses";
+import { DateTimePicker } from "@/components/DateTimePicker";
+import { parseDateTimeLocalValue, toDateTimeLocalValue } from "@/lib/dateTimeLocal";
 import { filterTopicsOwnedByTeacher } from "@/lib/teacherClassAccess";
 import { cn } from "@/lib/utils";
 
@@ -383,6 +385,18 @@ const CreateExamDialog = ({
         setDurationMinutes(60);
     };
 
+    /** Picking a start also seeds/pushes the end time so the window stays valid. */
+    const handleStartTimeChange = (next: string) => {
+        setStartTime(next);
+        const start = parseDateTimeLocalValue(next);
+        if (!start) return;
+        const end = parseDateTimeLocalValue(endTime);
+        if (!end || end <= start) {
+            const suggestedEnd = new Date(start.getTime() + Math.max(durationMinutes, 5) * 60 * 1000);
+            setEndTime(toDateTimeLocalValue(suggestedEnd));
+        }
+    };
+
     const handleCreate = async () => {
         if (!title.trim()) {
             toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.titleRequired"), variant: "destructive" });
@@ -406,7 +420,13 @@ const CreateExamDialog = ({
             toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.timesRequired"), variant: "destructive" });
             return;
         }
-        if (new Date(endTime) <= new Date(startTime)) {
+        const startDate = parseDateTimeLocalValue(startTime);
+        const endDate = parseDateTimeLocalValue(endTime);
+        if (!startDate || !endDate) {
+            toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.timesRequired"), variant: "destructive" });
+            return;
+        }
+        if (endDate <= startDate) {
             toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.endAfterStart"), variant: "destructive" });
             return;
         }
@@ -426,8 +446,8 @@ const CreateExamDialog = ({
                 hostId: user!.id,
                 pin,
                 category,
-                startTime: new Date(startTime).toISOString(),
-                endTime: new Date(endTime).toISOString(),
+                startTime: startDate.toISOString(),
+                endTime: endDate.toISOString(),
                 durationMinutes,
             });
 
@@ -602,17 +622,17 @@ const CreateExamDialog = ({
                     </div>
 
                     {/* Time Window */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <label className="text-sm font-bold flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-primary" />
                                 {t("dash.teacher.exams.startTimeLabel")}
                             </label>
-                            <Input
-                                type="datetime-local"
+                            <DateTimePicker
                                 value={startTime}
-                                onChange={(e) => setStartTime(e.target.value)}
-                                className="h-12"
+                                onChange={handleStartTimeChange}
+                                minDate={new Date()}
+                                defaultHour={8}
                             />
                         </div>
                         <div className="space-y-2">
@@ -620,11 +640,11 @@ const CreateExamDialog = ({
                                 <Calendar className="w-4 h-4 text-red-500" />
                                 {t("dash.teacher.exams.endTimeLabel")}
                             </label>
-                            <Input
-                                type="datetime-local"
+                            <DateTimePicker
                                 value={endTime}
-                                onChange={(e) => setEndTime(e.target.value)}
-                                className="h-12"
+                                onChange={setEndTime}
+                                minDate={parseDateTimeLocalValue(startTime) ?? new Date()}
+                                defaultHour={9}
                             />
                         </div>
                     </div>

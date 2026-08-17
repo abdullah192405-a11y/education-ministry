@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CheckCircle, Loader2 } from "lucide-react";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { readSignupIntent, clearSignupIntent, type SignupIntent } from "@/lib/signupIntent";
 
 const getDashboardPath = (role: string) => {
     const r = role?.toUpperCase();
@@ -17,14 +19,17 @@ const getDashboardPath = (role: string) => {
 
 /**
  * Runs after Clerk OAuth completes. Syncs Clerk user → Supabase `users`, then dashboard.
+ * A signup started on /register carries its role/organization here through the redirect.
  */
 const ClerkSSOComplete = () => {
     const { user: clerkUser, isLoaded: isUserLoaded } = useClerkUser();
-    const { isSignedIn, isLoaded: isAuthLoaded } = useAuth();
+    const { isSignedIn, isLoaded: isAuthLoaded, signOut } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [status, setStatus] = useState<"loading" | "syncing" | "success">("loading");
+    const { t, dir } = useTranslation();
+    const [status, setStatus] = useState<"loading" | "syncing" | "registering" | "success" | "pending">("loading");
     const [userName, setUserName] = useState("");
+    const [pendingMessage, setPendingMessage] = useState("");
     const syncStarted = useRef(false);
 
     useEffect(() => {
@@ -38,6 +43,101 @@ const ClerkSSOComplete = () => {
         if (syncStarted.current) return;
         syncStarted.current = true;
 
+        /** Sign out of Clerk, then send the user back to login with a reason. */
+        const bounceToLogin = async (search = "") => {
+            localStorage.removeItem("edu_user");
+            queryClient.clear();
+            // Pass the target to Clerk too: it redirects on sign-out and would otherwise
+            // drop the `?error=pending` reason.
+            await signOut({ redirectUrl: `/login${search}` }).catch(() => undefined);
+            navigate(`/login${search}`, { replace: true });
+        };
+
+        /**
+         * Google signup started from /register: mirror the password flow — the account is
+         * created with the chosen role/organization and waits for approval.
+         */
+        const createPendingUserFromIntent = async (
+            intent: SignupIntent,
+            email: string,
+            fullName: string
+        ) => {
+            setStatus("registering");
+            const now = new Date().toISOString();
+            const isStudent = intent.role === "STUDENT";
+
+            const { data: newUser, error: insertError } = await supabase
+                .from("users")
+                .insert({
+                    email,
+                    name: fullName,
+                    role: intent.role,
+                    verified: true,
+                    is_active: false,
+                    organization_id: intent.organizationId,
+                    details: isStudent
+                        ? t("register.studentPendingShort")
+                        : t("register.adminPendingShort"),
+                    avatar_url: clerkUser.imageUrl || null,
+                    updated_at: now,
+                })
+                .select()
+                .single();
+
+            if (insertError || !newUser) {
+                console.error("[ClerkSSO] Error creating pending user:", insertError);
+                return false;
+            }
+
+            if (isStudent) {
+                await supabase.from("student_profiles").insert({
+                    user_id: newUser.id,
+                    grade_id: intent.gradeId,
+                    total_points: 0,
+                    total_challenges: 0,
+                    completed_topics: 0,
+                    average_score: 0,
+                    longest_streak: 0,
+                    current_streak: 0,
+                    total_study_hours: 0,
+                    updated_at: now,
+                });
+            } else {
+                await supabase.from("teacher_profiles").insert({
+                    user_id: newUser.id,
+                    grade_id: null,
+                    total_students: 0,
+                    total_topics: 0,
+                    total_challenges: 0,
+                    average_score: 0,
+                    updated_at: now,
+                });
+            }
+
+            const requestRow: Record<string, unknown> = {
+                applicant_user_id: newUser.id,
+                applicant_role: intent.role,
+                organization_id: intent.organizationId,
+                grade_id: isStudent ? intent.gradeId : null,
+                status: "PENDING",
+                created_at: now,
+                updated_at: now,
+                approver_role: isStudent ? "TEACHER" : "ADMIN",
+            };
+            if (isStudent) {
+                requestRow.teacher_user_id = null;
+            }
+
+            const { error: reqError } = await supabase
+                .from("registration_requests")
+                .upsert(requestRow, { onConflict: "applicant_user_id" });
+            if (reqError) {
+                console.warn("[ClerkSSO] registration_requests:", reqError);
+            }
+
+            return true;
+        };
+
         const syncUser = async () => {
             setStatus("syncing");
 
@@ -50,9 +150,11 @@ const ClerkSSOComplete = () => {
 
             if (!email) {
                 console.error("[ClerkSSO] No email found on Clerk user");
-                navigate("/login", { replace: true });
+                await bounceToLogin();
                 return;
             }
+
+            const intent = readSignupIntent();
 
             try {
                 await supabase.auth.signOut().catch(() => undefined);
@@ -68,6 +170,27 @@ const ClerkSSOComplete = () => {
                 }
 
                 let userData = existingUser;
+
+                if (!userData && intent) {
+                    const created = await createPendingUserFromIntent(intent, email, fullName);
+                    clearSignupIntent();
+
+                    if (!created) {
+                        await bounceToLogin();
+                        return;
+                    }
+
+                    setPendingMessage(
+                        intent.role === "TEACHER"
+                            ? t("register.teacherPending")
+                            : t("register.studentPending")
+                    );
+                    setStatus("pending");
+                    setTimeout(() => void bounceToLogin("?error=pending"), 2800);
+                    return;
+                }
+
+                clearSignupIntent();
 
                 if (!userData) {
                     const now = new Date().toISOString();
@@ -102,7 +225,7 @@ const ClerkSSOComplete = () => {
                         }
 
                         if (!userData) {
-                            navigate("/login", { replace: true });
+                            await bounceToLogin();
                             return;
                         }
                     } else {
@@ -120,19 +243,19 @@ const ClerkSSOComplete = () => {
                             updated_at: now,
                         });
                     }
-                } else {
-                    if (userData.is_active === false) {
-                        navigate("/login?error=pending", { replace: true });
-                        return;
-                    }
+                }
 
-                    if (clerkUser.imageUrl && clerkUser.imageUrl !== existingUser.avatar_url) {
-                        await supabase
-                            .from("users")
-                            .update({ avatar_url: clerkUser.imageUrl })
-                            .eq("id", existingUser.id);
-                        userData = { ...existingUser, avatar_url: clerkUser.imageUrl };
-                    }
+                if (userData && userData.is_active === false) {
+                    await bounceToLogin("?error=pending");
+                    return;
+                }
+
+                if (userData && existingUser && clerkUser.imageUrl && clerkUser.imageUrl !== existingUser.avatar_url) {
+                    await supabase
+                        .from("users")
+                        .update({ avatar_url: clerkUser.imageUrl })
+                        .eq("id", existingUser.id);
+                    userData = { ...userData, avatar_url: clerkUser.imageUrl };
                 }
 
                 if (userData) {
@@ -156,30 +279,37 @@ const ClerkSSOComplete = () => {
                 }
             } catch (err) {
                 console.error("[ClerkSSO] Unexpected error:", err);
-                navigate("/login", { replace: true });
+                await bounceToLogin();
             }
         };
 
-        syncUser();
-    }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser, navigate, queryClient]);
+        void syncUser();
+    }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser, navigate, queryClient, signOut, t]);
 
     return (
         <div
-            className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex items-center justify-center"
-            dir="rtl"
+            className="min-h-screen font-cairo bg-gradient-to-br from-background via-background to-primary/10 flex items-center justify-center px-4"
+            dir={dir}
         >
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center space-y-6"
+                className="text-center space-y-6 max-w-md"
             >
-                {status === "success" ? (
+                {status === "success" || status === "pending" ? (
                     <>
                         <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto">
                             <CheckCircle className="w-10 h-10 text-success" />
                         </div>
-                        <h3 className="text-xl font-bold">مرحباً، {userName}!</h3>
-                        <p className="text-muted-foreground">جارٍ التحويل إلى لوحة التحكم...</p>
+                        <h3 className="text-xl font-bold">
+                            {status === "pending" ? t("sso.requestSent") : t("sso.welcome", { name: userName })}
+                        </h3>
+                        <p className="text-muted-foreground">
+                            {status === "pending" ? pendingMessage : t("sso.redirecting")}
+                        </p>
+                        {status === "pending" && (
+                            <p className="text-sm text-muted-foreground">{t("sso.redirectingLogin")}</p>
+                        )}
                     </>
                 ) : (
                     <>
@@ -187,9 +317,13 @@ const ClerkSSOComplete = () => {
                             <Loader2 className="w-10 h-10 text-primary animate-spin" />
                         </div>
                         <h3 className="text-xl font-bold">
-                            {status === "syncing" ? "جارٍ تسجيل الدخول..." : "جارٍ التحميل..."}
+                            {status === "registering"
+                                ? t("sso.creatingAccount")
+                                : status === "syncing"
+                                    ? t("sso.signingIn")
+                                    : t("sso.loading")}
                         </h3>
-                        <p className="text-muted-foreground">يرجى الانتظار قليلاً</p>
+                        <p className="text-muted-foreground">{t("sso.pleaseWait")}</p>
                     </>
                 )}
             </motion.div>

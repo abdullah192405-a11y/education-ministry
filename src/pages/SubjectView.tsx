@@ -5,9 +5,10 @@ import Footer from "@/components/layout/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Eye, Clock, PlayCircle, ArrowLeft, ArrowRight, User } from "lucide-react";
-import { useSubject } from "@/hooks/useDatabase";
+import { BookOpen, Eye, EyeOff, Clock, PlayCircle, ArrowLeft, ArrowRight, User } from "lucide-react";
+import { useSubject, useUser } from "@/hooks/useDatabase";
 import { sortTopicsByOrder } from "@/lib/sortTopics";
+import { canSeeHiddenTopics, isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 import { useTranslation } from "@/contexts/LanguageContext";
@@ -15,8 +16,13 @@ import { useTranslation } from "@/contexts/LanguageContext";
 const SubjectView = () => {
     const { subjectId } = useParams();
     const { data: subject, isLoading, error } = useSubject(subjectId || "");
+    const { data: currentUser } = useUser();
     const grade = subject?.grade;
-    const orderedTopics = sortTopicsByOrder(subject?.topics || []);
+    // Lessons the teacher hid stay out of the catalog; staff still see them, marked as hidden.
+    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    const orderedTopics = sortTopicsByOrder(subject?.topics || []).filter(
+        (topic) => showsHiddenTopics || !isTopicHiddenFromStudents(topic),
+    );
     const { t, dir, language } = useTranslation();
     const localeId = t("common.locale");
     const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
@@ -163,6 +169,12 @@ const SubjectView = () => {
                                                                 >
                                                                     {subject.icon} {subject.name}
                                                                 </Badge>
+                                                                {isTopicHiddenFromStudents(topic) && (
+                                                                    <Badge variant="outline" className="text-xs gap-1 border-warning/40 bg-warning/10 text-warning-foreground">
+                                                                        <EyeOff className="w-3 h-3" />
+                                                                        {t("subjectView.hiddenFromStudents")}
+                                                                    </Badge>
+                                                                )}
                                                                 {topic._TeacherTopics?.[0]?.teacher_profiles?.user?.name && (
                                                                     <Badge variant="outline" className="text-xs gap-1 border-primary/20 bg-primary/5 text-primary">
                                                                         <User className="w-3 h-3" />
