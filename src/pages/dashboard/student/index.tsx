@@ -33,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
-import { useStudentExams, examCategoryLabels } from "@/hooks/useExams";
+import { useStudentExams, useStudentCompletedExams, examCategoryLabels } from "@/hooks/useExams";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StudentSupportTab from "./components/StudentSupportTab";
 import { isTopicHiddenFromStudents } from "@/lib/contentVisibility";
@@ -165,9 +165,17 @@ const StudentDashboard = () => {
     const { data: userBadges, isLoading: isLoadingUserBadges } = useUserBadges(user?.id || "");
     const { data: allBadges, isLoading: isLoadingAllBadges } = useAllBadges();
     const { data: challengeResults, isLoading: isLoadingChallengeResults } = useRecentChallengeResults(user?.id || "", 100);
-    const { data: exams, isLoading: isLoadingExams } = useStudentExams(profile?.grade_id || "", user?.id || "");
+    const { data: activeExams, isLoading: isLoadingExams } = useStudentExams(profile?.grade_id || "", user?.id || "");
+    const { data: completedExams } = useStudentCompletedExams(profile?.grade_id || "", user?.id || "");
 
-    const pendingExamsCount = (exams || []).filter(e => !e.hasSubmitted).length;
+    // Merge: active exams (currently running) + completed exams (student submitted), de-duplicated
+    const activeIds = new Set((activeExams || []).map((e: any) => e.id));
+    const exams = [
+        ...(activeExams || []),
+        ...(completedExams || []).filter((e: any) => !activeIds.has(e.id)),
+    ];
+
+    const pendingExamsCount = exams.filter(e => !e.hasSubmitted).length;
 
     const isLoading = isLoadingUser || isLoadingProfile || isLoadingChallengeResults;
 

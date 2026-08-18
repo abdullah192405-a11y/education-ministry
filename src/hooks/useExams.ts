@@ -98,6 +98,7 @@ export const useStudentExams = (gradeId: string, userId: string) => {
         queryFn: async () => {
             if (!gradeId) return [];
             try {
+                const now = new Date().toISOString();
                 const { data, error } = await supabase
                     .from("exams")
                     .select(`
@@ -107,7 +108,9 @@ export const useStudentExams = (gradeId: string, userId: string) => {
                         exam_results (id, user_id, percentage, submitted_at)
                     `)
                     .eq("grade_id", gradeId)
-                    .eq("status", "ACTIVE") // Only show active exams to students
+                    .neq("status", "DRAFT") // exclude drafts
+                    .lte("start_time", now) // exam has started
+                    .gte("end_time", now)   // exam hasn't ended yet
                     .order("start_time", { ascending: false });
 
                 if (error) throw error;
@@ -131,7 +134,56 @@ export const useStudentExams = (gradeId: string, userId: string) => {
     });
 };
 
-/** Fetch a single exam by PIN */
+/** Fetch exams the student has already submitted (for the Completed section) */
+export const useStudentCompletedExams = (gradeId: string, userId: string) => {
+    return useQuery({
+        queryKey: ["student_completed_exams", gradeId, userId],
+        queryFn: async () => {
+            if (!gradeId || !userId) return [];
+            try {
+                // Get exam_results for this student first
+                const { data: results, error: resultsError } = await supabase
+                    .from("exam_results")
+                    .select("exam_id, percentage, submitted_at")
+                    .eq("user_id", userId);
+
+                if (resultsError) throw resultsError;
+                if (!results || results.length === 0) return [];
+
+                const examIds = results.map((r: any) => r.exam_id);
+
+                const { data: exams, error: examsError } = await supabase
+                    .from("exams")
+                    .select(`
+                        *,
+                        topic:topics (id, title, subject:subjects (id, name)),
+                        host:users!exams_host_id_fkey (id, name, avatar)
+                    `)
+                    .eq("grade_id", gradeId)
+                    .in("id", examIds)
+                    .order("start_time", { ascending: false });
+
+                if (examsError) throw examsError;
+
+                return (exams || []).map((exam: any) => {
+                    const studentResult = results.find((r: any) => r.exam_id === exam.id);
+                    return {
+                        ...exam,
+                        hasSubmitted: true,
+                        studentResult: studentResult || null,
+                    };
+                });
+            } catch (e) {
+                console.warn("Student completed exams fetch failed:", e);
+                return [];
+            }
+        },
+        enabled: !!gradeId && !!userId,
+        retry: false,
+    });
+};
+
+
 export const useExamByPin = (pin: string) => {
     return useQuery({
         queryKey: ["exam_by_pin", pin],
