@@ -16,10 +16,10 @@ export type GeminiRetryInfo = {
     reason: string;
 };
 
-const DEFAULT_MODEL_CHAIN = ["gemini-2.5-flash"];
+const DEFAULT_MODEL_CHAIN = ["gemini-3.6-flash"];
 
-/** Question generation always uses Gemini 2.5 Flash — no fallback to older models. */
-export const QUESTION_GENERATION_MODELS = ["gemini-2.5-flash"] as const;
+/** Question generation uses Gemini 3.6 Flash. */
+export const QUESTION_GENERATION_MODELS = ["gemini-3.6-flash"] as const;
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));

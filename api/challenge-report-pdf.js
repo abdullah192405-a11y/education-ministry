@@ -1429,7 +1429,7 @@ function buildChallengeReportHtml(options, fontFacesCss = buildUrlReportFontFace
 }
 
 // src/lib/geminiClient.ts
-var DEFAULT_MODEL_CHAIN = ["gemini-2.5-flash"];
+var DEFAULT_MODEL_CHAIN = ["gemini-3.6-flash"];
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1539,7 +1539,7 @@ async function generateGeminiContent(apiKey, body, options) {
 }
 
 // src/lib/challengeReportRecommendations.ts
-var RECOMMENDATION_MODELS = ["gemini-2.5-flash"];
+var RECOMMENDATION_MODELS = ["gemini-3.6-flash"];
 var RECOMMENDATION_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {

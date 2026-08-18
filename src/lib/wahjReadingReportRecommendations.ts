@@ -18,7 +18,7 @@ export type WahjAiReport = {
     sections: WahjAiReportSection[];
 };
 
-const MODELS = ["gemini-2.5-flash"];
+const MODELS = ["gemini-3.6-flash"];
 
 const RESPONSE_SCHEMA = {
     type: "OBJECT",
