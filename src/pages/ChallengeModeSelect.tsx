@@ -30,6 +30,7 @@ import {
     type ChallengeCategory
 } from "@/data/challengeTypes";
 import { getTopicChallengePreset, navigateToTopicChallenge } from "@/lib/topicChallengePreset";
+import { canSeeHiddenTopics, isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 
 const ChallengeModeSelect = () => {
     const { gradeId, subjectId, topicId } = useParams();
@@ -58,6 +59,8 @@ const ChallengeModeSelect = () => {
     const presetAppliedRef = useRef(false);
 
     const { data: currentUser } = useUser();
+    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    const isTopicHidden = isTopicHiddenFromStudents(topic);
     const createSessionMutation = useCreateChallengeSession();
     const studentChallengePreset = topic ? getTopicChallengePreset(topic as Record<string, unknown>) : null;
     const { t, dir } = useTranslation();
@@ -67,6 +70,7 @@ const ChallengeModeSelect = () => {
         if (
             isLoading ||
             !topic ||
+            (!showsHiddenTopics && isTopicHidden) ||
             !gradeId ||
             !subjectId ||
             !topicId ||
@@ -146,7 +150,7 @@ const ChallengeModeSelect = () => {
         );
     }
 
-    if (!grade || !gradeInPublicCatalog || !subject || !topic) {
+    if (!grade || !gradeInPublicCatalog || !subject || !topic || (!showsHiddenTopics && isTopicHidden)) {
         return (
             <div className="min-h-screen font-cairo" dir={dir}>
                 <Header />

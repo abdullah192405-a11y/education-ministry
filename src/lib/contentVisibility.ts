@@ -72,9 +72,12 @@ export function filterGradesForPublicCatalog<
  */
 export function isTopicHiddenFromStudents(topic: unknown): boolean {
     const row = topic as { is_active?: unknown; isActive?: unknown; status?: unknown } | null | undefined;
-    const active = row?.is_active ?? row?.isActive;
-    if (active === false) return true;
-    return String(row?.status ?? "").trim().toLowerCase() === "draft";
+    if (!row) return false;
+    const active = row.is_active !== undefined ? row.is_active : row.isActive;
+    if (active === false || active === "false" || active === 0 || active === "0") return true;
+    const status = String(row.status ?? "").trim().toLowerCase();
+    if (status === "draft" || status === "hidden" || status === "inactive") return true;
+    return false;
 }
 
 /** Staff roles keep seeing hidden lessons — flagged as hidden — so they can review them. */

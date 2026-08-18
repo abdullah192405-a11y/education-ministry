@@ -36,6 +36,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { useStudentExams, examCategoryLabels } from "@/hooks/useExams";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StudentSupportTab from "./components/StudentSupportTab";
+import { isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 
 const StudentDashboard = () => {
     const navigate = useNavigate();
@@ -213,7 +214,8 @@ const StudentDashboard = () => {
         });
 
         // SOURCE OF TRUTH: Count unique completed topics for THIS subject from all activities
-        const subjectTopicIds = (subject.topics || []).map((t: any) => String(t.id).toLowerCase());
+        const activeTopics = (subject.topics || []).filter((t: any) => !isTopicHiddenFromStudents(t));
+        const subjectTopicIds = activeTopics.map((t: any) => String(t.id).toLowerCase());
         const uniqueCompletedInActivities = new Set(
             (topicActivities || [])
                 .filter((ta: any) => ta.completed && subjectTopicIds.includes(String(ta.topic_id || ta.topic?.id).toLowerCase()))
@@ -224,8 +226,8 @@ const StudentDashboard = () => {
             ? uniqueCompletedInActivities.size
             : Number(progress?.completed_topics) || 0;
 
-        // Diagnostic counts: try topics array first, then columns
-        const totalTopicsCount = (subject.topics?.length > 0 ? subject.topics.length : null)
+        // Diagnostic counts: try active topics array first, then columns
+        const totalTopicsCount = (activeTopics.length > 0 ? activeTopics.length : null)
             || progress?.total_topics
             || subject.total_topics
             || 0;

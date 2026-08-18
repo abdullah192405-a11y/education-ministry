@@ -19,11 +19,12 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Play, Eye, Clock,
+    CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Play, Eye, EyeOff, Clock,
     BookOpen, Gamepad2,
     FileText, Image as ImageIcon, AlignLeft, Youtube,
     Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
 } from "lucide-react";
+import { canSeeHiddenTopics, isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 import {
     useCreateTopicDiscussion,
     useCreateTopicDiscussionReply,
@@ -260,7 +261,10 @@ const TopicView = () => {
         );
     }
 
-    if (error || !topic || !subject || !grade) {
+    const showsHiddenTopics = canSeeHiddenTopics(user?.role);
+    const isTopicHidden = isTopicHiddenFromStudents(topic);
+
+    if (error || !topic || !subject || !grade || (!showsHiddenTopics && isTopicHidden)) {
         return <NotFound />;
     }
 
@@ -873,6 +877,16 @@ const TopicView = () => {
                         <span className="shrink-0">/</span>
                         <span className="text-foreground truncate max-w-full">{topic.title}</span>
                     </motion.div>
+
+                    {showsHiddenTopics && isTopicHidden && (
+                        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl bg-warning/15 border border-warning/30 flex items-center gap-3 text-warning-foreground">
+                            <EyeOff className="w-5 h-5 text-warning shrink-0" />
+                            <div className="text-xs sm:text-sm font-medium">
+                                <span className="font-bold">{t("dash.teacher.topics.hiddenBadge")}: </span>
+                                <span>{t("dash.teacher.topics.hideFromStudents")} ({t("dash.teacher.topics.preview")})</span>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Content Header */}
                     <motion.div

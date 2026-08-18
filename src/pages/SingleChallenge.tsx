@@ -43,8 +43,12 @@ import {
 } from "@/data/challengeTypes";
 import { useSound } from "@/hooks/useSound";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
-import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
+import {
+    canSeeHiddenTopics,
+    isTopicHiddenFromStudents,
+    gradeMatchesContentFocus,
+    routeGradeMatchesTopicGrade,
+} from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 import { useTranslation } from "@/contexts/LanguageContext";
@@ -1433,6 +1437,31 @@ const SingleChallenge = () => {
         (sessionHasScheduledFields(sessionForVisibility) || scheduledFromJoinUrl);
     /** نفس منطق ChallengeModeSelect: المسار يشير لصف الموضوع الفعلي (معرّف أو slug) */
     const allowTopicRouteVisibilityBypass = routeGradeMatchesTopicGrade(gradeId, visibilityGrade);
+
+    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    const isTopicHidden = isTopicHiddenFromStudents(content);
+
+    if (
+        !showsHiddenTopics &&
+        isTopicHidden &&
+        !allowScheduledJoinVisibilityBypass
+    ) {
+        return (
+            <div className="min-h-screen font-cairo">
+                <Header />
+                <main className="pt-24 pb-16">
+                    <div className="container mx-auto px-4 text-center py-20">
+                        <h1 className="text-3xl font-bold mb-4">المحتوى غير متاح</h1>
+                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">هذا الدرس غير متاح حالياً للطلاب.</p>
+                        <Button asChild>
+                            <Link to="/grades">العودة للصفوف</Link>
+                        </Button>
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
 
     if (
         visibilityGrade &&
