@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -77,10 +77,12 @@ const getLiveSessionStatus = (session: TopicLiveSession): "live" | "upcoming" | 
 
 const TopicView = () => {
     const { topicId } = useParams();
+    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { toast } = useToast();
     const { data: topic, isLoading, error } = useTopic(topicId || "");
     const { data: user } = useUser();
+    const isTeacherPreview = searchParams.get("preview") === "true" && canSeeHiddenTopics(user?.role);
     const createSessionMutation = useCreateChallengeSession();
     const [isJoiningChallenge, setIsJoiningChallenge] = useState(false);
     const { t, dir, language } = useTranslation();
@@ -261,10 +263,9 @@ const TopicView = () => {
         );
     }
 
-    const showsHiddenTopics = canSeeHiddenTopics(user?.role);
     const isTopicHidden = isTopicHiddenFromStudents(topic);
 
-    if (error || !topic || !subject || !grade || (!showsHiddenTopics && isTopicHidden)) {
+    if (error || !topic || !subject || !grade || (isTopicHidden && !isTeacherPreview)) {
         return <NotFound />;
     }
 
@@ -878,7 +879,7 @@ const TopicView = () => {
                         <span className="text-foreground truncate max-w-full">{topic.title}</span>
                     </motion.div>
 
-                    {showsHiddenTopics && isTopicHidden && (
+                    {isTeacherPreview && isTopicHidden && (
                         <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl bg-warning/15 border border-warning/30 flex items-center gap-3 text-warning-foreground">
                             <EyeOff className="w-5 h-5 text-warning shrink-0" />
                             <div className="text-xs sm:text-sm font-medium">

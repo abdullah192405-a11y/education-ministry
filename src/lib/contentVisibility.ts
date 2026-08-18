@@ -71,10 +71,18 @@ export function filterGradesForPublicCatalog<
  * `status: "draft"` is the same state as mapped inside the teacher dashboard.
  */
 export function isTopicHiddenFromStudents(topic: unknown): boolean {
-    const row = topic as { is_active?: unknown; isActive?: unknown; status?: unknown } | null | undefined;
+    const row = topic as {
+        is_active?: unknown;
+        isActive?: unknown;
+        is_hidden?: unknown;
+        isHidden?: unknown;
+        status?: unknown;
+    } | null | undefined;
     if (!row) return false;
     const active = row.is_active !== undefined ? row.is_active : row.isActive;
     if (active === false || active === "false" || active === 0 || active === "0") return true;
+    const hidden = row.is_hidden !== undefined ? row.is_hidden : row.isHidden;
+    if (hidden === true || hidden === "true" || hidden === 1 || hidden === "1") return true;
     const status = String(row.status ?? "").trim().toLowerCase();
     if (status === "draft" || status === "hidden" || status === "inactive") return true;
     return false;

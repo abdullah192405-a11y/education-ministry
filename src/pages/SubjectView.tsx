@@ -18,10 +18,9 @@ const SubjectView = () => {
     const { data: subject, isLoading, error } = useSubject(subjectId || "");
     const { data: currentUser } = useUser();
     const grade = subject?.grade;
-    // Lessons the teacher hid stay out of the catalog; staff still see them, marked as hidden.
-    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    // Hidden lessons are kept out of the public subject catalog
     const orderedTopics = sortTopicsByOrder(subject?.topics || []).filter(
-        (topic) => showsHiddenTopics || !isTopicHiddenFromStudents(topic),
+        (topic) => !isTopicHiddenFromStudents(topic),
     );
     const { t, dir, language } = useTranslation();
     const localeId = t("common.locale");
