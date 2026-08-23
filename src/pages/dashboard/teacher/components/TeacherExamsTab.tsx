@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     ClipboardList, Plus, Calendar, Clock, Users, Trophy, Copy,
     Share2, MessageCircle, Twitter, Send, Trash2, Eye, Search,
     ChevronLeft, BarChart3, CheckCircle2, XCircle, RefreshCw,
     Link2, Timer, BookOpen, Filter, Download, AlertTriangle,
-    FileText, GraduationCap, CalendarRange, CalendarDays, Award
+    FileText, GraduationCap, CalendarRange, CalendarDays, Award, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,18 @@ import { questionAttachmentFields } from "@/lib/questionAttachments";
 import { useTeacherVisibleClasses } from "@/hooks/useTeacherVisibleClasses";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { parseDateTimeLocalValue, toDateTimeLocalValue } from "@/lib/dateTimeLocal";
+import {
+    EXAM_MAX_DURATION_MINUTES,
+    EXAM_MIN_DURATION_MINUTES,
+    clampExamDuration,
+    getExamLiveStatus,
+} from "@/lib/examLogic";
+import { buildExamReportOptions } from "@/lib/examReport";
+import { downloadChallengeResultsCsv } from "@/lib/challengeReportDownload";
+import {
+    downloadChallengeReportPdf,
+    openChallengeReportPrintWindow,
+} from "@/lib/challengeReportPdf";
 import { filterTopicsOwnedByTeacher } from "@/lib/teacherClassAccess";
 import { cn } from "@/lib/utils";
 
@@ -123,9 +135,87 @@ function useExamI18n() {
 // Exam Details Dialog Content
 // ============================================================================
 const ExamDetailsContent = ({ exam }: { exam: any }) => {
-    const { t, getCategoryLabel, formatDateTime } = useExamI18n();
+    const { t, getCategoryLabel, formatDateTime, locale } = useExamI18n();
+    const { toast } = useToast();
+    const { data: currentUser } = useUser();
     const results = exam?.exam_results || [];
     const [searchQuery, setSearchQuery] = useState("");
+    const [pdfExporting, setPdfExporting] = useState(false);
+
+    const reportLanguage: "ar" | "en" = locale.startsWith("en") ? "en" : "ar";
+
+    const reportOptions = useMemo(
+        () =>
+            buildExamReportOptions({
+                exam,
+                language: reportLanguage,
+                locale,
+                categoryLabel: getCategoryLabel(exam?.category),
+                teacherName: currentUser?.name || exam?.host?.name,
+                labels: {
+                    participants: t("dash.teacher.exams.report.participants"),
+                    average: t("dash.teacher.exams.report.average"),
+                    passRate: t("dash.teacher.exams.report.passRate"),
+                    highest: t("dash.teacher.exams.report.highest"),
+                    lowest: t("dash.teacher.exams.report.lowest"),
+                    avgTime: t("dash.teacher.exams.report.avgTime"),
+                    questionsCount: t("dash.teacher.exams.report.questionsCount"),
+                    duration: t("dash.teacher.exams.report.duration"),
+                    category: t("dash.teacher.exams.report.category"),
+                    window: t("dash.teacher.exams.report.window"),
+                    minutesSuffix: t("dash.teacher.exams.report.minutesSuffix"),
+                    secondsSuffix: t("dash.teacher.exams.report.secondsSuffix"),
+                    correct: t("dash.teacher.exams.report.correct"),
+                    wrong: t("dash.teacher.exams.report.wrong"),
+                    unanswered: t("dash.teacher.exams.report.unanswered"),
+                    bandExcellent: t("dash.teacher.exams.report.bandExcellent"),
+                    bandGood: t("dash.teacher.exams.report.bandGood"),
+                    bandPass: t("dash.teacher.exams.report.bandPass"),
+                    bandFail: t("dash.teacher.exams.report.bandFail"),
+                    questionShort: t("dash.teacher.exams.report.questionShort"),
+                },
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [exam, reportLanguage, locale, currentUser, t],
+    );
+
+    const handleDownloadCsv = useCallback(() => {
+        downloadChallengeResultsCsv(reportOptions);
+        toast({
+            title: t("dash.teacher.exams.toastDownloaded"),
+            description: t("dash.teacher.exams.toastCsvSaved"),
+        });
+    }, [reportOptions, toast, t]);
+
+    const handleDownloadPdf = useCallback(async () => {
+        // Opened synchronously on the click so the browser does not treat the
+        // print window as a pop-up once the async work starts.
+        const printWindow = openChallengeReportPrintWindow(reportLanguage);
+        setPdfExporting(true);
+        try {
+            toast({
+                title: t("dash.teacher.exams.toastPdfGenerating"),
+                description: t("dash.teacher.exams.toastPdfGeneratingDesc"),
+            });
+            const downloadResult = await downloadChallengeReportPdf(reportOptions, printWindow);
+            toast({
+                title: t("dash.teacher.exams.toastDownloaded"),
+                description:
+                    downloadResult.method === "html-file"
+                        ? t("dash.teacher.topics.toast.pdfHtmlFallback")
+                        : t("dash.teacher.exams.toastPdfSaved"),
+            });
+        } catch (error) {
+            console.error("Exam report PDF failed:", error);
+            toast({
+                title: t("dash.teacher.exams.toastPdfFailed"),
+                description: t("dash.teacher.exams.toastPdfFailedDesc"),
+                variant: "destructive",
+            });
+        } finally {
+            setPdfExporting(false);
+        }
+    }, [reportOptions, reportLanguage, toast, t]);
 
     const stats = useMemo(() => {
         if (!results || results.length === 0) return null;
@@ -155,6 +245,32 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
 
     return (
         <Tabs defaultValue="grades" className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-3 pb-2 border-b shrink-0 bg-muted/10">
+                <span className="text-xs text-muted-foreground">{t("dash.teacher.exams.exportReport")}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2 shrink-0"
+                        disabled={pdfExporting}
+                        onClick={() => void handleDownloadPdf()}
+                    >
+                        {pdfExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                        {t("dash.teacher.exams.downloadPdf")}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 shrink-0"
+                        disabled={pdfExporting}
+                        onClick={handleDownloadCsv}
+                    >
+                        <Download className="w-4 h-4" />
+                        CSV
+                    </Button>
+                </div>
+            </div>
             <div className="px-6 border-b">
                 <TabsList className="bg-transparent h-12 gap-6 p-0 border-none">
                     <TabsTrigger value="grades" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none h-full px-1">
@@ -200,7 +316,7 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
 
                     {/* Exam Info */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 font-bold text-lg border-r-4 border-primary pr-3 py-1">
+                        <div className="flex items-center gap-2 font-bold text-lg border-s-4 border-primary ps-3 py-1">
                             {t("dash.teacher.exams.examDetails")}
                         </div>
                         <div className="grid grid-cols-2 gap-y-6 text-sm bg-muted/20 p-6 rounded-2xl border border-border/50">
@@ -240,12 +356,12 @@ const ExamDetailsContent = ({ exam }: { exam: any }) => {
                 <TabsContent value="grades" className="mt-0 space-y-4">
                     {/* Search */}
                     <div className="relative">
-                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                             placeholder={t("dash.teacher.exams.searchStudent")}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pr-10 h-11"
+                            className="ps-10 h-11"
                         />
                     </div>
 
@@ -392,7 +508,7 @@ const CreateExamDialog = ({
         if (!start) return;
         const end = parseDateTimeLocalValue(endTime);
         if (!end || end <= start) {
-            const suggestedEnd = new Date(start.getTime() + Math.max(durationMinutes, 5) * 60 * 1000);
+            const suggestedEnd = new Date(start.getTime() + clampExamDuration(durationMinutes) * 60 * 1000);
             setEndTime(toDateTimeLocalValue(suggestedEnd));
         }
     };
@@ -430,6 +546,16 @@ const CreateExamDialog = ({
             toast({ title: t("dash.common.error"), description: t("dash.teacher.exams.toast.endAfterStart"), variant: "destructive" });
             return;
         }
+        const duration = clampExamDuration(durationMinutes);
+        const windowMinutes = (endDate.getTime() - startDate.getTime()) / 60000;
+        if (duration > windowMinutes) {
+            toast({
+                title: t("dash.common.error"),
+                description: t("dash.teacher.exams.toast.durationExceedsWindow", { minutes: Math.floor(windowMinutes) }),
+                variant: "destructive",
+            });
+            return;
+        }
 
         setIsCreating(true);
         try {
@@ -448,7 +574,7 @@ const CreateExamDialog = ({
                 category,
                 startTime: startDate.toISOString(),
                 endTime: endDate.toISOString(),
-                durationMinutes,
+                durationMinutes: duration,
             });
 
             toast({
@@ -578,7 +704,7 @@ const CreateExamDialog = ({
                                                 <BookOpen className="w-4 h-4 text-primary shrink-0" />
                                                 <span>{topic.title}</span>
                                                 {topic.subject && (
-                                                    <Badge variant="outline" className="text-[9px] mr-2">{topic.subject.name}</Badge>
+                                                    <Badge variant="outline" className="text-[9px] ms-2">{topic.subject.name}</Badge>
                                                 )}
                                             </div>
                                         </SelectItem>
@@ -659,8 +785,9 @@ const CreateExamDialog = ({
                             type="number"
                             value={durationMinutes}
                             onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                            min={5}
-                            max={300}
+                            onBlur={() => setDurationMinutes(clampExamDuration(durationMinutes))}
+                            min={EXAM_MIN_DURATION_MINUTES}
+                            max={EXAM_MAX_DURATION_MINUTES}
                             className="h-12"
                         />
                     </div>
@@ -798,10 +925,18 @@ const ManageQuestionsDialog = ({
     const upsertQuestionsMutation = useBulkUpsertExamQuestions();
     const deleteQuestionMutation = useDeleteExamQuestion();
 
-    // Map DB format to expected ChallengeQuestion format
+    /**
+     * When an exam has no questions of its own it borrows the topic's. Those rows
+     * belong to the topic, so they are presented here without their ids: saving
+     * copies them onto the exam instead of moving the topic's originals.
+     */
+    const borrowsTopicQuestions = !!exam?.usesTopicQuestions;
+
     const mappedQuestions: ChallengeQuestion[] = useMemo(() => {
-        return exam?.challengeItems || [];
-    }, [exam]);
+        const items = exam?.challengeItems || [];
+        if (!borrowsTopicQuestions) return items;
+        return items.map(({ id, ...rest }: any) => rest);
+    }, [exam, borrowsTopicQuestions]);
 
     const handleSave = async (updatedQuestions: ChallengeQuestion[]) => {
         try {
@@ -834,11 +969,10 @@ const ManageQuestionsDialog = ({
                     time_limit: normalized.timeLimit || 20,
                     wheel_segments: normalized.wheelSegments || null,
                     is_active: normalized.isActive ?? true,
-                    sort_order: normalized.sortOrder || 0,
                 };
 
                 // Only include ID if it's an existing string UUID from DB
-                if (typeof q.id === "string") {
+                if (typeof q.id === "string" && !borrowsTopicQuestions) {
                     upsertData.id = q.id;
                 }
                 return upsertData;
@@ -944,18 +1078,6 @@ const TeacherExamsTab = () => {
         return "";
     };
 
-    // Compute exam status dynamically based on time
-    const getExamLiveStatus = (exam: any) => {
-        if (!exam?.start_time || !exam?.end_time) return "DRAFT";
-        const now = new Date();
-        const start = new Date(exam.start_time);
-        const end = new Date(exam.end_time);
-
-        if (now < start) return "SCHEDULED";
-        if (now >= start && now <= end) return "ACTIVE";
-        return "ENDED";
-    };
-
     // Filter exams
     const filteredExams = useMemo(() => {
         let filtered = exams || [];
@@ -992,15 +1114,16 @@ const TeacherExamsTab = () => {
         }
     };
 
-    // Stats summary
+    // Stats summary — same live-status source as the cards below.
     const stats = useMemo(() => {
         if (!exams || exams.length === 0) return { total: 0, active: 0, scheduled: 0, ended: 0, totalStudents: 0 };
         const now = new Date();
+        const statuses = exams.map((e: any) => getExamLiveStatus(e, now));
         return {
             total: exams.length,
-            active: exams.filter((e: any) => now >= new Date(e.start_time) && now <= new Date(e.end_time)).length,
-            scheduled: exams.filter((e: any) => now < new Date(e.start_time)).length,
-            ended: exams.filter((e: any) => now > new Date(e.end_time)).length,
+            active: statuses.filter((st) => st === "ACTIVE").length,
+            scheduled: statuses.filter((st) => st === "SCHEDULED").length,
+            ended: statuses.filter((st) => st === "ENDED").length,
             totalStudents: exams.reduce((acc: number, e: any) => acc + (e.exam_results?.length || 0), 0),
         };
     }, [exams]);
@@ -1121,7 +1244,7 @@ const TeacherExamsTab = () => {
                 </div>
                 <Select value={filterCategory} onValueChange={setFilterCategory}>
                     <SelectTrigger className="w-full md:w-48 h-11">
-                        <Filter className="w-4 h-4 ml-2" />
+                        <Filter className="w-4 h-4 me-2" />
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1164,10 +1287,10 @@ const TeacherExamsTab = () => {
                         return (
                             <Card
                                 key={exam.id}
-                                className={`group overflow-hidden relative cursor-pointer hover:shadow-lg transition-all border-r-4 ${
-                                    liveStatus === "ACTIVE" ? "border-r-emerald-500" :
-                                    liveStatus === "SCHEDULED" ? "border-r-blue-500" :
-                                    "border-r-gray-300"
+                                className={`group overflow-hidden relative cursor-pointer hover:shadow-lg transition-all border-s-4 ${
+                                    liveStatus === "ACTIVE" ? "border-s-emerald-500" :
+                                    liveStatus === "SCHEDULED" ? "border-s-blue-500" :
+                                    "border-s-gray-300"
                                 }`}
                                 onClick={() => setSelectedExam(exam)}
                             >
@@ -1294,14 +1417,14 @@ const TeacherExamsTab = () => {
                                                                 {t("dash.teacher.exams.deleteDesc", { title: exam.title })}
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
-                                                        <AlertDialogFooter className="flex-row-reverse gap-2">
+                                                        <AlertDialogFooter className="gap-2">
+                                                            <AlertDialogCancel>{t("dash.common.cancel")}</AlertDialogCancel>
                                                             <AlertDialogAction
                                                                 className="bg-destructive hover:bg-destructive/90"
                                                                 onClick={() => handleDeleteExam(exam.id)}
                                                             >
                                                                 {t("dash.teacher.exams.deleteConfirm")}
                                                             </AlertDialogAction>
-                                                            <AlertDialogCancel>{t("dash.common.cancel")}</AlertDialogCancel>
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
