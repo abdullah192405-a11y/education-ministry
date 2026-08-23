@@ -490,6 +490,7 @@ const CreateExamDialog = ({
     const [isCreating, setIsCreating] = useState(false);
 
     const resetForm = () => {
+        gradeTouchedRef.current = false;
         setTitle("");
         setDescription("");
         setGradeId("");
@@ -613,14 +614,24 @@ const CreateExamDialog = ({
         });
     }, [ownedTopics, gradeId, allowedSubjectIds]);
 
+    /** Cleared on close so the next opening seeds again from the current filter. */
+    const gradeTouchedRef = useRef(false);
+
     useEffect(() => {
-        if (!open) return;
-        if (initialGradeId) {
-            setGradeId(initialGradeId);
-        } else if (!gradeId && availableGrades.length > 0) {
-            setGradeId(availableGrades[0].id);
+        if (!open) {
+            gradeTouchedRef.current = false;
+            return;
         }
-    }, [open, initialGradeId, availableGrades, gradeId]);
+        // Once the teacher picks a class, leave it alone. Without this the
+        // effect re-applied `initialGradeId` on every change and the field
+        // could never be changed.
+        if (gradeTouchedRef.current) return;
+
+        const seed = initialGradeId || availableGrades[0]?.id || "";
+        // `availableGrades` may still be loading on first open, so only seed
+        // once there is something real to seed with.
+        if (seed) setGradeId(seed);
+    }, [open, initialGradeId, availableGrades]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -662,8 +673,20 @@ const CreateExamDialog = ({
                         <label className="text-sm font-bold">{t("dash.teacher.exams.gradeLabel")}</label>
                         {loadingTopics ? (
                             <Skeleton className="h-10 w-full" />
+                        ) : availableGrades.length === 0 ? (
+                            <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-sm text-amber-800">{t("dash.teacher.exams.noClassesAssigned")}</p>
+                            </div>
                         ) : (
-                            <Select value={gradeId} onValueChange={(val) => { setGradeId(val); setTopicId(""); }}>
+                            <Select
+                                value={gradeId}
+                                onValueChange={(val) => {
+                                    gradeTouchedRef.current = true;
+                                    setGradeId(val);
+                                    setTopicId("");
+                                }}
+                            >
                                 <SelectTrigger className="h-12">
                                     <SelectValue placeholder={t("dash.teacher.exams.gradePlaceholder")} />
                                 </SelectTrigger>
@@ -678,6 +701,11 @@ const CreateExamDialog = ({
                                     ))}
                                 </SelectContent>
                             </Select>
+                        )}
+                        {availableGrades.length === 1 && (
+                            <p className="text-xs text-muted-foreground">
+                                {t("dash.teacher.exams.singleClassHint")}
+                            </p>
                         )}
                     </div>
 
