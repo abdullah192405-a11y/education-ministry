@@ -490,6 +490,7 @@ const CreateExamDialog = ({
     const [isCreating, setIsCreating] = useState(false);
 
     const resetForm = () => {
+        gradeTouchedRef.current = false;
         setTitle("");
         setDescription("");
         setGradeId("");
@@ -613,14 +614,24 @@ const CreateExamDialog = ({
         });
     }, [ownedTopics, gradeId, allowedSubjectIds]);
 
+    /** Cleared on close so the next opening seeds again from the current filter. */
+    const gradeTouchedRef = useRef(false);
+
     useEffect(() => {
-        if (!open) return;
-        if (initialGradeId) {
-            setGradeId(initialGradeId);
-        } else if (!gradeId && availableGrades.length > 0) {
-            setGradeId(availableGrades[0].id);
+        if (!open) {
+            gradeTouchedRef.current = false;
+            return;
         }
-    }, [open, initialGradeId, availableGrades, gradeId]);
+        // Once the teacher picks a class, leave it alone. Without this the
+        // effect re-applied `initialGradeId` on every change and the field
+        // could never be changed.
+        if (gradeTouchedRef.current) return;
+
+        const seed = initialGradeId || availableGrades[0]?.id || "";
+        // `availableGrades` may still be loading on first open, so only seed
+        // once there is something real to seed with.
+        if (seed) setGradeId(seed);
+    }, [open, initialGradeId, availableGrades]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -663,7 +674,14 @@ const CreateExamDialog = ({
                         {loadingTopics ? (
                             <Skeleton className="h-10 w-full" />
                         ) : (
-                            <Select value={gradeId} onValueChange={(val) => { setGradeId(val); setTopicId(""); }}>
+                            <Select
+                                value={gradeId}
+                                onValueChange={(val) => {
+                                    gradeTouchedRef.current = true;
+                                    setGradeId(val);
+                                    setTopicId("");
+                                }}
+                            >
                                 <SelectTrigger className="h-12">
                                     <SelectValue placeholder={t("dash.teacher.exams.gradePlaceholder")} />
                                 </SelectTrigger>
