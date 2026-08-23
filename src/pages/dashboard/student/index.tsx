@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useEffect, useMemo, useRef, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { useStudentExams, useStudentCompletedExams, examCategoryLabels } from "@/hooks/useExams";
+import { getExamLiveStatus } from "@/lib/examLogic";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StudentSupportTab from "./components/StudentSupportTab";
 import { isTopicHiddenFromStudents } from "@/lib/contentVisibility";
@@ -165,17 +166,47 @@ const StudentDashboard = () => {
     const { data: userBadges, isLoading: isLoadingUserBadges } = useUserBadges(user?.id || "");
     const { data: allBadges, isLoading: isLoadingAllBadges } = useAllBadges();
     const { data: challengeResults, isLoading: isLoadingChallengeResults } = useRecentChallengeResults(user?.id || "", 100);
-    const { data: activeExams, isLoading: isLoadingExams } = useStudentExams(profile?.grade_id || "", user?.id || "");
-    const { data: completedExams } = useStudentCompletedExams(profile?.grade_id || "", user?.id || "");
+    const { data: gradeExams, isLoading: isLoadingExams } = useStudentExams(profile?.grade_id || "", user?.id || "");
+    const { data: completedExams } = useStudentCompletedExams(user?.id || "");
 
-    // Merge: active exams (currently running) + completed exams (student submitted), de-duplicated
-    const activeIds = new Set((activeExams || []).map((e: any) => e.id));
-    const exams = [
-        ...(activeExams || []),
-        ...(completedExams || []).filter((e: any) => !activeIds.has(e.id)),
-    ];
+    /**
+     * Split by the exam's live window rather than by its stored status: an exam
+     * the student can sit right now, one that has not opened yet, and one they
+     * already handed in. Exams that closed unattempted are not actionable and
+     * are left out.
+     */
+    const { availableExams, upcomingExams, finishedExams } = useMemo(() => {
+        const now = new Date();
+        const available: any[] = [];
+        const upcoming: any[] = [];
+        const finished: any[] = [];
+        const seen = new Set<string>();
 
-    const pendingExamsCount = exams.filter(e => !e.hasSubmitted).length;
+        for (const exam of gradeExams || []) {
+            seen.add(exam.id);
+            if (exam.hasSubmitted) {
+                finished.push(exam);
+                continue;
+            }
+            const status = getExamLiveStatus(exam, now);
+            if (status === "ACTIVE") available.push(exam);
+            else if (status === "SCHEDULED") upcoming.push(exam);
+        }
+
+        for (const exam of completedExams || []) {
+            if (!seen.has(exam.id)) finished.push(exam);
+        }
+
+        finished.sort((a, b) =>
+            new Date(b.studentResult?.submitted_at || 0).getTime() -
+            new Date(a.studentResult?.submitted_at || 0).getTime());
+
+        return { availableExams: available, upcomingExams: upcoming, finishedExams: finished };
+    }, [gradeExams, completedExams]);
+
+    const hasAnyExam = availableExams.length + upcomingExams.length + finishedExams.length > 0;
+    // The nav badge counts only what the student can actually start now.
+    const pendingExamsCount = availableExams.length;
 
     const isLoading = isLoadingUser || isLoadingProfile || isLoadingChallengeResults;
 
@@ -594,7 +625,7 @@ const StudentDashboard = () => {
                                                                     </p>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-left">
+                                                            <div className="text-start">
                                                                 <p className="font-bold text-lg" style={{ color: subject.color }}>
                                                                     {subject.averageScore}%
                                                                 </p>
@@ -741,7 +772,7 @@ const StudentDashboard = () => {
                                                                     value={dayScore}
                                                                     className="flex-1 h-2"
                                                                 />
-                                                                <span className="w-10 text-sm font-medium text-left">
+                                                                <span className="w-10 text-sm font-medium text-start">
                                                                     {dayScore > 0 ? `${dayScore}%` : "-"}
                                                                 </span>
                                                             </div>
@@ -814,17 +845,17 @@ const StudentDashboard = () => {
                                             <Skeleton className="h-48 rounded-2xl" />
                                             <Skeleton className="h-48 rounded-2xl" />
                                         </div>
-                                    ) : (exams || []).length > 0 ? (
+                                    ) : hasAnyExam ? (
                                         <div className="space-y-8" dir={dir}>
-                                            {/* Pending Exams */}
+                                            {/* Open now */}
                                             <section className="space-y-4">
                                                 <h3 className="text-lg font-bold flex items-center gap-2 text-primary">
                                                     <Target className="w-5 h-5" />
                                                     {t("dash.student.exams.pendingHeader")}
                                                 </h3>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {(exams || []).filter(e => !e.hasSubmitted).length > 0 ? (
-                                                        (exams || []).filter(e => !e.hasSubmitted).map(exam => {
+                                                    {availableExams.length > 0 ? (
+                                                        availableExams.map(exam => {
                                                             const cat = examCategoryLabels[exam.category] || { label: exam.category, icon: "📝", color: "bg-primary" };
                                                             return (
                                                                 <Card key={exam.id} className="overflow-hidden border-2 hover:border-primary/20 transition-all group flex flex-col h-full">
@@ -872,28 +903,80 @@ const StudentDashboard = () => {
                                                 </div>
                                             </section>
 
+                                            {/* Scheduled but not open yet — visible so nothing is a surprise, but not startable */}
+                                            {upcomingExams.length > 0 && (
+                                                <section className="space-y-4">
+                                                    <h3 className="text-lg font-bold flex items-center gap-2 text-blue-600">
+                                                        <Calendar className="w-5 h-5" />
+                                                        {t("dash.student.exams.upcomingHeader")}
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                        {upcomingExams.map(exam => {
+                                                            const cat = examCategoryLabels[exam.category] || { label: exam.category, icon: "📝", color: "bg-primary" };
+                                                            return (
+                                                                <Card key={exam.id} className="overflow-hidden border-2 border-dashed flex flex-col h-full opacity-90">
+                                                                    <div className={`h-1.5 ${cat.color}`} />
+                                                                    <CardContent className="p-5 flex flex-col h-full">
+                                                                        <div className="flex justify-between items-start mb-4">
+                                                                            <Badge variant="outline" className="gap-1.5 border-none bg-muted/50 text-[10px] px-2">
+                                                                                <span>{cat.icon}</span>
+                                                                                {cat.label}
+                                                                            </Badge>
+                                                                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold">
+                                                                                <Clock className="w-3.5 h-3.5" />
+                                                                                {t("dash.student.exams.minutes", { n: exam.duration_minutes })}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex-1">
+                                                                            <h4 className="font-black text-lg mb-1 leading-tight">{exam.title}</h4>
+                                                                            <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+                                                                                <BookOpen className="w-3.5 h-3.5" />
+                                                                                {exam.topic?.title || t("dash.student.exams.generalExam")}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between pt-4 border-t border-dashed mt-auto gap-2">
+                                                                            <span className="text-[10px] font-black text-blue-600 line-clamp-2">
+                                                                                {t("dash.student.exams.opensAt", {
+                                                                                    date: new Date(exam.start_time).toLocaleString(locale, {
+                                                                                        day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+                                                                                    }),
+                                                                                })}
+                                                                            </span>
+                                                                            <Badge variant="outline" className="shrink-0 text-[10px]">
+                                                                                {t("dash.student.exams.notOpenYet")}
+                                                                            </Badge>
+                                                                        </div>
+                                                                    </CardContent>
+                                                                </Card>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </section>
+                                            )}
+
                                             {/* Completed Exams */}
-                                            {(exams || []).filter(e => e.hasSubmitted).length > 0 && (
+                                            {finishedExams.length > 0 && (
                                                 <section className="space-y-4">
                                                     <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground">
                                                         <History className="w-5 h-5" />
                                                         {t("dash.student.exams.completedHeader")}
                                                     </h3>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                        {(exams || []).filter(e => e.hasSubmitted).map(exam => {
-                                                            const res = exam.studentResult;
+                                                        {finishedExams.map(exam => {
+                                                            const res = exam.studentResult || {};
+                                                            const percentage = Number(res.percentage || 0);
                                                             return (
                                                                 <Card key={exam.id} className="group hover:border-primary/20 transition-all overflow-hidden">
-                                                                    <div className={`h-1 ${res.percentage >= 50 ? "bg-emerald-500" : "bg-red-500"}`} />
+                                                                    <div className={`h-1 ${percentage >= 50 ? "bg-emerald-500" : "bg-red-500"}`} />
                                                                     <CardContent className="p-4">
                                                                         <div className="flex items-start justify-between mb-2">
                                                                             <h4 className="font-bold text-sm line-clamp-1 flex-1">{exam.title}</h4>
-                                                                            <div className={`text-sm font-black mr-2 ${res.percentage >= 50 ? "text-emerald-600" : "text-red-600"}`}>
-                                                                                {Math.round(res.percentage)}%
+                                                                            <div className={`text-sm font-black ms-2 ${percentage >= 50 ? "text-emerald-600" : "text-red-600"}`}>
+                                                                                {Math.round(percentage)}%
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                                                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(res.submitted_at).toLocaleDateString(locale)}</span>
+                                                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {res.submitted_at ? new Date(res.submitted_at).toLocaleDateString(locale) : "—"}</span>
                                                                             <Link to={`/exam/${exam.pin}`} className="text-primary hover:underline font-bold">{t("dash.student.exams.detailsLink")}</Link>
                                                                         </div>
                                                                     </CardContent>
