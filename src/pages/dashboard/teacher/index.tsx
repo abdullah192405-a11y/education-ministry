@@ -893,7 +893,7 @@ const TeacherDashboard = () => {
                                                             </div>
                                                             <div className="flex gap-2">
                                                                 <Button size="sm" variant="outline" className="flex-1 text-xs" asChild>
-                                                                    <Link to={`/grade/${gId}/subject/${sId}/topic/${topic.id}`}>
+                                                                    <Link to={`/grade/${gId}/subject/${sId}/topic/${topic.id}?preview=true`}>
                                                                         <Eye className="w-3 h-3 mx-1" />
                                                                         {t("dash.teacher.viewBtn")}
                                                                     </Link>

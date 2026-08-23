@@ -74,7 +74,12 @@ import {
 } from "@/lib/challengeItemNormalize";
 import { buildWheelSubQuestion, getWheelLabels, normalizeWheelSegments } from "@/lib/wheelSegments";
 import { useMutation } from "@tanstack/react-query";
-import { gradeMatchesContentFocus, routeGradeMatchesTopicGrade } from "@/lib/contentVisibility";
+import {
+    canSeeHiddenTopics,
+    isTopicHiddenFromStudents,
+    gradeMatchesContentFocus,
+    routeGradeMatchesTopicGrade,
+} from "@/lib/contentVisibility";
 import { sessionHasScheduledFields } from "@/lib/teacherScheduledChallenge";
 import { useHideFloatingChromeWhileActive } from "@/contexts/FloatingChromeContext";
 import { useTranslation } from "@/contexts/LanguageContext";
@@ -1106,6 +1111,20 @@ const GroupChallenge = () => {
         !!pin && pin.length === 6 && !!(sessionData as { id?: string } | null | undefined)?.id;
     const canSeeChallengeContent = isTeacherChallengeControl || isJoiningWithValidSession;
     const allowTopicRouteVisibilityBypass = routeGradeMatchesTopicGrade(gradeId, visibilityGrade);
+    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    const isTopicHidden = isTopicHiddenFromStudents(topic);
+    if (!canSeeChallengeContent && !showsHiddenTopics && isTopicHidden) {
+        return (
+            <div className="min-h-screen font-cairo bg-background flex flex-col items-center justify-center p-4 text-center">
+                <h1 className="text-3xl font-bold mb-4">المحتوى غير متاح</h1>
+                <p className="text-muted-foreground mb-6 max-w-md">هذا الدرس غير متاح حالياً للطلاب.</p>
+                <Button asChild>
+                    <Link to="/grades">العودة للصفوف</Link>
+                </Button>
+            </div>
+        );
+    }
+
     if (
         visibilityGrade &&
         !gradeMatchesContentFocus(visibilityGrade, focus) &&

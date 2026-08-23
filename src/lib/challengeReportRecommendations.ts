@@ -23,7 +23,7 @@ type GeminiTextResponse = {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
 };
 
-const RECOMMENDATION_MODELS = ["gemini-2.5-flash"];
+const RECOMMENDATION_MODELS = ["gemini-3.6-flash"];
 const RECOMMENDATION_RESPONSE_SCHEMA = {
     type: "OBJECT",
     properties: {

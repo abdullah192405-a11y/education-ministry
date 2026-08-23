@@ -1,7 +1,8 @@
 import { useState } from "react";
 import {
     Search, MoreVertical, Mail,
-    UserCheck, Shield, KeyRound
+    UserCheck, Shield, KeyRound, Pencil, Trash2, Ban, CheckCircle2, UserPlus,
+    GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-    useAllUsers,
     useGrades,
     usePendingTeacherRegistrationRequestsForAdmin,
     useReviewRegistrationRequest,
@@ -36,7 +36,26 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import TeacherClassAccessDialog from "./TeacherClassAccessDialog";
+import UserFormDialog from "./UserFormDialog";
 import { summarizeTeacherClassAccess } from "@/lib/teacherClassAccess";
+import { useToast } from "@/components/ui/use-toast";
+import {
+    useAdminUsers,
+    useAdminSetUserActive,
+    useAdminDeleteUser,
+    AdminUserError,
+} from "@/hooks/useAdminUsers";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 const TeacherAccessSummary = ({ teacherUserId }: { teacherUserId: string }) => {
     const { t } = useDashboardLocale();
@@ -59,9 +78,15 @@ const TeachersTab = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [accessTeacher, setAccessTeacher] = useState<{ id: string; name: string } | null>(null);
-    const { allUsersOptions } = useOrgAdminTenant();
-    const { data: allUsers, isLoading } = useAllUsers(allUsersOptions);
+    const [editingTeacher, setEditingTeacher] = useState<any | null>(null);
+    const [formOpen, setFormOpen] = useState(false);
+    const [pendingDelete, setPendingDelete] = useState<any | null>(null);
+    const { toast } = useToast();
+    const { allUsersOptions, scopedOrganizationId } = useOrgAdminTenant();
+    const { data: allUsers, isLoading } = useAdminUsers(allUsersOptions);
     const { data: user } = useUser();
+    const setUserActive = useAdminSetUserActive();
+    const deleteUser = useAdminDeleteUser();
     const orgId = allUsersOptions.organizationId || null;
     const { data: pendingRequests = [], isLoading: isLoadingPending } = usePendingTeacherRegistrationRequestsForAdmin(orgId);
     const reviewRequest = useReviewRegistrationRequest();
@@ -73,6 +98,62 @@ const TeachersTab = () => {
         (teacher.name?.includes(searchTerm) || teacher.email?.includes(searchTerm)) &&
         (statusFilter === "all" || (statusFilter === "active" ? teacher.is_active !== false : teacher.is_active === false))
     );
+
+    const openCreate = () => {
+        setEditingTeacher(null);
+        setFormOpen(true);
+    };
+
+    const openEdit = (teacher: any) => {
+        setEditingTeacher(teacher);
+        setFormOpen(true);
+    };
+
+    const describeError = (error: unknown, fallbackKey: string) =>
+        error instanceof AdminUserError
+            ? t(`dash.admin.users.err.${error.code}` as any)
+            : t(fallbackKey as any);
+
+    const handleToggleActive = async (teacher: any) => {
+        const nextActive = teacher.is_active === false;
+        try {
+            await setUserActive.mutateAsync({
+                userId: teacher.id,
+                isActive: nextActive,
+                organizationId: scopedOrganizationId,
+            });
+            toast({
+                title: t(nextActive ? "dash.admin.users.toast.restored" : "dash.admin.users.toast.suspended"),
+            });
+        } catch (error) {
+            toast({
+                title: t("dash.common.error"),
+                description: describeError(error, "dash.admin.users.toast.statusFailed"),
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!pendingDelete) return;
+        try {
+            await deleteUser.mutateAsync({
+                userId: pendingDelete.id,
+                role: pendingDelete.role,
+                organizationId: scopedOrganizationId,
+                currentUserId: user?.id,
+            });
+            toast({ title: t("dash.admin.users.toast.deleted") });
+        } catch (error) {
+            toast({
+                title: t("dash.common.error"),
+                description: describeError(error, "dash.admin.users.toast.deleteFailed"),
+                variant: "destructive",
+            });
+        } finally {
+            setPendingDelete(null);
+        }
+    };
 
     const searchIconPos = isRtl ? "right-3" : "left-3";
     const searchPad = isRtl ? "pr-9" : "pl-9";
@@ -167,10 +248,11 @@ const TeachersTab = () => {
                 </div>
                 <Button
                     disabled={!orgAllowsTeachers}
+                    onClick={openCreate}
                     className="gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50"
                 >
-                    <UserCheck className="w-4 h-4" />
-                    {t("dash.admin.teachers.verifyNew")}
+                    <UserPlus className="w-4 h-4" />
+                    {t("dash.admin.users.addTeacher")}
                 </Button>
             </div>
 
@@ -190,7 +272,7 @@ const TeachersTab = () => {
                             <CardContent className="p-4 flex flex-col md:flex-row items-center gap-4">
                                 <div className="flex items-center gap-4 flex-1">
                                     <Avatar className="w-12 h-12 border-2 border-background shadow-sm">
-                                        <AvatarImage src={teacher.avatar_url || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${teacher.id}`} />
+                                        <AvatarImage src={teacher.avatar || `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${teacher.id}`} />
                                         <AvatarFallback>{teacher.name?.[0] || "T"}</AvatarFallback>
                                     </Avatar>
                                     <div>
@@ -212,10 +294,16 @@ const TeachersTab = () => {
                                                 <Mail className="w-3 h-3" />
                                                 {teacher.email}
                                             </div>
-                                            {teacher.subject && (
+                                            {teacher.teacher_profile?.subject?.name && (
                                                 <div className="hidden md:flex items-center gap-1">
                                                     <Shield className="w-3 h-3" />
-                                                    {teacher.subject}
+                                                    {teacher.teacher_profile.subject.name}
+                                                </div>
+                                            )}
+                                            {teacher.teacher_profile?.grade?.name && (
+                                                <div className="hidden md:flex items-center gap-1">
+                                                    <GraduationCap className="w-3 h-3" />
+                                                    {teacher.teacher_profile.grade.name}
                                                 </div>
                                             )}
                                         </div>
@@ -225,7 +313,7 @@ const TeachersTab = () => {
 
                                 <div className="flex items-center gap-6 text-sm">
                                     <div className="text-center">
-                                        <p className="font-bold text-lg">{teacher.total_students || 0}</p>
+                                        <p className="font-bold text-lg">{teacher.teacher_profile?.total_students || 0}</p>
                                         <p className="text-muted-foreground text-xs">{t("dash.admin.teachers.studentCount")}</p>
                                     </div>
                                 </div>
@@ -253,9 +341,23 @@ const TeachersTab = () => {
                                             >
                                                 {t("dash.admin.teachers.manageAccess")}
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem>{t("dash.admin.teachers.editData")}</DropdownMenuItem>
-                                            <DropdownMenuItem>{t("dash.admin.teachers.sendMessage")}</DropdownMenuItem>
-                                            <DropdownMenuItem className="text-destructive">{t("dash.admin.teachers.suspend")}</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => openEdit(teacher)} className="gap-2">
+                                                <Pencil className="w-4 h-4" />
+                                                {t("dash.admin.teachers.editData")}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleToggleActive(teacher)} className="gap-2">
+                                                {teacher.is_active === false
+                                                    ? <><CheckCircle2 className="w-4 h-4" />{t("dash.admin.users.restoreAction")}</>
+                                                    : <><Ban className="w-4 h-4" />{t("dash.admin.users.suspendAction")}</>}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                className="text-destructive gap-2"
+                                                onClick={() => setPendingDelete(teacher)}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                {t("dash.admin.users.deleteAction")}
+                                            </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </div>
@@ -271,6 +373,33 @@ const TeachersTab = () => {
                 teacherUserId={accessTeacher?.id ?? null}
                 teacherName={accessTeacher?.name}
             />
+
+            <UserFormDialog
+                open={formOpen}
+                onOpenChange={setFormOpen}
+                user={editingTeacher}
+                defaultRole="TEACHER"
+            />
+
+            <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+                <AlertDialogContent dir={dir}>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t("dash.admin.users.deleteTitle")}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {t("dash.admin.users.deleteDesc", { name: pendingDelete?.name || pendingDelete?.email || "" })}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-2">
+                        <AlertDialogCancel>{t("dash.common.cancel")}</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive hover:bg-destructive/90"
+                            onClick={handleDelete}
+                        >
+                            {t("dash.admin.users.deleteConfirm")}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

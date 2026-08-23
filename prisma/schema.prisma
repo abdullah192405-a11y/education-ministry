@@ -528,7 +528,7 @@ model PlayerSession {
 
   // Relations
   session ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User?            @relation(fields: [userId], references: [id])
+  user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([sessionId, userId])
   @@map("player_sessions")
@@ -710,7 +710,7 @@ model AuditLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  user User? @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([action])
@@ -858,6 +858,7 @@ model ExamResult {
   maxScore         Int      @default(0) @map("max_score")
   percentage       Float    @default(0)
   timeTaken        Float    @default(0) @map("time_taken")
+  attemptsUsed     Int      @default(1) @map("attempts_used")
   questionResults  Json?    @map("question_results")
   startedAt        DateTime? @default(now()) @map("started_at")
   submittedAt      DateTime? @default(now()) @map("submitted_at")

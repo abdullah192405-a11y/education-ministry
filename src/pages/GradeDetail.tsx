@@ -6,18 +6,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Users, GraduationCap, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
-import { useGradeDetail } from "@/hooks/useDatabase";
+import { useGradeDetail, useUser } from "@/hooks/useDatabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "./NotFound";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKey } from "@/lib/i18n/translations";
+import { canSeeHiddenTopics, isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 
 const GradeDetail = () => {
     const { gradeId } = useParams(); // This will be the slug
     const { data: grade, isLoading, error } = useGradeDetail(gradeId || "");
+    const { data: currentUser } = useUser();
     const { t, dir } = useTranslation();
     const localeId = t("common.locale");
     const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
+    const showsHiddenTopics = canSeeHiddenTopics(currentUser?.role);
+    const getVisibleTopicsCount = (topics?: unknown[]) =>
+        (topics || []).filter((tp) => showsHiddenTopics || !isTopicHiddenFromStudents(tp)).length;
 
     const getLevelKey = (level: string): TranslationKey | null => {
         switch (level) {
@@ -78,7 +83,7 @@ const GradeDetail = () => {
     const organizationName = getOrganizationName(grade);
     const topicCount =
         grade.subjects?.reduce(
-            (total: number, subject: { topics?: unknown[] }) => total + (subject.topics?.length || 0),
+            (total: number, subject: { topics?: unknown[] }) => total + getVisibleTopicsCount(subject.topics),
             0,
         ) || 0;
     const studentsCount = (grade.students_count || grade.studentsCount || 0).toLocaleString(localeId);
@@ -209,7 +214,7 @@ const GradeDetail = () => {
                                                 <div className="flex items-center justify-between pt-4 border-t">
                                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                         <BookOpen className="w-4 h-4" />
-                                                        <span>{subject.topics?.length || 0} {t("gradeDetail.topicSuffix")}</span>
+                                                        <span>{getVisibleTopicsCount(subject.topics)} {t("gradeDetail.topicSuffix")}</span>
                                                     </div>
                                                     <Button variant="ghost" size="sm" className="gap-2 group-hover:gap-3 transition-all">
                                                         {t("gradeDetail.exploreBtn")}

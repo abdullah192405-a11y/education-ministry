@@ -848,14 +848,14 @@ const TeacherChallengesTab = ({ activeChallenges, onCopyToClipboard, gradeId, su
                                                             {t("dash.teacher.challengesTab.endChallengeDesc", { pin: challenge.pin })}
                                                         </AlertDialogDescription>
                                                     </AlertDialogHeader>
-                                                    <AlertDialogFooter className="flex-row-reverse gap-2">
+                                                    <AlertDialogFooter className="gap-2">
+                                                        <AlertDialogCancel>{t("dash.teacher.challengesTab.back")}</AlertDialogCancel>
                                                         <AlertDialogAction
                                                             className="bg-destructive hover:bg-destructive/90"
                                                             onClick={() => onDeleteChallenge && onDeleteChallenge(challenge.pin)}
                                                         >
                                                             {t("dash.teacher.challengesTab.endChallengeFinal")}
                                                         </AlertDialogAction>
-                                                        <AlertDialogCancel>{t("dash.teacher.challengesTab.back")}</AlertDialogCancel>
                                                     </AlertDialogFooter>
                                                 </AlertDialogContent>
                                             </AlertDialog>

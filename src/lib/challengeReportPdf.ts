@@ -40,9 +40,9 @@ function pdfErrors(language?: ReportLanguage) {
   return PDF_ERRORS[language === "en" ? "en" : "ar"];
 }
 
-function buildReportFileName(extension: "pdf" | "html"): string {
+function buildReportFileName(extension: "pdf" | "html", prefix?: string): string {
   const day = new Date().toISOString().slice(0, 10);
-  return `challenge-report-${day}-${Date.now()}.${extension}`;
+  return `${prefix || "challenge-report"}-${day}-${Date.now()}.${extension}`;
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
@@ -194,7 +194,7 @@ async function downloadChallengeReportPdfInBrowser(
   }
 
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  downloadBlob(blob, buildReportFileName("html"));
+  downloadBlob(blob, buildReportFileName("html", opts.fileNamePrefix));
   return { method: "html-file" };
 }
 
@@ -226,7 +226,7 @@ export async function downloadChallengeReportPdf(
       throw new Error(errors.invalidBlob);
     }
 
-    downloadBlob(blob, buildReportFileName("pdf"));
+    downloadBlob(blob, buildReportFileName("pdf", opts.fileNamePrefix));
     closeChallengeReportPrintWindow(printWindow);
     return { method: "server-pdf" };
   } catch (serverError) {

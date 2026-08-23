@@ -70,6 +70,8 @@ import { getLessonRatingLabel } from "./lessonRatingLabels";
 
 export type ChallengeReportCsvOptions = {
     language?: ReportLanguage;
+    /** Leading part of the downloaded file name. Defaults to `challenge-report`. */
+    fileNamePrefix?: string;
     topicTitle: string;
     lessonTitle?: string;
     className?: string;
@@ -187,7 +189,7 @@ export function downloadChallengeResultsCsv(opts: ChallengeReportCsvOptions): vo
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `challenge-report-${new Date().toISOString().slice(0, 10)}-${Date.now()}.csv`;
+    a.download = `${opts.fileNamePrefix || "challenge-report"}-${new Date().toISOString().slice(0, 10)}-${Date.now()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
