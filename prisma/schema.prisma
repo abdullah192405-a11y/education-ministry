@@ -2,15 +2,22 @@
 // Lab4 - Education Ministry Platform
 // Prisma Schema for Supabase (PostgreSQL)
 // ============================================================================
-// This schema covers the complete data model for the educational platform:
-// - Users & Authentication (Student, Teacher, Admin roles)
-// - Education Hierarchy (Grades > Subjects > Topics)
-// - Content & Media (Videos, Images, Text, PDFs)
-// - Quizzes & Questions
-// - Channels & Educational Content
-// - Challenges & Game Sessions (Single/Group)
-// - Gamification (Badges, Leaderboards, Streaks)
-// - Analytics & Audit Logs
+// Full data model, introspected against the live `public` schema:
+//   - Users, Auth, Organizations & Subscriptions
+//   - Registration / approval chain (pending + requests)
+//   - Education hierarchy (Grades > Subjects > Topics)
+//   - Content & media, quizzes, topic engagement (discussions, ratings, live)
+//   - Challenges & game sessions, exams, gamification
+//   - Wahj reading program
+//   - Analytics, audit logs, notifications, support tickets
+//
+// NOTES ON DRIFT / RAW SQL
+//   * Migrations for this project live in `supabase/migrations/*.sql`, not in
+//     `prisma/migrations`. This schema mirrors the deployed database so the
+//     generated client is type-accurate; do not run `prisma migrate dev`
+//     against it without checking the notes at the bottom of this file.
+//   * Several columns are `text` + CHECK constraint rather than a PG enum.
+//     Those are typed `String` here with the allowed values documented.
 // ============================================================================
 
 generator client {
@@ -22,10 +29,10 @@ datasource db {
 }
 
 // ============================================================================
-// 1. USERS & AUTHENTICATION
+// 1. USERS, ORGANIZATIONS & AUTHENTICATION
 // ============================================================================
 
-/// User roles in the platform
+/// User roles in the platform (PG enum "UserRole")
 enum UserRole {
   STUDENT
   TEACHER
@@ -33,83 +40,231 @@ enum UserRole {
   ADMIN
   /// Platform operator: assigns subscription packages / orgs — not tied to one school dashboard.
   SUPERADMIN
+  /// ١ — فرد مستقل خارج أي مؤسسة (محتوى إثرائي)
+  INDIVIDUAL
 }
 
-/// مؤسسة: تعليمي أو إثرائي
-enum OrganizationKind {
-  EDUCATIONAL
-  ENRICHMENT
-}
-
-/// باقة المؤسسات: أدمن+طالب فقط، أو أدمن+معلم+طالب
-enum OrgSubscriptionPackage {
-  /// ٢ — مؤسسة: أدمن + طالب
-  INSTITUTION_ADMIN_STUDENT
-  /// ٣ — مؤسسة: أدمن + معلم + طالب
-  INSTITUTION_FULL
-}
-
-/// ١ — أفراد: مجاني، محتوى إثرائي، بدون رقابة/تتبع (يُضبط على مستخدم ليس تابعًا لمؤسسة)
-enum IndividualTier {
-  INDIVIDUAL_FREE
+/// Self-serve plan for users who are not part of an institution (PG enum "SubscriptionPlan")
+enum SubscriptionPlan {
+  /// فرد: محتوى إثرائي شخصي
+  INDIVIDUAL
+  /// معلم مستقل: ينشئ صفوفًا ويدعو طلابًا بدون مؤسسة
+  TEACHER_INDEPENDENT
 }
 
 /// Tenant (subscription sold by superadmin)
 model Organization {
-  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                  String
-  slug                  String                 @unique
-  kind                  OrganizationKind
-  subscriptionPackage   OrgSubscriptionPackage @map("subscription_package")
-  isActive              Boolean                @default(true) @map("is_active")
-  createdAt             DateTime               @default(now()) @map("created_at")
-  updatedAt             DateTime               @updatedAt @map("updated_at")
+  id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+  slug String @unique
 
-  users User[]
+  /// text + CHECK: EDUCATIONAL | ENRICHMENT | BOTH
+  kind String
+  /// text + CHECK: INSTITUTION_ADMIN_STUDENT (٢) | INSTITUTION_FULL (٣)
+  subscriptionPackage String @map("subscription_package")
+  /// text + CHECK: SCHOOL | ORG
+  entityType String @default("SCHOOL") @map("entity_type")
 
+  description String?
+  imageUrl    String?  @map("image_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users                User[]
+  grades               Grade[]
+  subscription         OrganizationSubscription?
+  registrationRequests RegistrationRequest[]
+
+  @@index([slug], map: "idx_organizations_slug")
   @@map("organizations")
+}
+
+/// Billing record for an institution tenant (one row per organization)
+model OrganizationSubscription {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @unique @map("organization_id") @db.Uuid
+
+  /// text + CHECK: INSTITUTION_ADMIN_STUDENT | INSTITUTION_FULL
+  subscriptionPackage String @map("subscription_package")
+  /// text + CHECK: MONTHLY | YEARLY
+  billingCycle String @default("MONTHLY") @map("billing_cycle")
+  /// text + CHECK: ACTIVE | TRIAL | PAST_DUE | CANCELED
+  status String @default("ACTIVE")
+
+  priceAmount   Decimal   @default(0) @map("price_amount") @db.Decimal(10, 2)
+  currencyCode  String    @default("SAR") @map("currency_code")
+  startsAt      DateTime  @default(now()) @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime? @map("ends_at") @db.Timestamptz(6)
+  nextBillingAt DateTime? @map("next_billing_at") @db.Timestamptz(6)
+  autoRenew     Boolean   @default(true) @map("auto_renew")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status], map: "idx_org_subscriptions_status")
+  @@index([nextBillingAt], map: "idx_org_subscriptions_next_billing")
+  @@map("organization_subscriptions")
 }
 
 /// User account - integrates with Supabase Auth
 model User {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  authId    String?   @unique @map("auth_id") // Supabase Auth user id
-  email     String    @unique
-  name      String
-  avatar    String?
-  role      UserRole  @default(STUDENT)
-  verified  Boolean   @default(false)
-  details   String? // e.g., "الصف الأول الابتدائي" or "مادة اللغة العربية"
-  isActive  Boolean   @default(true) @map("is_active")
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authId   String?  @unique @map("auth_id") // Supabase Auth user id (text, not uuid)
+  email    String   @unique
+  name     String
+  avatar   String?
+  role     UserRole @default(STUDENT)
+  verified Boolean  @default(false)
+  details  String? // e.g., "الصف الأول الابتدائي" or "مادة اللغة العربية"
+  isActive Boolean  @default(true) @map("is_active")
+
   /// MD5 hex digest of password (legacy; matches public.login_user)
-  passwordHash String? @map("password_hash")
-  lastLogin DateTime? @map("last_login")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  passwordHash String?   @map("password_hash")
+  lastLogin    DateTime? @map("last_login")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   /// When set, user belongs to a subscribed institution (packages ٢ أو ٣).
   organizationId String?       @map("organization_id") @db.Uuid
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  /// For users without an organization: INDIVIDUAL_FREE = باقة الأفراد (إثرائي فقط، بدون رقابة). Null = legacy/full access.
-  individualTier IndividualTier? @map("individual_tier")
+  /// For users without an organization. text + CHECK: INDIVIDUAL_FREE only. Null = legacy/full access.
+  individualTier String? @map("individual_tier")
+
+  // --- Self-serve (non-institution) plan & quota ---
+  subscriptionPlan SubscriptionPlan? @map("subscription_plan")
+  /// Points granted per month by the plan
+  monthlyPoints  Int?      @default(0) @map("monthly_points")
+  /// Points currently left to spend
+  pointsBalance  Int?      @default(0) @map("points_balance")
+  maxClasses     Int?      @default(0) @map("max_classes")
+  maxMembers     Int?      @default(0) @map("max_members")
+  planStartedAt  DateTime? @map("plan_started_at") @db.Timestamptz(6)
 
   // Role-specific profiles
-  studentProfile StudentProfile?
-  teacherProfile TeacherProfile?
+  studentProfile    StudentProfile?
+  teacherProfile    TeacherProfile?
+  individualProfile IndividualProfile?
 
-  // Relations
-  challengeResults ChallengeResult[]
-  playerSessions   PlayerSession[]
-  earnedBadges     UserBadge[]
-  auditLogs        AuditLog[]
-  notifications    Notification[]
-  hostedExams      Exam[]      @relation("HostedExams")
-  examResults      ExamResult[]
+  // Activity
+  challengeResults       ChallengeResult[]
+  playerSessions         PlayerSession[]
+  earnedBadges           UserBadge[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  hostedExams            Exam[]          @relation("HostedExams")
+  examResults            ExamResult[]
   supportTicketsAuthored SupportTicket[] @relation("SupportTicketAuthor")
 
+  // Topic engagement
+  topicDiscussions        TopicDiscussion[]
+  topicDiscussionReplies  TopicDiscussionReply[]
+  topicDiscussionReactions TopicDiscussionReaction[]
+  topicRatings            TopicRating[]
+  topicContentReports     TopicContentReport[]
 
+  // Authorship (created_by columns)
+  createdGrades             Grade[]             @relation("GradeCreatedBy")
+  createdSubjects           Subject[]           @relation("SubjectCreatedBy")
+  createdTopics             Topic[]             @relation("TopicCreatedBy")
+  createdTopicMedia         TopicMedia[]        @relation("TopicMediaCreatedBy")
+  createdQuizQuestions      QuizQuestion[]      @relation("QuizQuestionCreatedBy")
+  createdChallengeQuestions ChallengeQuestion[] @relation("ChallengeQuestionCreatedBy")
+
+  // Registration approval chain
+  registrationRequestSubmitted RegistrationRequest?  @relation("RegistrationApplicant")
+  registrationRequestsReviewed RegistrationRequest[] @relation("RegistrationReviewer")
+  registrationRequestsAsTeacher RegistrationRequest[] @relation("RegistrationTeacher")
+
+  // Wahj reading program
+  wahjReportLinks WahjReadingReportLink[]
+
+  @@index([organizationId], map: "idx_users_organization_id")
   @@map("users")
+}
+
+/// Profile for INDIVIDUAL users (self-serve enrichment creators)
+model IndividualProfile {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  bio            String?
+  specialization String?
+  totalContent   Int?     @default(0) @map("total_content")
+  totalViews     Int?     @default(0) @map("total_views")
+  totalShares    Int?     @default(0) @map("total_shares")
+  /// Public share URL slug
+  publicSlug    String?   @unique @map("public_slug")
+  shareEnabled  Boolean?  @default(true) @map("share_enabled")
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("individual_profiles")
+}
+
+/// Email-verification holding pen: rows become `users` once the PIN/token is used.
+/// No FKs — organization_id / grade_id are plain uuids resolved at activation time.
+model PendingRegistration {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String
+  name           String
+  /// STUDENT | TEACHER | ADMIN | INDIVIDUAL
+  role           String
+  organizationId String? @map("organization_id") @db.Uuid
+  gradeId        String? @map("grade_id") @db.Uuid
+
+  passwordHash String @map("password_hash")
+  /// Plaintext held only until activation, then discarded
+  passwordTemp String @map("password_temp")
+  /// 6-digit code emailed to the applicant
+  pin       String
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// DB also has expression indexes on lower(email) and (pin, lower(email)) — see notes at EOF.
+  @@map("pending_registrations")
+}
+
+/// Approval chain: a created user waits here until the right role approves them.
+model RegistrationRequest {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantUserId String  @unique @map("applicant_user_id") @db.Uuid
+  /// text + CHECK: TEACHER | STUDENT | ADMIN
+  applicantRole   String  @map("applicant_role")
+  organizationId  String? @map("organization_id") @db.Uuid
+  gradeId         String? @map("grade_id") @db.Uuid
+  /// Teacher who owns the class a student is joining
+  teacherUserId   String? @map("teacher_user_id") @db.Uuid
+  /// text + CHECK: INSTITUTION_ADMIN_STUDENT | INSTITUTION_FULL (nullable)
+  requestedPackage String? @map("requested_package")
+
+  /// text + CHECK: PENDING | APPROVED | REJECTED
+  status String @default("PENDING")
+  /// text + CHECK: SUPERADMIN | ADMIN | TEACHER — who must sign off
+  approverRole String @map("approver_role")
+
+  reviewedByUserId String?   @map("reviewed_by_user_id") @db.Uuid
+  reviewNote       String?   @map("review_note")
+  reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  applicant    User          @relation("RegistrationApplicant", fields: [applicantUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  grade        Grade?        @relation(fields: [gradeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  teacher      User?         @relation("RegistrationTeacher", fields: [teacherUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reviewedBy   User?         @relation("RegistrationReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([status], map: "idx_registration_requests_status")
+  @@index([organizationId, status], map: "idx_registration_requests_org")
+  @@index([teacherUserId, status], map: "idx_registration_requests_teacher")
+  @@map("registration_requests")
 }
 
 /// Student-specific profile data
@@ -128,9 +283,8 @@ model StudentProfile {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  // Relations
   user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  grade           Grade?                   @relation(fields: [gradeId], references: [id])
+  grade           Grade?                   @relation(fields: [gradeId], references: [id], onDelete: SetNull)
   subjectProgress StudentSubjectProgress[]
   topicActivities StudentTopicActivity[]
   enrollments     StudentEnrollment[]
@@ -151,14 +305,14 @@ model TeacherProfile {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subject Subject? @relation(fields: [subjectId], references: [id])
-  grade   Grade?   @relation(fields: [gradeId], references: [id])
-  topics         Topic[]                 @relation("TeacherTopics")
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject        Subject?               @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  grade          Grade?                 @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  topics         Topic[]                @relation("TeacherTopics")
   uploadedSounds TeacherUploadedSound[]
   gradeAccess    TeacherGradeAccess[]
   subjectAccess  TeacherSubjectAccess[]
+  liveSessions   TopicLiveSession[]
 
   @@map("teacher_profiles")
 }
@@ -168,12 +322,13 @@ model TeacherGradeAccess {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   teacherProfileId String   @map("teacher_profile_id") @db.Uuid
   gradeId          String   @map("grade_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([teacherProfileId, gradeId])
+  @@index([teacherProfileId], map: "idx_teacher_grade_access_teacher")
   @@map("teacher_grade_access")
 }
 
@@ -183,29 +338,31 @@ model TeacherSubjectAccess {
   teacherProfileId String   @map("teacher_profile_id") @db.Uuid
   gradeId          String   @map("grade_id") @db.Uuid
   subjectId        String   @map("subject_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade)
-  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([teacherProfileId, subjectId])
+  @@index([teacherProfileId, gradeId], map: "idx_teacher_subject_access_teacher_grade")
   @@map("teacher_subject_access")
 }
 
 /// Teacher-owned custom interaction sounds (not shared across teachers).
 model TeacherUploadedSound {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  teacherId      String   @map("teacher_id") @db.Uuid
-  soundCategory  String   @map("sound_category") // correct | wrong | background
-  url            String
-  label          String?
-  storagePath    String?  @map("storage_path")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherId String @map("teacher_id") @db.Uuid
+  /// text + CHECK: correct | wrong | background
+  soundCategory String   @map("sound_category")
+  url           String
+  label         String?
+  storagePath   String?  @map("storage_path")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([teacherId, soundCategory])
+  @@index([teacherId, soundCategory, createdAt(sort: Desc)], map: "idx_teacher_uploaded_sounds_teacher_category")
   @@map("teacher_uploaded_sounds")
 }
 
@@ -238,16 +395,24 @@ model Grade {
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
 
-  // Relations
+  /// Tenant that owns this class; null = global/legacy content
+  organizationId String? @map("organization_id") @db.Uuid
+  createdById    String? @map("created_by") @db.Uuid
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  createdBy    User?         @relation("GradeCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   subjects             Subject[]
   studentProfiles      StudentProfile[]
   teacherProfiles      TeacherProfile[]
   teacherGradeAccess   TeacherGradeAccess[]
   teacherSubjectAccess TeacherSubjectAccess[]
   enrollments          StudentEnrollment[]
-  exams           Exam[]
-  supportTickets  SupportTicket[]
+  exams                Exam[]
+  supportTickets       SupportTicket[]
+  registrationRequests RegistrationRequest[]
 
+  @@index([organizationId], map: "idx_grades_organization_id")
   @@map("grades")
 }
 
@@ -261,11 +426,13 @@ model Subject {
   color       String? // hex color for UI
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
+  createdById String?  @map("created_by") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  grade                Grade                    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  grade     Grade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("SubjectCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   topics               Topic[]
   teacherProfiles      TeacherProfile[]
   teacherSubjectAccess TeacherSubjectAccess[]
@@ -286,27 +453,41 @@ model Topic {
   duration    String? // e.g., "25 دقيقة"
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
+  createdById String?  @map("created_by") @db.Uuid
+
+  /// Student discussion board on/off for this topic
+  discussionsEnabled Boolean @default(true) @map("discussions_enabled")
   /// When true, guests must enter name/extra info before single-player challenge; results stored for teacher.
   collectSingleChallengeParticipantData Boolean @default(false) @map("collect_single_challenge_participant_data")
-  /// When both are set, students skip challenge pickers (single/group + activity category).
-  studentChallengeMode     String? @map("student_challenge_mode")
-  studentChallengeCategory String? @map("student_challenge_category")
-  correctSoundUrl          String? @map("correct_sound_url")
-  wrongSoundUrl            String? @map("wrong_sound_url")
-  answeringBackgroundSoundUrl String? @map("answering_background_sound_url")
-  wheelSpinSoundUrl        String? @map("wheel_spin_sound_url")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  subject           Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  /// When both are set, students skip challenge pickers.
+  /// text + CHECK: single | group
+  studentChallengeMode String? @map("student_challenge_mode")
+  /// text + CHECK: activities | games | mixed
+  studentChallengeCategory String? @map("student_challenge_category")
+
+  correctSoundUrl             String? @map("correct_sound_url")
+  wrongSoundUrl               String? @map("wrong_sound_url")
+  answeringBackgroundSoundUrl String? @map("answering_background_sound_url")
+  wheelSpinSoundUrl           String? @map("wheel_spin_sound_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("TopicCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   mediaItems        TopicMedia[]
   quizQuestions     QuizQuestion[]
-  challengeItems    ChallengeQuestion[]    @relation("TopicChallengeQuestions")
+  challengeItems    ChallengeQuestion[] @relation("TopicChallengeQuestions")
   challengeSessions ChallengeSession[]
   topicActivities   StudentTopicActivity[]
-  teachers          TeacherProfile[]       @relation("TeacherTopics")
+  teachers          TeacherProfile[]    @relation("TeacherTopics")
   exams             Exam[]
+  discussions       TopicDiscussion[]
+  ratings           TopicRating[]
+  liveSessions      TopicLiveSession[]
+  contentReport     TopicContentReport?
 
   @@map("topics")
 }
@@ -337,10 +518,11 @@ model TopicMedia {
   extractedText String?   @map("extracted_text") @db.Text
   pdfBase64     String?   @map("pdf_base64") @db.Text
   sortOrder     Int       @default(0) @map("sort_order")
+  createdById   String?   @map("created_by") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  // Relations
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic     Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("TopicMediaCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("topic_media")
 }
@@ -358,16 +540,182 @@ model QuizQuestion {
   correctAnswer Int      @map("correct_answer") // index into options
   explanation   String?
   sortOrder     Int      @default(0) @map("sort_order")
+  createdById   String?  @map("created_by") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic     Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("QuizQuestionCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("quiz_questions")
 }
 
+// ============================================================================
+// 5. TOPIC ENGAGEMENT: Discussions, Ratings, Live Sessions, Reports
+// ============================================================================
 
+/// Discussion thread started on a topic
+model TopicDiscussion {
+  id      String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId String @map("topic_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+  /// CHECK: must not be blank
+  content String @db.Text
+
+  attachmentUrl  String? @map("attachment_url")
+  attachmentName String? @map("attachment_name")
+  attachmentType String? @map("attachment_type")
+  sticker        String?
+
+  isPinned  Boolean  @default(false) @map("is_pinned")
+  isLocked  Boolean  @default(false) @map("is_locked")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  topic     Topic                     @relation(fields: [topicId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  replies   TopicDiscussionReply[]
+  reactions TopicDiscussionReaction[]
+
+  @@index([topicId, createdAt(sort: Desc)], map: "idx_topic_discussions_topic_created")
+  @@map("topic_discussions")
+}
+
+/// Reply within a discussion thread
+model TopicDiscussionReply {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discussionId String @map("discussion_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  /// CHECK: must not be blank
+  content String @db.Text
+
+  attachmentUrl  String? @map("attachment_url")
+  attachmentName String? @map("attachment_name")
+  attachmentType String? @map("attachment_type")
+  sticker        String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  discussion TopicDiscussion           @relation(fields: [discussionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reactions  TopicDiscussionReaction[]
+
+  @@index([discussionId, createdAt], map: "idx_topic_discussion_replies_discussion_created")
+  @@map("topic_discussion_replies")
+}
+
+/// Emoji reaction on exactly one of a discussion or a reply (CHECK enforces XOR)
+model TopicDiscussionReaction {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discussionId String? @map("discussion_id") @db.Uuid
+  replyId      String? @map("reply_id") @db.Uuid
+  userId       String  @map("user_id") @db.Uuid
+  /// CHECK: must not be blank
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  discussion TopicDiscussion?      @relation(fields: [discussionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reply      TopicDiscussionReply? @relation(fields: [replyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  /// DB also has two PARTIAL unique indexes (user_id, discussion_id, emoji) WHERE discussion_id IS NOT NULL
+  /// and (user_id, reply_id, emoji) WHERE reply_id IS NOT NULL — see notes at EOF.
+  @@index([discussionId], map: "idx_topic_discussion_reactions_discussion_id")
+  @@index([replyId], map: "idx_topic_discussion_reactions_reply_id")
+  @@map("topic_discussion_reactions")
+}
+
+/// Star rating for a topic. Either a signed-in user or a guest, keyed by rater_key.
+model TopicRating {
+  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId String  @map("topic_id") @db.Uuid
+  userId  String? @map("user_id") @db.Uuid
+  /// Anonymous browser identifier; CHECK requires user_id OR guest_id
+  guestId String? @map("guest_id")
+  /// Dedupe key: user id or guest id, whichever identifies the rater
+  raterKey String @map("rater_key")
+
+  /// CHECK: 1..5
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user  User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([topicId, raterKey])
+  @@index([topicId], map: "idx_topic_ratings_topic_id")
+  @@index([raterKey], map: "idx_topic_ratings_rater_key")
+  @@map("topic_ratings")
+}
+
+/// Scheduled live class attached to a topic
+model TopicLiveSession {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId   String @map("topic_id") @db.Uuid
+  teacherId String @map("teacher_id") @db.Uuid
+  /// text + CHECK: GOOGLE_MEET | ZOOM | MICROSOFT_TEAMS | CUSTOM
+  provider String
+  /// CHECK: must not be blank
+  meetingUrl String  @map("meeting_url")
+  title      String?
+  notes      String?
+
+  /// CHECK: ends_at > starts_at
+  startsAt  DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime @map("ends_at") @db.Timestamptz(6)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  topic   Topic          @relation(fields: [topicId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([topicId, startsAt(sort: Desc)], map: "idx_topic_live_sessions_topic_time")
+  @@index([teacherId, startsAt(sort: Desc)], map: "idx_topic_live_sessions_teacher_time")
+  @@map("topic_live_sessions")
+}
+
+/// Denormalized per-topic analytics snapshot, recomputed for teacher dashboards
+model TopicContentReport {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId       String  @unique @map("topic_id") @db.Uuid
+  teacherUserId String? @map("teacher_user_id") @db.Uuid
+
+  viewers       Int @default(0)
+  uniqueViewers Int @default(0) @map("unique_viewers")
+
+  totalAttempts  Int @default(0) @map("total_attempts")
+  singleAttempts Int @default(0) @map("single_attempts")
+  groupAttempts  Int @default(0) @map("group_attempts")
+
+  uniqueParticipants       Int @default(0) @map("unique_participants")
+  uniqueSingleParticipants Int @default(0) @map("unique_single_participants")
+  uniqueGroupParticipants  Int @default(0) @map("unique_group_participants")
+
+  averageScoreOverall Int @default(0) @map("average_score_overall")
+  averageScoreSingle  Int @default(0) @map("average_score_single")
+  averageScoreGroup   Int @default(0) @map("average_score_group")
+  highestScore        Int @default(0) @map("highest_score")
+  passRate            Int @default(0) @map("pass_rate")
+
+  /// Per-question breakdown: [{ questionId, attempts, correct, ... }]
+  questionAnalytics Json      @default("[]") @map("question_analytics")
+  lastAttemptAt     DateTime? @map("last_attempt_at") @db.Timestamptz(6)
+  computedAt        DateTime  @default(now()) @map("computed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  topic       Topic @relation(fields: [topicId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  teacherUser User? @relation(fields: [teacherUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([topicId], map: "idx_topic_content_reports_topic_id")
+  @@index([teacherUserId], map: "idx_topic_content_reports_teacher_id")
+  @@index([computedAt(sort: Desc)], map: "idx_topic_content_reports_computed_at")
+  @@map("topic_content_reports")
+}
 
 // ============================================================================
 // 6. CHALLENGES & GAME SESSIONS
@@ -379,7 +727,7 @@ enum ChallengeMode {
   GROUP
 }
 
-/// Activity types for challenges
+/// Activity types for challenges (PG enum exists; currently unreferenced by columns)
 enum ActivityType {
   MULTIPLE_CHOICE // اختيار متعدد
   TRUE_FALSE // صح وخطأ
@@ -388,7 +736,7 @@ enum ActivityType {
   ORDER_QUESTIONS // رتب الأسئلة
 }
 
-/// Game types for challenges
+/// Game types for challenges (PG enum exists; currently unreferenced by columns)
 enum GameType {
   PUZZLE // لعبة الألغاز
   SHOOTING // لعبة التصويب
@@ -418,32 +766,34 @@ enum QuestionType {
 
 /// Challenge question (rich question format for all types)
 model ChallengeQuestion {
-  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  topicId          String?      @map("topic_id") @db.Uuid
-  examId           String?      @map("exam_id") @db.Uuid
+  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId String? @map("topic_id") @db.Uuid
+  examId  String? @map("exam_id") @db.Uuid
 
-  type             QuestionType
-  typeTitle        String?      @map("type_title")
-  question         String
-  options          String[] // For MCQ, True/False, Shooting
-  correctAnswer    String?      @map("correct_answer") // Can be index, string, or JSON array
-  imageUrl         String?      @map("image_url")
-  videoUrl         String?      @map("video_url")
-  audioUrl         String?      @map("audio_url")
-  pairs            Json? // For matching: [{ left, right }]
-  orderItems       String[]     @map("order_items") // For ordering (in correct order)
-  explanation      String?
-  points           Int          @default(100)
-  timeLimit        Int          @default(15) @map("time_limit") // seconds
-  wheelSegments    Json?        @map("wheel_segments") // For wheel_spin
-  sortOrder        Int          @default(0) @map("sort_order")
-  isActive         Boolean      @default(true) @map("is_active")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+  type          QuestionType
+  typeTitle     String?      @map("type_title")
+  question      String
+  options       String[] // For MCQ, True/False, Shooting
+  correctAnswer String?      @map("correct_answer") // Can be index, string, or JSON array
+  imageUrl      String?      @map("image_url")
+  videoUrl      String?      @map("video_url")
+  audioUrl      String?      @map("audio_url")
+  pairs         Json? // For matching: [{ left, right }]
+  orderItems    String[]     @map("order_items") // For ordering (in correct order)
+  explanation   String?
+  points        Int          @default(100)
+  timeLimit     Int          @default(15) @map("time_limit") // seconds
+  wheelSegments Json?        @map("wheel_segments") // For wheel_spin
+  sortOrder     Int          @default(0) @map("sort_order")
+  isActive      Boolean      @default(true) @map("is_active")
+  createdById   String?      @map("created_by") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  // Relations
-  topic            Topic?            @relation("TopicChallengeQuestions", fields: [topicId], references: [id], onDelete: Cascade)
-  exam             Exam?             @relation("ExamQuestions", fields: [examId], references: [id], onDelete: Cascade)
+  topic     Topic? @relation("TopicChallengeQuestions", fields: [topicId], references: [id], onDelete: Cascade)
+  exam      Exam?  @relation("ExamQuestions", fields: [examId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("ChallengeQuestionCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   sessionQuestions SessionQuestion[]
   answers          ChallengeAnswer[]
 
@@ -459,15 +809,16 @@ enum SessionStatus {
 
 /// Challenge session (a game instance)
 model ChallengeSession {
-  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  pin                  String            @unique // 6-digit PIN
-  mode                 ChallengeMode
-  category             ChallengeCategory
-  topicId              String?           @map("topic_id") @db.Uuid
+  id       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pin      String            @unique // 6-digit PIN
+  mode     ChallengeMode
+  category ChallengeCategory
+  topicId  String?           @map("topic_id") @db.Uuid
 
-  hostId               String            @map("host_id") @db.Uuid
-  currentQuestionIndex Int               @default(0) @map("current_question_index")
-  status               SessionStatus     @default(WAITING)
+  /// Host user id. Intentionally NOT a foreign key in the database.
+  hostId               String        @map("host_id") @db.Uuid
+  currentQuestionIndex Int           @default(0) @map("current_question_index")
+  status               SessionStatus @default(WAITING)
 
   // Settings
   showLeaderboard Boolean @default(true) @map("show_leaderboard")
@@ -477,14 +828,16 @@ model ChallengeSession {
 
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
-  scheduledStartTime DateTime? @map("scheduled_start_time")
-  scheduledEndTime   DateTime? @map("scheduled_end_time")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  // Relations
-  topic            Topic?            @relation(fields: [topicId], references: [id])
+  scheduledStartTime DateTime? @map("scheduled_start_time") @db.Timestamptz(6)
+  scheduledEndTime   DateTime? @map("scheduled_end_time") @db.Timestamptz(6)
+  /// Server-authoritative timing for the currently displayed question
+  questionStartsAt DateTime? @map("question_starts_at") @db.Timestamptz(6)
+  answerDeadlineAt DateTime? @map("answer_deadline_at") @db.Timestamptz(6)
 
+  topic            Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
   players          PlayerSession[]
   sessionQuestions SessionQuestion[]
   results          ChallengeResult[]
@@ -501,7 +854,6 @@ model SessionQuestion {
   questionId    String @map("question_id") @db.Uuid
   questionOrder Int    @map("question_order")
 
-  // Relations
   session  ChallengeSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question ChallengeQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
@@ -526,7 +878,6 @@ model PlayerSession {
   lastAnswerTime Float?   @map("last_answer_time") // milliseconds
   joinedAt       DateTime @default(now()) @map("joined_at")
 
-  // Relations
   session ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -555,11 +906,11 @@ model ChallengeResult {
   participantExtra       String?  @map("participant_extra")
   createdAt              DateTime @default(now()) @map("created_at")
 
-  // Relations
-  session      ChallengeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user         User?            @relation(fields: [userId], references: [id])
+  session      ChallengeSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   resultBadges ResultBadge[]
   answers      ChallengeAnswer[]
+  wahjAttempts WahjReadingAttempt[]
 
   @@index([userId])
   @@index([sessionId])
@@ -568,17 +919,16 @@ model ChallengeResult {
 
 /// Individual answer/response for a challenge question
 model ChallengeAnswer {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  resultId        String   @map("result_id") @db.Uuid
-  questionId      String   @map("question_id") @db.Uuid
-  userAnswer      String?  @map("user_answer") // The user's response (can be text, number, or JSON for complex answers)
-  isCorrect       Boolean  @map("is_correct")
-  timeTaken       Float    @map("time_taken") // seconds
-  pointsEarned    Int      @default(0) @map("points_earned")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resultId     String   @map("result_id") @db.Uuid
+  questionId   String   @map("question_id") @db.Uuid
+  userAnswer   String?  @map("user_answer") // text, number, or JSON for complex answers
+  isCorrect    Boolean  @map("is_correct")
+  timeTaken    Float    @map("time_taken") // seconds
+  pointsEarned Int      @default(0) @map("points_earned")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  // Relations
-  result   ChallengeResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  result   ChallengeResult   @relation(fields: [resultId], references: [id], onDelete: Cascade)
   question ChallengeQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([resultId])
@@ -601,7 +951,6 @@ model Badge {
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  // Relations
   userBadges   UserBadge[]
   resultBadges ResultBadge[]
 
@@ -615,7 +964,6 @@ model UserBadge {
   badgeId  String   @map("badge_id") @db.Uuid
   earnedAt DateTime @default(now()) @map("earned_at")
 
-  // Relations
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
@@ -629,7 +977,6 @@ model ResultBadge {
   resultId String @map("result_id") @db.Uuid
   badgeId  String @map("badge_id") @db.Uuid
 
-  // Relations
   result ChallengeResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
   badge  Badge           @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
@@ -649,9 +996,8 @@ model StudentEnrollment {
   enrolledAt DateTime @default(now()) @map("enrolled_at")
   isActive   Boolean  @default(true) @map("is_active")
 
-  // Relations
   student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  grade   Grade          @relation(fields: [gradeId], references: [id])
+  grade   Grade          @relation(fields: [gradeId], references: [id], onDelete: Restrict)
 
   @@unique([studentId, gradeId])
   @@map("student_enrollments")
@@ -667,9 +1013,8 @@ model StudentSubjectProgress {
   averageScore    Float    @default(0) @map("average_score")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  // Relations
   student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subject Subject        @relation(fields: [subjectId], references: [id])
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Restrict)
 
   @@unique([studentId, subjectId])
   @@map("student_subject_progress")
@@ -686,9 +1031,8 @@ model StudentTopicActivity {
   date       DateTime @default(now())
   createdAt  DateTime @default(now()) @map("created_at")
 
-  // Relations
   student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  topic   Topic          @relation(fields: [topicId], references: [id])
+  topic   Topic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
 
   @@map("student_topic_activities")
 }
@@ -709,7 +1053,6 @@ model AuditLog {
   userAgent String?  @map("user_agent")
   createdAt DateTime @default(now()) @map("created_at")
 
-  // Relations
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
@@ -741,7 +1084,6 @@ model Notification {
   link      String? // optional navigation link
   createdAt DateTime @default(now()) @map("created_at")
 
-  // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
@@ -750,37 +1092,37 @@ model Notification {
 
 /// Support tickets: student→teacher (by grade), teacher→admin, or escalated student issues
 model SupportTicket {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  authorUserId          String    @map("author_user_id") @db.Uuid
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
   /// Cached author display name at creation (student name); avoids users RLS on readers
-  authorNameSnapshot    String?   @map("author_name_snapshot")
+  authorNameSnapshot String? @map("author_name_snapshot")
   /// Class context for student→teacher tickets; optional for teacher→admin
-  gradeId               String?   @map("grade_id") @db.Uuid
-  /// STUDENT_TO_TEACHER | TEACHER_TO_ADMIN
-  scope                 String
+  gradeId String? @map("grade_id") @db.Uuid
+  /// text + CHECK: STUDENT_TO_TEACHER | TEACHER_TO_ADMIN
+  scope String
   /// TECHNICAL | CONTENT | ACCOUNT | OTHER | TEACHER_ADMIN (teacher→admin direct)
-  ticketType            String    @default("OTHER") @map("ticket_type")
-  subject               String
-  body                  String    @db.Text
+  ticketType String @default("OTHER") @map("ticket_type")
+  subject    String
+  body       String @db.Text
   /// Public URLs of uploaded images (max 5), stored after insert
-  attachmentUrls        Json      @default(dbgenerated("'[]'::jsonb")) @map("attachment_urls")
-  /// OPEN | IN_PROGRESS | RESOLVED | ESCALATED
-  status                String    @default("OPEN")
+  attachmentUrls Json @default("[]") @map("attachment_urls")
+  /// text + CHECK: OPEN | IN_PROGRESS | RESOLVED | ESCALATED
+  status String @default("OPEN")
   /// Set when a teacher escalates a student ticket to the admin (child row links to parent)
   parentTicketId        String?   @map("parent_ticket_id") @db.Uuid
   teacherEscalationNote String?   @map("teacher_escalation_note") @db.Text
-  resolvedAt            DateTime? @map("resolved_at")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  resolvedAt            DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  author   User            @relation("SupportTicketAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
-  grade    Grade?          @relation(fields: [gradeId], references: [id], onDelete: SetNull)
-  parent   SupportTicket?  @relation("SupportTicketEscalation", fields: [parentTicketId], references: [id], onDelete: SetNull)
+  author   User            @relation("SupportTicketAuthor", fields: [authorUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  grade    Grade?          @relation(fields: [gradeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  parent   SupportTicket?  @relation("SupportTicketEscalation", fields: [parentTicketId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   children SupportTicket[] @relation("SupportTicketEscalation")
 
-  @@index([authorUserId])
-  @@index([gradeId, scope, status])
-  @@index([scope, status])
+  @@index([authorUserId], map: "idx_support_tickets_author")
+  @@index([gradeId, scope, status], map: "idx_support_tickets_grade_scope_status")
+  @@index([scope, status], map: "idx_support_tickets_scope_status")
   @@map("support_tickets")
 }
 
@@ -817,57 +1159,195 @@ enum ExamStatus {
   ENDED
 }
 
-model Exam {
-  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title            String
-  description      String?
-  gradeId          String?      @map("grade_id") @db.Uuid
-  topicId          String?      @map("topic_id") @db.Uuid
-  hostId           String       @map("host_id") @db.Uuid
-  pin              String       @unique
-  category         ExamCategory @default(WEEKLY)
-  status           ExamStatus   @default(DRAFT)
-  startTime        DateTime     @map("start_time")
-  endTime          DateTime     @map("end_time")
-  durationMinutes  Int?         @default(60) @map("duration_minutes")
-  maxAttempts      Int?         @default(1) @map("max_attempts")
-  shuffleQuestions Boolean?     @default(false) @map("shuffle_questions")
-  showResults      Boolean?     @default(true) @map("show_results")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at")
+/// Legacy lowercase PG types superseded by ExamCategory/ExamStatus.
+/// They still exist in the database but no column references them.
+/// Declared here only so the schema is a faithful mirror — do not use.
+enum ExamCategoryLegacy {
+  WEEKLY
+  MONTHLY
+  MID_SEMESTER
+  FINAL_SEMESTER
 
-  // Relations
+  @@map("exam_category")
+}
+
+enum ExamStatusLegacy {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  ENDED
+
+  @@map("exam_status")
+}
+
+model Exam {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  description String?
+  gradeId     String? @map("grade_id") @db.Uuid
+  topicId     String? @map("topic_id") @db.Uuid
+  hostId      String  @map("host_id") @db.Uuid
+  pin         String  @unique
+
+  category ExamCategory @default(WEEKLY)
+  status   ExamStatus   @default(DRAFT)
+
+  /// CHECK: end_time > start_time
+  startTime        DateTime @map("start_time")
+  endTime          DateTime @map("end_time")
+  durationMinutes  Int?     @default(60) @map("duration_minutes")
+  maxAttempts      Int?     @default(1) @map("max_attempts")
+  shuffleQuestions Boolean? @default(false) @map("shuffle_questions")
+  showResults      Boolean? @default(true) @map("show_results")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
   grade     Grade?              @relation(fields: [gradeId], references: [id], onDelete: SetNull)
   topic     Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
   host      User                @relation("HostedExams", fields: [hostId], references: [id], onDelete: Cascade)
   results   ExamResult[]
   questions ChallengeQuestion[] @relation("ExamQuestions")
 
+  @@index([hostId], map: "idx_exams_host")
+  @@index([pin], map: "idx_exams_pin")
+  @@index([status], map: "idx_exams_status")
+  @@index([startTime, endTime], map: "idx_exams_times")
   @@map("exams")
 }
 
 model ExamResult {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId           String   @map("exam_id") @db.Uuid
-  userId           String   @map("user_id") @db.Uuid
-  studentName      String?  @map("student_name")
-  totalQuestions   Int      @default(0) @map("total_questions")
-  correctAnswers   Int      @default(0) @map("correct_answers")
-  wrongAnswers     Int      @default(0) @map("wrong_answers")
-  score            Int      @default(0)
-  maxScore         Int      @default(0) @map("max_score")
-  percentage       Float    @default(0)
-  timeTaken        Float    @default(0) @map("time_taken")
-  attemptsUsed     Int      @default(1) @map("attempts_used")
-  questionResults  Json?    @map("question_results")
-  startedAt        DateTime? @default(now()) @map("started_at")
-  submittedAt      DateTime? @default(now()) @map("submitted_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId         String  @map("exam_id") @db.Uuid
+  userId         String  @map("user_id") @db.Uuid
+  studentName    String? @map("student_name")
+  totalQuestions Int     @default(0) @map("total_questions")
+  correctAnswers Int     @default(0) @map("correct_answers")
+  wrongAnswers   Int     @default(0) @map("wrong_answers")
+  score          Int     @default(0)
+  maxScore       Int     @default(0) @map("max_score")
+  percentage     Float   @default(0)
+  timeTaken      Float   @default(0) @map("time_taken")
+  /// NOTE: added by supabase/migrations/20260823_exam_logic_hardening.sql.
+  /// Apply that migration before relying on this field — see notes at EOF.
+  attemptsUsed    Int       @default(1) @map("attempts_used")
+  questionResults Json?     @map("question_results")
+  startedAt       DateTime? @default(now()) @map("started_at")
+  submittedAt     DateTime? @default(now()) @map("submitted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
-  // Relations
   exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([examId, userId])
+  @@index([examId], map: "idx_exam_results_exam")
+  @@index([userId], map: "idx_exam_results_user")
   @@map("exam_results")
 }
+
+// ============================================================================
+// 11. WAHJ READING PROGRAM (برنامج وهج القرائي)
+// ============================================================================
+
+/// A reader in the Wahj program, looked up by a human-facing reference id.
+/// `subject_id` here is a free-text program/subject key, NOT a `subjects.id`.
+model WahjParticipant {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referenceId String   @unique @map("reference_id")
+  displayName String   @map("display_name")
+  subjectId   String   @map("subject_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  attempts WahjReadingAttempt[]
+
+  @@index([referenceId], map: "idx_wahj_participants_reference_id")
+  @@index([subjectId, createdAt(sort: Desc)], map: "idx_wahj_participants_subject_id")
+  @@map("wahj_participants")
+}
+
+/// One reading round for a participant, optionally tied to a challenge result.
+model WahjReadingAttempt {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  participantId     String  @map("participant_id") @db.Uuid
+  challengeResultId String? @map("challenge_result_id") @db.Uuid
+  /// Free-text topic key, NOT a `topics.id`
+  topicId String @map("topic_id")
+
+  /// CHECK: >= 0
+  pagesRead Int @default(0) @map("pages_read")
+  /// CHECK: >= 0
+  benefitsCount Int @default(0) @map("benefits_count")
+  /// text + CHECK: full | partial | none
+  discussionAttendance String @map("discussion_attendance")
+  /// text + CHECK: full | partial | none
+  enrichmentAttendance String   @map("enrichment_attendance")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  participant     WahjParticipant  @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  challengeResult ChallengeResult? @relation(fields: [challengeResultId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([participantId, createdAt(sort: Desc)], map: "idx_wahj_reading_attempts_participant")
+  @@index([challengeResultId], map: "idx_wahj_reading_attempts_result")
+  @@map("wahj_reading_attempts")
+}
+
+/// Tokenized public link to a rendered Wahj reading report.
+model WahjReadingReportLink {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token           String @unique
+  participantKey  String @map("participant_key")
+  participantName String @map("participant_name")
+  /// Free-text program/subject key
+  subjectId   String  @map("subject_id")
+  createdById String? @map("created_by") @db.Uuid
+  /// Full report snapshot rendered by the PDF/page handler
+  payload   Json
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([token], map: "idx_wahj_reading_report_links_token")
+  @@index([subjectId, createdAt(sort: Desc)], map: "idx_wahj_reading_report_links_subject")
+  @@index([createdById, createdAt(sort: Desc)], map: "idx_wahj_reading_report_links_created_by")
+  @@map("wahj_reading_report_links")
+}
+
+// ============================================================================
+// NOTES — things in the database that Prisma cannot express here
+// ============================================================================
+// 1. VIEW `public.public_users` (id, email, name, role, verified, is_active,
+//    details) is not modeled: Prisma views are still a preview feature. Query
+//    it through Supabase or $queryRaw.
+//
+// 2. Expression / partial indexes, kept only in SQL:
+//      pending_registrations_email_idx        ON (lower(email))
+//      pending_registrations_pin_email_idx    ON (pin, lower(email))
+//      uq_topic_discussion_reactions_discussion UNIQUE (user_id, discussion_id, emoji)
+//                                               WHERE discussion_id IS NOT NULL
+//      uq_topic_discussion_reactions_reply      UNIQUE (user_id, reply_id, emoji)
+//                                               WHERE reply_id IS NOT NULL
+//      idx_topic_ratings_guest_id             ON (guest_id) WHERE guest_id IS NOT NULL
+//
+// 3. CHECK constraints are documented per field above but are not enforced by
+//    the Prisma client — validate in application code as well.
+//
+// 4. RPC functions used by the app (not represented in this schema):
+//      login_user, reset_user_password, support_ticket_resolve_authors,
+//      create_wahj_participant, lookup_wahj_participant,
+//      create_wahj_reading_attempt, link_wahj_attempt_to_result,
+//      attach_wahj_extra_to_challenge_result, get_wahj_intake_for_participant,
+//      get_wahj_intake_for_subject, get_wahj_reading_report_by_token,
+//      upsert_wahj_reading_report_link
+//
+// 5. UNAPPLIED MIGRATION: `exam_results.attempts_used` is declared above but does
+//    not yet exist in the live database. Run
+//    supabase/migrations/20260823_exam_logic_hardening.sql before using it.
+//
+// 6. UNRELATED TABLES: the same database also holds `Bank`, `Car` and
+//    `LoanRequest` (plus the CarStatus / LoanRequestStatus enums) from a
+//    different project. They are deliberately not modeled here. Because of
+//    them, never run `prisma migrate dev` against this database — it would
+//    generate a migration that DROPS them. Keep using supabase/migrations/*.sql.
+// ============================================================================
