@@ -610,7 +610,7 @@ ${formatPreferencesForInstruction(preferences, false)}`;
  * (same string is later sent to {@link generateImageBytesFromPrompt} when the user confirms).
  */
 export async function generateImagePromptFromAnalyzedResources(
-    apiKey: string,
+    apiKey: string | undefined,
     media: ContentMedia[],
     lessonTitle: string,
     lessonDescription: string,
@@ -768,7 +768,7 @@ function buildUserMessageForImageModel(imagePrompt: string): string {
  * `imagePrompt` is the text from the confirmation dialog (possibly edited by the teacher).
  */
 export async function generateImageBytesFromPrompt(
-    apiKey: string,
+    apiKey: string | undefined,
     imagePrompt: string
 ): Promise<{ mimeType: string; base64: string }> {
     const trimmed = buildUserMessageForImageModel(imagePrompt);
@@ -815,7 +815,7 @@ export async function generateImageBytesFromPrompt(
 }
 
 export async function createEducationalImageFromLessonResources(params: {
-    apiKey: string;
+    apiKey?: string;
     media: ContentMedia[];
     lessonTitle: string;
     lessonDescription: string;

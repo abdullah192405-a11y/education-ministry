@@ -88,18 +88,6 @@ const AIQuestionGeneratorFromResources = ({
 
     const getChallengeTypeLabel = (type: ChallengeType) => t(CHALLENGE_TYPE_KEYS[type]);
 
-    const getGeminiApiKey = (): string => {
-        const key = (import.meta.env.VITE_GEMINI_API_KEY || "").trim();
-        const looksLikePlaceholder =
-            !key ||
-            key === "your_gemini_api_key_here" ||
-            key.toLowerCase().includes("replace_me");
-        if (looksLikePlaceholder) {
-            throw new Error(t("dash.teacher.aiGen.resources.errors.geminiKeyInvalid"));
-        }
-        return key;
-    };
-
     // Auto-select all media by default
     useEffect(() => {
         if (media.length > 0) {
@@ -370,7 +358,6 @@ const AIQuestionGeneratorFromResources = ({
 
     const parseItemsWithRepair = async (
         generatedText: string,
-        apiKey: string,
         generateType: GenerateMode
     ) => {
         try {
@@ -381,7 +368,7 @@ const AIQuestionGeneratorFromResources = ({
 
             const repairPrompt = buildQuestionGenRepairPrompt(language, generateType, generatedText);
 
-            const repaired = (await generateGeminiContent(apiKey, {
+            const repaired = (await generateGeminiContent(undefined, {
                 contents: [{ parts: [{ text: repairPrompt }] }],
                 generationConfig: {
                     temperature: 0.2,
@@ -416,7 +403,6 @@ const AIQuestionGeneratorFromResources = ({
 
     const transcribeAudioParts = async (
         audioParts: { fileName: string; base64: string; mimeType: string }[],
-        apiKey: string
     ): Promise<string> => {
         if (audioParts.length === 0) return "";
 
@@ -424,7 +410,7 @@ const AIQuestionGeneratorFromResources = ({
         for (const audio of audioParts) {
             try {
                 setProgress(t("dash.teacher.aiGen.resources.progress.transcribingFile", { fileName: audio.fileName }));
-                const transcription = (await generateGeminiContent(apiKey, {
+                const transcription = (await generateGeminiContent(undefined, {
                     contents: [{
                         parts: [
                             {
@@ -531,10 +517,8 @@ const AIQuestionGeneratorFromResources = ({
             setProcessingPhase("analyzing");
             setProgress(t("dash.teacher.aiGen.resources.progress.analyzing"));
 
-            const apiKey = getGeminiApiKey();
-
             setProgress(t("dash.teacher.aiGen.resources.progress.transcribing"));
-            const audioTranscriptContext = await transcribeAudioParts(audioParts, apiKey);
+            const audioTranscriptContext = await transcribeAudioParts(audioParts);
 
             // Fetch metadata or transcripts for videos if any
             let videoResourceMetadata = "";
@@ -695,7 +679,7 @@ const AIQuestionGeneratorFromResources = ({
                 });
                 batchParts.push({ text: promptText });
 
-                const data = (await generateGeminiContent(apiKey, {
+                const data = (await generateGeminiContent(undefined, {
                     contents: [{ parts: batchParts }],
                     generationConfig: {
                         temperature: 0.7,
@@ -725,7 +709,7 @@ const AIQuestionGeneratorFromResources = ({
                 }
 
                 const parsedItems = normalizeGeneratedItems(
-                    await parseItemsWithRepair(generatedText, apiKey, generateType)
+                    await parseItemsWithRepair(generatedText, generateType)
                 );
                 const filteredItems = parsedItems.filter((item) => {
                     const type = normalizeChallengeItemType(String(item.type || "")) as ChallengeType;

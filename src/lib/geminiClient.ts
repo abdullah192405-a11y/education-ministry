@@ -1,6 +1,9 @@
 /**
  * Gemini generateContent with retries and model fallback.
  * Handles transient failures (429/503, "high demand", overloaded, etc.).
+ *
+ * Prefer omitting `apiKey` in the browser so requests go through `/api/gemini`
+ * and `GEMINI_API_KEY` stays server-side (no VITE_ public prefix).
  */
 
 export type GeminiGeneratePayload = {
@@ -103,11 +106,34 @@ function getPreferred429WaitMs(res: Response, message: string, fallbackMs: numbe
     return fallbackMs;
 }
 
+async function postGenerateContent(
+    apiKey: string | undefined,
+    model: string,
+    body: GeminiGeneratePayload
+): Promise<Response> {
+    const key = (apiKey || "").trim();
+    if (key) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+        return fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    }
+
+    return fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, ...body }),
+    });
+}
+
 /**
  * POST generateContent; retries with backoff, then tries fallback models.
+ * Pass `apiKey` only on the server. In the browser, omit it to use `/api/gemini`.
  */
 export async function generateGeminiContent(
-    apiKey: string,
+    apiKey: string | undefined,
     body: GeminiGeneratePayload,
     options?: {
         models?: string[];
@@ -128,12 +154,7 @@ export async function generateGeminiContent(
         let delay = initialDelay;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-            const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
+            const res = await postGenerateContent(apiKey, model, body);
 
             let parsed: unknown = null;
             try {

@@ -95,16 +95,8 @@ export function closeChallengeReportPrintWindow(printWindow?: Window | null): vo
 async function enrichReportPayload(opts: ChallengeReportCsvOptions): Promise<ChallengeReportCsvOptions> {
   if (opts.recommendationReport) return opts;
 
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-  if (!apiKey) {
-    return {
-      ...opts,
-      recommendationReport: buildFallbackRecommendationReport(opts),
-    };
-  }
-
   try {
-    const recommendationReport = await generateChallengeRecommendationReport(apiKey, opts);
+    const recommendationReport = await generateChallengeRecommendationReport(undefined, opts);
     return { ...opts, recommendationReport };
   } catch {
     return {

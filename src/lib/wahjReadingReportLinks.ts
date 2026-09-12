@@ -133,13 +133,8 @@ export async function enrichWahjIndividualReportPayload(
 ): Promise<WahjReadingReportPayload> {
     if (payload.aiReport) return payload;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    if (!apiKey) {
-        return { ...payload, aiReport: buildFallbackIndividualAiReport(payload) };
-    }
-
     try {
-        const aiReport = await generateWahjIndividualAiReport(apiKey, payload);
+        const aiReport = await generateWahjIndividualAiReport(undefined, payload);
         return { ...payload, aiReport };
     } catch {
         return { ...payload, aiReport: buildFallbackIndividualAiReport(payload) };

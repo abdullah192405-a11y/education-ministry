@@ -536,7 +536,7 @@ function isArabicHeavyRecommendationReport(report: ChallengeRecommendationReport
 }
 
 async function repairRecommendationJson(
-    apiKey: string,
+    apiKey: string | undefined,
     brokenText: string,
     language?: ChallengeReportCsvOptions["language"]
 ): Promise<unknown | null> {
@@ -586,7 +586,7 @@ async function repairRecommendationJson(
 }
 
 export async function generateChallengeRecommendationReport(
-    apiKey: string,
+    apiKey: string | undefined,
     opts: ChallengeReportCsvOptions
 ): Promise<ChallengeRecommendationReport> {
     const input = buildRecommendationInput(opts);

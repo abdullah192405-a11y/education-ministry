@@ -246,14 +246,10 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
                         (window as any)._pendingPdfImages = pdfImages;
                     }
                 } else if (fileType === "audio" || isAudioFile(file)) {
-                    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-                    if (!apiKey) {
-                        throw new Error(t("dash.teacher.aiGen.errors.noGeminiKey"));
-                    }
                     setProgress(t("dash.teacher.aiGen.resources.progress.transcribingFile", { fileName: file.name }));
                     const base64Data = await fileToBase64(file);
                     const mimeType = file.type || guessAudioMimeType(file.name);
-                    const transcription = (await generateGeminiContent(apiKey, {
+                    const transcription = (await generateGeminiContent(undefined, {
                         contents: [{
                             parts: [
                                 {
@@ -336,11 +332,6 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             }
 
             // Step 2: Call Gemini API
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) {
-                throw new Error(t("dash.teacher.aiGen.errors.noGeminiKey"));
-            }
-
             const parts: any[] = [];
 
             if (imagePart) {
@@ -373,7 +364,7 @@ const AIQuestionGenerator = ({ onGenerate, onCancel }: AIQuestionGeneratorProps)
             parts.push({ text: buildUploadGenerationPrompt(language, sourceContextForPrompt, prompt) });
 
             setProgress(t("dash.teacher.aiGen.upload.progress.generating"));
-            const data = (await generateGeminiContent(apiKey, {
+            const data = (await generateGeminiContent(undefined, {
                 contents: [{ parts }],
                 generationConfig: {
                     temperature: 0.7,

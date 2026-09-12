@@ -149,13 +149,8 @@ async function downloadWahjHtmlReport(
 async function enrichIndividualPayload(payload: WahjReadingReportPayload): Promise<WahjReadingReportPayload> {
     if (payload.aiReport) return payload;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    if (!apiKey) {
-        return { ...payload, aiReport: buildFallbackIndividualAiReport(payload) };
-    }
-
     try {
-        const aiReport = await generateWahjIndividualAiReport(apiKey, payload);
+        const aiReport = await generateWahjIndividualAiReport(undefined, payload);
         return { ...payload, aiReport };
     } catch {
         return { ...payload, aiReport: buildFallbackIndividualAiReport(payload) };
@@ -165,13 +160,8 @@ async function enrichIndividualPayload(payload: WahjReadingReportPayload): Promi
 async function enrichProgramPayload(payload: WahjProgramReportPayload): Promise<WahjProgramReportPayload> {
     if (payload.aiReport) return payload;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    if (!apiKey) {
-        return { ...payload, aiReport: buildFallbackProgramAiReport(payload) };
-    }
-
     try {
-        const aiReport = await generateWahjProgramAiReport(apiKey, payload);
+        const aiReport = await generateWahjProgramAiReport(undefined, payload);
         return { ...payload, aiReport };
     } catch {
         return { ...payload, aiReport: buildFallbackProgramAiReport(payload) };

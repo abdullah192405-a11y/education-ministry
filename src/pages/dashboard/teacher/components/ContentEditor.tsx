@@ -786,15 +786,6 @@ const ContentEditor = ({
     };
 
     const handlePrepareImagePromptFromResources = async () => {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (!apiKey) {
-            toast({
-                title: t("dash.teacher.topics.editor.toast.apiKeyMissing"),
-                description: t("dash.teacher.topics.editor.toast.addGeminiKey"),
-                variant: "destructive",
-            });
-            return;
-        }
         if (!user) {
             toast({ title: t("dash.common.error"), description: t("dash.teacher.topics.qe.toast.notLoggedIn"), variant: "destructive" });
             return;
@@ -830,7 +821,7 @@ const ContentEditor = ({
                 notes: aiImageExtraNotes,
             };
             const prompt = await generateImagePromptFromAnalyzedResources(
-                apiKey,
+                undefined,
                 selectedResources,
                 title,
                 description,
@@ -866,12 +857,11 @@ const ContentEditor = ({
             });
             return;
         }
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (!apiKey || !user) return;
+        if (!user) return;
 
         setIsRenderingAiImage(true);
         try {
-            const { mimeType, base64 } = await generateImageBytesFromPrompt(apiKey, trimmed);
+            const { mimeType, base64 } = await generateImageBytesFromPrompt(undefined, trimmed);
             const ext = mimeType.includes("png")
                 ? "png"
                 : mimeType.includes("jpeg") || mimeType.includes("jpg")

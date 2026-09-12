@@ -4,6 +4,7 @@ import path from "path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { componentTagger } from "lovable-tagger";
 import { handleChallengeReportPdfRequest } from "./server/challengeReportPdfHandler";
+import { handleGeminiProxyRequest } from "./server/geminiProxyHandler";
 import { handleWahjReadingReportPageRequest } from "./server/wahjReadingReportPageHandler";
 
 type MiddlewareStack = {
@@ -21,6 +22,16 @@ function registerChallengeReportPdfMiddleware(middlewares: MiddlewareStack, gemi
   middlewares.use("/api/challenge-report-pdf", async (req, res, next) => {
     try {
       await handleChallengeReportPdfRequest(req, res, geminiApiKey);
+    } catch (error) {
+      next(error);
+    }
+  });
+}
+
+function registerGeminiProxyMiddleware(middlewares: MiddlewareStack): void {
+  middlewares.use("/api/gemini", async (req, res, next) => {
+    try {
+      await handleGeminiProxyRequest(req, res);
     } catch (error) {
       next(error);
     }
@@ -67,9 +78,11 @@ function challengeReportPdfPlugin(geminiApiKey?: string): PluginOption {
   return {
     name: "challenge-report-pdf",
     configureServer(server) {
+      registerGeminiProxyMiddleware(server.middlewares);
       registerChallengeReportPdfMiddleware(server.middlewares, geminiApiKey);
     },
     configurePreviewServer(server) {
+      registerGeminiProxyMiddleware(server.middlewares);
       registerChallengeReportPdfMiddleware(server.middlewares, geminiApiKey);
     },
   };
@@ -83,6 +96,11 @@ export default defineConfig(({ mode }) => {
     env.VITE_GEMINI_API_KEY ||
     process.env.GEMINI_API_KEY ||
     process.env.VITE_GEMINI_API_KEY;
+
+  // Expose private key to Node middleware (Vite does not inject non-VITE_ into process.env).
+  if (geminiApiKey) {
+    process.env.GEMINI_API_KEY = geminiApiKey;
+  }
 
   return {
     server: {

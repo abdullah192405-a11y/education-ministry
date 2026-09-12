@@ -156,11 +156,6 @@ const AIQuestionGeneratorFromDatabase = ({
             setProcessingPhase("generating");
             setProgress(t("dash.teacher.aiGen.database.progress.generating"));
 
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) {
-                throw new Error(t("dash.teacher.aiGen.errors.noGeminiKey"));
-            }
-
             const parts: any[] = [];
 
             pdfImages.forEach(img => {
@@ -180,7 +175,7 @@ const AIQuestionGeneratorFromDatabase = ({
             );
             parts.push({ text: finalPrompt });
 
-            const data = (await generateGeminiContent(apiKey, {
+            const data = (await generateGeminiContent(undefined, {
                 contents: [{ parts }],
                 generationConfig: {
                     temperature: 0.7,

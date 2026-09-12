@@ -94,7 +94,7 @@ function extractText(data: unknown): string {
     return response.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 }
 
-async function callGemini(apiKey: string, prompt: string): Promise<WahjAiReport> {
+async function callGemini(apiKey: string | undefined, prompt: string): Promise<WahjAiReport> {
     const data = await generateGeminiContent(
         apiKey,
         {
@@ -237,7 +237,7 @@ export function buildFallbackProgramAiReport(payload: WahjProgramReportPayload):
 }
 
 export async function generateWahjIndividualAiReport(
-    apiKey: string,
+    apiKey: string | undefined,
     payload: WahjReadingReportPayload,
 ): Promise<WahjAiReport> {
     const prompt = `
@@ -268,7 +268,7 @@ ${JSON.stringify({ payload, analytics: payload.analytics }, null, 2)}
 }
 
 export async function generateWahjProgramAiReport(
-    apiKey: string,
+    apiKey: string | undefined,
     payload: WahjProgramReportPayload,
 ): Promise<WahjAiReport> {
     const prompt = `
