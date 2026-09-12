@@ -40,6 +40,9 @@ function readApiError(body: unknown, httpStatus: number, statusText: string): { 
         const message = (err?.message || err?.status || statusText || `HTTP ${httpStatus}`).trim();
         return { code, message };
     }
+    if (typeof body === "string" && body.trim()) {
+        return { code: httpStatus, message: body.trim().slice(0, 300) };
+    }
     return { code: httpStatus, message: statusText || `HTTP ${httpStatus}` };
 }
 
@@ -157,10 +160,12 @@ export async function generateGeminiContent(
             const res = await postGenerateContent(apiKey, model, body);
 
             let parsed: unknown = null;
+            let rawText = "";
             try {
-                parsed = await res.json();
+                rawText = await res.text();
+                parsed = rawText ? JSON.parse(rawText) : null;
             } catch {
-                parsed = null;
+                parsed = rawText ? rawText : null;
             }
 
             if (res.ok) {
