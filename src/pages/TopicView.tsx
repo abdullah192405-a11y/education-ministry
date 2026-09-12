@@ -22,7 +22,7 @@ import {
     CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Play, Eye, EyeOff, Clock,
     BookOpen, Gamepad2,
     FileText, Image as ImageIcon, AlignLeft, Youtube,
-    Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio
+    Headphones, Link2, ExternalLink, MessageCircle, Paperclip, Star, Radio, Smartphone
 } from "lucide-react";
 import { canSeeHiddenTopics, isTopicHiddenFromStudents } from "@/lib/contentVisibility";
 import {
@@ -72,6 +72,43 @@ const getLiveSessionStatus = (session: TopicLiveSession): "live" | "upcoming" | 
     if (session.is_active && Number.isFinite(start) && Number.isFinite(end) && start <= now && now <= end) return "live";
     if (session.is_active && Number.isFinite(start) && start > now) return "upcoming";
     return "ended";
+};
+
+/** Portrait + narrow viewport — ask users to rotate for video. */
+const useShouldPromptLandscape = () => {
+    const [shouldPrompt, setShouldPrompt] = useState(false);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(orientation: portrait) and (max-width: 900px)");
+        const update = () => setShouldPrompt(mediaQuery.matches);
+        update();
+        mediaQuery.addEventListener("change", update);
+        return () => mediaQuery.removeEventListener("change", update);
+    }, []);
+
+    return shouldPrompt;
+};
+
+const VideoRotateHint = ({ visible, message }: { visible: boolean; message: string }) => {
+    if (!visible) return null;
+
+    return (
+        <div
+            role="status"
+            className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm font-medium text-foreground sm:px-4"
+        >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <motion.span
+                    animate={{ rotate: [0, 90, 90, 0] }}
+                    transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", times: [0, 0.4, 0.7, 1] }}
+                    className="inline-flex"
+                >
+                    <Smartphone className="h-4 w-4" />
+                </motion.span>
+            </span>
+            <p className="leading-snug">{message}</p>
+        </div>
+    );
 };
 
 
@@ -155,6 +192,13 @@ const TopicView = () => {
     }, [topic]);
 
     const [isPlaying, setIsPlaying] = useState(false);
+    const shouldPromptLandscape = useShouldPromptLandscape();
+    const videoRotateHint = (
+        <VideoRotateHint
+            visible={shouldPromptLandscape}
+            message={t("topicView.video.rotateHint")}
+        />
+    );
 
     useEffect(() => {
         setIsPlaying(false);
@@ -675,43 +719,49 @@ const TopicView = () => {
                 if (isYouTube && !isPlaying) {
                     const thumbnailUrl = getYouTubeThumbnail(currentMedia.url);
                     return (
-                        <div
-                            className="relative aspect-video rounded-2xl overflow-hidden bg-black group cursor-pointer"
-                            onClick={() => setIsPlaying(true)}
-                        >
-                            <img
-                                src={thumbnailUrl || ""}
-                                alt={currentMedia.caption}
-                                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
-                                onError={(e) => {
-                                    // Fallback to high quality if maxres isn't available
-                                    const target = e.target as HTMLImageElement;
-                                    if (target.src.includes('maxresdefault')) {
-                                        target.src = target.src.replace('maxresdefault', 'hqdefault');
-                                    }
-                                }}
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-20 h-20 bg-primary/90 text-white rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
-                                    <Play className="w-10 h-10 fill-current" />
+                        <div>
+                            {videoRotateHint}
+                            <div
+                                className="relative aspect-video rounded-2xl overflow-hidden bg-black group cursor-pointer"
+                                onClick={() => setIsPlaying(true)}
+                            >
+                                <img
+                                    src={thumbnailUrl || ""}
+                                    alt={currentMedia.caption}
+                                    className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+                                    onError={(e) => {
+                                        // Fallback to high quality if maxres isn't available
+                                        const target = e.target as HTMLImageElement;
+                                        if (target.src.includes('maxresdefault')) {
+                                            target.src = target.src.replace('maxresdefault', 'hqdefault');
+                                        }
+                                    }}
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-20 h-20 bg-primary/90 text-white rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                                        <Play className="w-10 h-10 fill-current" />
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
-                                <p className="text-white text-lg font-bold">{currentMedia.caption || t("topicView.video.show")}</p>
+                                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                                    <p className="text-white text-lg font-bold">{currentMedia.caption || t("topicView.video.show")}</p>
+                                </div>
                             </div>
                         </div>
                     );
                 }
 
                 return (
-                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
-                        <iframe
-                            src={embedUrl}
-                            title={currentMedia.caption}
-                            className="w-full h-full"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                        />
+                    <div>
+                        {videoRotateHint}
+                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
+                            <iframe
+                                src={embedUrl}
+                                title={currentMedia.caption}
+                                className="w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            />
+                        </div>
                     </div>
                 );
 
@@ -814,14 +864,17 @@ const TopicView = () => {
                 if (isYouTube) {
                     const embedUrl = getYouTubeEmbedUrl(linkUrl);
                     return (
-                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
-                            <iframe
-                                src={embedUrl}
-                                title={currentMedia.caption || t("topicView.link.videoCaption")}
-                                className="w-full h-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                            />
+                        <div>
+                            {videoRotateHint}
+                            <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
+                                <iframe
+                                    src={embedUrl}
+                                    title={currentMedia.caption || t("topicView.link.videoCaption")}
+                                    className="w-full h-full"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                />
+                            </div>
                         </div>
                     );
                 }
