@@ -542,7 +542,7 @@ const Register = () => {
                                                     ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
                                                     : "bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
                                                     }`}
-                                                disabled={isLoading || isGoogleLoading}
+                                                disabled={isLoading}
                                             >
                                                 {isLoading ? (
                                                     <>
