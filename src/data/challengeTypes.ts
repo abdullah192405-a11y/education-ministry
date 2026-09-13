@@ -79,8 +79,8 @@ export interface ChallengeQuestion {
     }[];
 }
 
-/** Question types with a fixed 30-second time limit (not editable by teachers). */
-export const AUTO_TIME_LIMIT_SECONDS = 30;
+/** Question types with a fixed 45-second time limit (not editable by teachers). */
+export const AUTO_TIME_LIMIT_SECONDS = 45;
 export const AUTO_TIME_LIMIT_TYPES: ReadonlySet<ActivityType | GameType> = new Set([
     "multiple_choice",
     "true_false",

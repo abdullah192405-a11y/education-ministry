@@ -86,8 +86,11 @@ const Login = () => {
     const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
 
     useEffect(() => {
-        if (searchParams.get("error") === "pending") {
+        const error = searchParams.get("error");
+        if (error === "pending") {
             setError(t("login.errAccountPending"));
+        } else if (error === "no_account") {
+            setError(t("login.errGoogleNoAccount"));
         }
     }, [searchParams, t]);
 

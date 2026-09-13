@@ -16,7 +16,6 @@ const ClerkSSOCallback = () => {
                 signUpFallbackRedirectUrl="/sso-complete"
                 signInForceRedirectUrl="/sso-complete"
                 signUpForceRedirectUrl="/sso-complete"
-                continueSignUpUrl="/sso-complete"
             />
             <div id="clerk-captcha" />
             <div className="text-center space-y-4">
